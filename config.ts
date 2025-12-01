@@ -39,13 +39,13 @@ export const SUBSCRIPTION_CONFIG = {
 };
 
 // AI Model Configuration
-// Using Gemini 3 Pro (Preview) - Released Nov 18/20, 2025
-// Text: Advanced reasoning model with 1M token context window
-// Image: Gemini 3 Pro Image (Nano Banana Pro) - Preview model for advanced image generation
+// Using stable Gemini models for reliability
+// Text: Gemini 2.0 Flash - fast and reliable for text generation
+// Image: Imagen 3.0 - stable image generation model
 export const AI_CONFIG = {
   models: {
-    text: 'gemini-3-pro-preview',
-    image: 'gemini-3-pro-image-preview'
+    text: 'gemini-2.0-flash',
+    image: 'imagen-3.0-generate-002'
   },
   // Request timeouts in milliseconds
   timeouts: {

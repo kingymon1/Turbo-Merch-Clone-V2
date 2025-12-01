@@ -1358,8 +1358,9 @@ const createEnhancedDesignPrompt = async (research: DesignResearch, promptMode: 
     // In a real scenario, we might want to pass keywords from the trend data
     // to getArchetypeForTrend, but for now we rely on the AI's selection in 'research'
     // or fallback to dynamic if not specified.
-    const archetypeId = research.archetypeId || 'dynamic';
-    const archetype = ARCHETYPES[archetypeId] || ARCHETYPES['dynamic'];
+    // Note: ARCHETYPES uses UPPERCASE keys, but archetypeId may be lowercase
+    const archetypeId = research.archetypeId || 'DYNAMIC';
+    const archetype = ARCHETYPES[archetypeId] || ARCHETYPES[archetypeId.toUpperCase()] || ARCHETYPES['DYNAMIC'];
 
     console.log(`✓ Selected Design Archetype: ${archetype.name}`);
 
