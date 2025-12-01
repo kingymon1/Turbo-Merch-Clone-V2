@@ -1620,7 +1620,7 @@ export const refineDesignImage = async (
         const parts = response.candidates?.[0]?.content?.parts || [];
         for (const part of parts) {
             if (part.inlineData && part.inlineData.data) {
-                const refinedImageUrl = `data:${part.inlineData.mimeType || 'image/png'}; base64, ${part.inlineData.data} `;
+                const refinedImageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
                 console.log('✓ Image refinement successful');
                 return refinedImageUrl;
             }
@@ -1668,7 +1668,7 @@ export const generateDesignImage = async (
         for (const part of parts) {
             if (part.inlineData && part.inlineData.data) {
                 // inlineData.data contains the base64 encoded image
-                return `data:${part.inlineData.mimeType || 'image/png'}; base64, ${part.inlineData.data} `;
+                return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
             }
         }
 
@@ -1723,7 +1723,7 @@ export const generateDesignImageEnhanced = async (
             const parts = response.candidates?.[0]?.content?.parts || [];
             for (const part of parts) {
                 if (part.inlineData && part.inlineData.data) {
-                    const imageUrl = `data:${part.inlineData.mimeType || 'image/png'}; base64, ${part.inlineData.data} `;
+                    const imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
                     console.log('✓ Professional design generated successfully');
                     return { imageUrl, research };
                 }
