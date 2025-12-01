@@ -1,0 +1,492 @@
+// Prisma Schema for Turbo Merch Console
+// This is the database schema for user management, subscriptions, and usage tracking
+//
+// To apply changes:
+// 1. npx prisma generate (generates TypeScript types)
+// 2. npx prisma migrate dev (creates migration and applies to DB)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Authentication (Clerk or NextAuth)
+  clerkId String? @unique // Clerk user ID
+  email   String  @unique
+  name    String?
+  isAdmin Boolean @default(false) // Admin role for accessing admin panel
+
+  // Subscription
+  subscriptionTier   String  @default("free") // 'free' | 'starter' | 'pro' | 'business' | 'enterprise'
+  subscriptionStatus String  @default("active") // 'active' | 'cancelled' | 'past_due' | 'trialing'
+  stripeCustomerId   String? @unique
+
+  // Grandfathering support
+  pricingVersion Int @default(1) // Allows legacy users to keep old pricing
+
+  // Trial tracking
+  trialEndsAt       DateTime?
+  trialUsed         Boolean   @default(false) // Prevent trial abuse
+
+  // Anonymous session linking
+  linkedSessionId String? @unique // Link to AnonymousSession on signup
+
+  // Timestamps
+  subscribedAt      DateTime? // When they first subscribed to paid plan
+  cancelledAt       DateTime? // When they cancelled (still active until period end)
+  subscriptionEndsAt DateTime? // When subscription actually ends
+
+  // Relations
+  usage          UsageTracking[]
+  designs        DesignHistory[]
+  billingRecords BillingRecord[]
+  storageAddons  StorageAddon[]
+
+  @@index([email])
+  @@index([clerkId])
+  @@index([stripeCustomerId])
+  @@index([linkedSessionId])
+}
+
+// ============================================================================
+// ANONYMOUS SESSIONS (Pre-signup tracking)
+// ============================================================================
+
+model AnonymousSession {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessionId String @unique // Client-generated session ID (stored in localStorage)
+
+  // Rate limiting
+  generationTimestamps Json // Array of Unix timestamps
+  generationCount      Int  @default(0)
+
+  // Metadata
+  ipAddress String?
+  userAgent String?
+
+  // Status
+  linkedToUserId String? // Set when user signs up
+  isConverted    Boolean @default(false) // True after user signs up
+
+  // Relations
+  designs DesignHistory[]
+
+  @@index([sessionId])
+  @@index([ipAddress])
+  @@index([linkedToUserId])
+}
+
+// ============================================================================
+// USAGE TRACKING
+// ============================================================================
+
+model UsageTracking {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Billing period tracking
+  billingPeriodStart DateTime // Start of current billing month
+  billingPeriodEnd   DateTime // End of current billing month
+
+  // Usage counters
+  designsUsedInPeriod Int @default(0) // Total designs generated this billing period
+  designsAllowance    Int // Monthly allowance (copied from tier at period start)
+  overageDesigns      Int @default(0) // Designs beyond allowance
+
+  // Calculated charges
+  overageCharge Decimal @default(0) @db.Decimal(10, 2) // USD owed for overages
+
+  // Last activity
+  lastGenerationAt DateTime @default(now())
+
+  // Soft/hard cap tracking
+  softCapReached Boolean @default(false) // User was warned about approaching limit
+  hardCapReached Boolean @default(false) // User was blocked from further generation
+
+  @@unique([userId, billingPeriodStart])
+  @@index([userId])
+  @@index([billingPeriodStart])
+}
+
+// ============================================================================
+// DESIGN HISTORY
+// ============================================================================
+
+model DesignHistory {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Anonymous session (for pre-signup designs)
+  anonymousSessionId String?
+  anonymousSession   AnonymousSession? @relation(fields: [anonymousSessionId], references: [id], onDelete: Cascade)
+
+  // Run metadata
+  runId      String   @unique // UUID for this generation run
+  runConfig  Json     // Stores full RunConfig for reproducibility
+
+  // Core data
+  niche         String
+  slogan        String?
+  designCount   Int
+  targetMarket  String
+
+  // Generated content
+  listingData Json   // Title, description, tags, pricing
+  artPrompt   Json   // Final art prompt used
+  imageUrl    String? // Cloudflare R2 URL (latest/primary image)
+  imageHistory Json?  // Array of ImageVersion objects: [{imageUrl, promptMode, generatedAt, regenerationIndex}]
+
+  // Image quality metadata
+  imageQuality String // 'low' | 'standard' | 'high'
+  canDownload  Boolean @default(true) // false for free tier images
+
+  // Files
+  csvData Json?   // Parsed CSV data
+  zipUrl  String? // URL to downloadable ZIP (expires after retention period)
+
+  // Billing
+  wasOverage Boolean @default(false) // Was this design part of overage billing?
+  chargeAmount Decimal? @db.Decimal(10, 2) // Amount charged for this design (if overage)
+
+  // ============ ANALYTICS FIELDS ============
+  // Generation settings
+  promptMode      String?  // 'advanced' | 'simple' - which prompt mode was used
+  viralityLevel   Int?     // 0-100 virality slider setting
+  shirtColor      String?  // Recommended shirt color used
+
+  // User behavior tracking
+  regenerationCount Int @default(0)  // How many times user regenerated the image
+  refinementCount   Int @default(0)  // How many times user refined the image (first is free)
+  wasDownloaded    Boolean @default(false) // Did user download the package?
+  downloadedAt     DateTime? // When user downloaded
+
+  // Time tracking (in seconds)
+  generationDuration Int?     // How long image generation took
+  timeToFirstAction  Int?     // Seconds from generation complete to first save/download
+  timeToDownload     Int?     // Seconds from generation complete to download
+
+  // Quality signals
+  userRating        Int?     // 1-5 star rating (future feature)
+  wasRegenerated    Boolean @default(false) // True if user regenerated at least once
+
+  // Retention management
+  expiresAt DateTime? // When to delete from storage (based on tier retention)
+  deletedAt DateTime? // Soft delete timestamp
+
+  // Relation to detailed analytics
+  analytics DesignAnalytics?
+
+  @@index([userId])
+  @@index([anonymousSessionId])
+  @@index([createdAt])
+  @@index([expiresAt])
+  @@index([runId])
+  @@index([promptMode])
+  @@index([wasDownloaded])
+}
+
+// ============================================================================
+// DESIGN ANALYTICS (Detailed behavior tracking)
+// ============================================================================
+
+model DesignAnalytics {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Link to design
+  designId String        @unique
+  design   DesignHistory @relation(fields: [designId], references: [id], onDelete: Cascade)
+
+  // Research phase data
+  searchQuery       String?  // Original search query
+  viralityLevel     Int?     // 0-100 slider value
+  sourcesUsed       Json?    // ['Google', 'Brave', 'Grok', 'Rabbit Hole']
+  researchDuration  Int?     // Seconds spent in research phase
+
+  // Trend selection
+  trendTopic        String?  // Selected trend topic
+  trendPlatform     String?  // Where trend originated
+  trendVolume       String?  // 'High', 'Breakout', 'Rising', etc.
+
+  // Image generation
+  promptMode        String?  // 'advanced' | 'simple'
+  promptUsed        String?  @db.Text // Actual prompt sent to image model
+  shirtColor        String?  // Target shirt color
+  generationStartAt DateTime? // When generation started
+  generationEndAt   DateTime? // When generation completed
+
+  // Regeneration tracking (array of timestamps)
+  regenerations     Json?    // [{timestamp, reason?, promptMode}]
+
+  // User engagement
+  listingViewTime   Int?     // Seconds spent viewing listing
+  imageViewTime     Int?     // Seconds spent viewing image
+  scrollDepth       Int?     // How far user scrolled (0-100)
+
+  // Actions taken
+  savedAt           DateTime?
+  downloadedAt      DateTime?
+  sharedAt          DateTime?
+  deletedAt         DateTime?
+
+  // Outcome classification
+  outcome           String?  // 'accepted' | 'regenerated' | 'abandoned' | 'downloaded'
+  qualitySignal     String?  // 'good' (quick accept) | 'needs_work' (regenerated) | 'poor' (abandoned)
+
+  @@index([designId])
+  @@index([promptMode])
+  @@index([outcome])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// RESEARCH CACHE (Deduplicate API calls)
+// ============================================================================
+
+model ResearchCache {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Cache key
+  queryHash      String   @unique // MD5/SHA hash of normalized query + virality
+  originalQuery  String   // Original search query
+  viralityLevel  Int      // Virality setting (0-100)
+
+  // Cached data
+  trends         Json     // Array of TrendData results
+  braveData      Json?    // Raw Brave search results
+  grokData       Json?    // Raw Grok analysis
+  rabbitHoleData Json?    // Rabbit hole discoveries
+
+  // Metadata
+  sourcesUsed    Json     // Which sources contributed
+  hitCount       Int      @default(1) // How many times this cache was used
+  lastHitAt      DateTime @default(now())
+
+  // Expiration
+  expiresAt      DateTime // When cache expires (based on freshness settings)
+  isExpired      Boolean  @default(false)
+
+  @@index([queryHash])
+  @@index([expiresAt])
+  @@index([hitCount])
+}
+
+// ============================================================================
+// AGGREGATE TREND INSIGHTS (Platform-wide intelligence)
+// ============================================================================
+
+model TrendInsight {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Trend identification
+  topic           String   @unique // Normalized trend topic
+  firstSeenAt     DateTime // When first discovered on platform
+  lastSeenAt      DateTime // Last time a user searched for this
+
+  // Popularity metrics
+  searchCount     Int      @default(1) // How many users searched for this
+  designCount     Int      @default(0) // How many designs were created
+  downloadCount   Int      @default(0) // How many were downloaded
+  acceptanceRate  Decimal? @db.Decimal(5, 2) // % of designs accepted without regeneration
+
+  // Quality signals
+  avgRegenerations Decimal? @db.Decimal(5, 2) // Average regenerations before accept
+  avgTimeToAccept  Int?     // Average seconds to accept design
+
+  // Platform signals
+  platforms       Json?    // Which platforms trend appears on
+  peakVolume      String?  // Highest volume observed
+  sources         Json?    // Which data sources contributed
+
+  // Prompt mode performance
+  advancedModeCount   Int @default(0)
+  simpleModeCount     Int @default(0)
+  advancedAcceptRate  Decimal? @db.Decimal(5, 2)
+  simpleAcceptRate    Decimal? @db.Decimal(5, 2)
+
+  // Status
+  isActive        Boolean  @default(true) // Still being searched for
+  isTrending      Boolean  @default(false) // Currently hot
+
+  @@index([topic])
+  @@index([searchCount])
+  @@index([downloadCount])
+  @@index([lastSeenAt])
+  @@index([isTrending])
+}
+
+// ============================================================================
+// BILLING & INVOICING
+// ============================================================================
+
+model BillingRecord {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Billing period
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Charges
+  subscriptionFee Decimal @db.Decimal(10, 2) // Base monthly fee
+  overageFee      Decimal @db.Decimal(10, 2) // Overage charges
+  totalAmount     Decimal @db.Decimal(10, 2) // Total billed
+
+  // Usage summary
+  designsIncluded Int // Allowance for the tier
+  designsUsed     Int // Total designs generated
+  overageDesigns  Int // Designs beyond allowance
+  overageRate     Decimal @db.Decimal(10, 2) // Price per overage design
+
+  // Payment tracking
+  stripeInvoiceId  String? @unique
+  stripeChargeId   String?
+  paymentStatus    String  @default("pending") // 'pending' | 'paid' | 'failed' | 'refunded'
+  paidAt           DateTime?
+
+  // Metadata
+  tier           String // Tier at time of billing
+  pricingVersion Int    @default(1) // For grandfathering
+
+  @@index([userId])
+  @@index([periodStart])
+  @@index([stripeInvoiceId])
+}
+
+// ============================================================================
+// RATE LIMITING (Server-side enforcement)
+// ============================================================================
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  key    String // e.g., 'generation:cooldown', 'concurrent_runs'
+
+  // Limit tracking
+  count     Int      @default(0)
+  resetAt   DateTime
+  blockedAt DateTime? // When user was rate limited
+
+  @@unique([userId, key])
+  @@index([userId])
+  @@index([resetAt])
+}
+
+// ============================================================================
+// ADMIN & ANALYTICS
+// ============================================================================
+
+model AdminLog {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  adminUserId String // User who performed action
+  action      String // 'tier_override', 'refund', 'manual_charge', etc.
+  targetUserId String? // User affected by action
+  metadata    Json?
+  notes       String?
+
+  @@index([adminUserId])
+  @@index([targetUserId])
+  @@index([createdAt])
+}
+
+model SystemMetrics {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  date DateTime @unique @db.Date
+
+  // Daily metrics
+  totalUsers         Int
+  activeUsers        Int // Generated at least 1 design
+  newSignups         Int
+  newSubscriptions   Int
+  cancellations      Int
+  churnRate          Decimal @db.Decimal(5, 2)
+
+  // Revenue
+  mrr                Decimal @db.Decimal(10, 2) // Monthly Recurring Revenue
+  overageRevenue     Decimal @db.Decimal(10, 2) // Overage fees collected
+  totalRevenue       Decimal @db.Decimal(10, 2)
+
+  // Usage
+  designsGenerated   Int
+  apiCosts           Decimal @db.Decimal(10, 2) // Claude + DALL-E costs
+  storageCosts       Decimal @db.Decimal(10, 2) // R2 costs
+  profitMargin       Decimal @db.Decimal(5, 2)
+
+  @@index([date])
+}
+
+// ============================================================================
+// STORAGE ADDONS (Extended Retention)
+// ============================================================================
+
+model StorageAddon {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Addon details
+  addonType       String   @default("extended_retention") // 'extended_retention', 'unlimited_storage', etc.
+  status          String   @default("active") // 'active' | 'cancelled' | 'expired'
+
+  // Pricing
+  monthlyPrice    Decimal  @db.Decimal(10, 2) // USD per month
+  stripePriceId   String?  // Stripe subscription price ID
+  stripeSubId     String?  @unique // Stripe subscription ID
+
+  // Storage limits
+  extraRetentionDays Int?     // Additional days beyond tier default (null = unlimited)
+  maxStorageGB       Decimal? @db.Decimal(10, 2) // Max storage in GB (null = unlimited)
+  currentStorageGB   Decimal  @default(0) @db.Decimal(10, 2) // Current usage in GB
+
+  // Period tracking
+  periodStart DateTime
+  periodEnd   DateTime
+
+  // Cancellation
+  cancelledAt DateTime?
+  expiresAt   DateTime? // When addon expires (after cancellation grace period)
+
+  @@index([userId])
+  @@index([status])
+  @@index([periodEnd])
+}

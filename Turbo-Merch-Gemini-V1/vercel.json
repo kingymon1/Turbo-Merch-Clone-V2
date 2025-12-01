@@ -1,0 +1,19 @@
+{
+  "crons": [
+    {
+      "path": "/api/designs/cleanup",
+      "schedule": "0 2 * * *"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Permissions-Policy",
+          "value": "downloads=(self)"
+        }
+      ]
+    }
+  ]
+}
