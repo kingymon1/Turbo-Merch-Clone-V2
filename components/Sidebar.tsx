@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppView } from '../types';
-import { LayoutDashboard, Search, CreditCard, Activity, FolderHeart, User, LogIn, X, Lightbulb } from 'lucide-react';
+import { LayoutDashboard, Search, CreditCard, Activity, FolderHeart, User, LogIn, X, Lightbulb, Beaker } from 'lucide-react';
 import { UserButton, useUser } from "@clerk/clerk-react";
 import ThemeToggle from './ThemeToggle';
 
@@ -55,6 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isAnonymous,
   const menuItems = [
     { id: AppView.DASHBOARD, label: 'Nexus Dashboard', icon: LayoutDashboard },
     { id: AppView.TREND_RESEARCH, label: 'Trend Scanner', icon: Search },
+    { id: AppView.TREND_LAB, label: 'Trend Lab', icon: Beaker, isNew: true },
     { id: AppView.IDEAS_VAULT, label: 'Ideas Vault', icon: Lightbulb },
     { id: AppView.LIBRARY, label: 'My Library', icon: FolderHeart },
     { id: AppView.SUBSCRIPTION, label: 'Subscription', icon: CreditCard },
@@ -110,7 +111,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isAnonymous,
       </div>
 
       <nav className="flex-1 p-4 space-y-2">
-        {menuItems.map((item) => {
+        {menuItems.map((item: any) => {
           const Icon = item.icon;
           const isActive = currentView === item.id;
           return (
@@ -127,6 +128,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isAnonymous,
             >
               <Icon className={`w-5 h-5 ${isActive ? 'text-brand-500 dark:text-brand-400' : 'text-gray-500 group-hover:text-gray-900 dark:group-hover:text-white'}`} />
               <span className="font-medium">{item.label}</span>
+              {item.isNew && (
+                <span className="ml-auto px-1.5 py-0.5 text-[10px] font-bold bg-purple-500/20 text-purple-500 dark:text-purple-400 rounded">
+                  LAB
+                </span>
+              )}
             </button>
           );
         })}

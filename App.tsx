@@ -15,6 +15,7 @@ import { SUBSCRIPTION_CONFIG, STORAGE_CONFIG } from './config';
 
 // Code-split heavy components for better performance
 const TrendScanner = lazy(() => import('./components/TrendScanner'));
+const TrendLab = lazy(() => import('./components/TrendLab'));
 const ListingGenerator = lazy(() => import('./components/ListingGenerator'));
 const PricingPlans = lazy(() => import('./components/PricingPlans'));
 const Library = lazy(() => import('./components/Library'));
@@ -695,6 +696,13 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
             <Dashboard onAction={handleDashboardAction} refreshKey={usageRefreshKey} />;
       case AppView.TREND_RESEARCH:
         return <TrendScanner onTrendSelect={handleTrendSelect} initialAutoRun={initialAutoStart} onNavigateToSubscription={() => navigateTo(AppView.SUBSCRIPTION)} />;
+      case AppView.TREND_LAB:
+        return <TrendLab onSelectIdea={(trend) => {
+            setSelectedTrend(trend);
+            setAutoRun(false);
+            setPreGenData(undefined);
+            navigateTo(AppView.LISTING_GENERATOR);
+        }} />;
       case AppView.LISTING_GENERATOR:
         if (!selectedTrend && !preGenData) {
              return (

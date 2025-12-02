@@ -27,6 +27,7 @@ interface ListingGeneratorProps {
 const VIEW_LABELS: Record<AppView, string> = {
   [AppView.DASHBOARD]: 'Dashboard',
   [AppView.TREND_RESEARCH]: 'Trends',
+  [AppView.TREND_LAB]: 'Trend Lab',
   [AppView.LISTING_GENERATOR]: 'Trends',
   [AppView.LIBRARY]: 'Library',
   [AppView.IDEAS_VAULT]: 'Ideas Vault',
