@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
 
-// Initialize Gemini
+// Initialize Gemini - use same env vars as main service
 const getAI = () => {
-    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-    if (!apiKey) throw new Error('Missing Gemini API key');
+    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
+    if (!apiKey) throw new Error('Missing Gemini API key (GEMINI_API_KEY or NEXT_PUBLIC_API_KEY)');
     return new GoogleGenAI({ apiKey });
 };
 
