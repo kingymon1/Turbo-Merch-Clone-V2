@@ -8,7 +8,7 @@ import { VIRALITY_LEVELS, TREND_CONFIG } from '../config';
 import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import BatchGenerationPanel from './BatchGenerationPanel';
-import { TierName, PRICING_TIERS } from '../lib/pricing';
+import { TierName, PRICING_TIERS, parseRetentionDays } from '../lib/pricing';
 import { StorageService } from '../services/storage';
 
 interface TrendScannerProps {
@@ -181,10 +181,18 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
 
             // Automatically save all ideas to vault
             if (trendResults.length > 0) {
+                // Calculate expiration based on user's subscription tier
+                const tierConfig = PRICING_TIERS[userTier];
+                const retentionDays = parseRetentionDays(tierConfig.limits.historyRetention);
+                const now = Date.now();
+                const expiresAt = now + (retentionDays * 24 * 60 * 60 * 1000);
+
                 const ideas: SavedIdea[] = trendResults.map(trend => ({
                     id: crypto.randomUUID(),
                     trend,
-                    savedAt: Date.now(),
+                    savedAt: now,
+                    expiresAt,
+                    tierAtCreation: userTier,
                     searchQuery: searchTerm,
                     viralityLevel,
                 }));

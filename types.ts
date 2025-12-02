@@ -174,6 +174,8 @@ export interface SavedIdea {
   id: string;
   trend: TrendData;
   savedAt: number;
+  expiresAt: number; // Expiration based on user's subscription tier
+  tierAtCreation: string; // The tier the user was on when the idea was saved
   searchQuery: string; // The original search query that generated this idea
   viralityLevel: number; // The virality level used during search
   notes?: string; // Optional user notes

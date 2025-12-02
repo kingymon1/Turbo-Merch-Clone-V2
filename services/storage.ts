@@ -96,13 +96,26 @@ export const StorageService = {
   },
 
   /**
-   * Load ideas vault from localStorage
+   * Load ideas vault from localStorage (auto-cleans expired ideas)
    */
   loadIdeasVault(): SavedIdea[] {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.IDEAS_VAULT);
       if (!data) return [];
-      return JSON.parse(data) as SavedIdea[];
+
+      const ideas = JSON.parse(data) as SavedIdea[];
+      const now = Date.now();
+
+      // Filter out expired ideas (but keep ideas without expiresAt for backwards compatibility)
+      const validIdeas = ideas.filter(idea => !idea.expiresAt || idea.expiresAt > now);
+
+      // If some ideas were expired, save the cleaned list
+      if (validIdeas.length < ideas.length) {
+        console.log(`Cleaned ${ideas.length - validIdeas.length} expired ideas from vault`);
+        this.saveIdeasVault(validIdeas);
+      }
+
+      return validIdeas;
     } catch (error) {
       console.error('Failed to load ideas vault:', error);
       return [];

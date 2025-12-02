@@ -127,6 +127,34 @@ const IdeasVault: React.FC<IdeasVaultProps> = ({ onSelectIdea }) => {
     }
   };
 
+  const getRemainingTime = (expiresAt: number | undefined) => {
+    if (!expiresAt) return null; // No expiration (legacy ideas)
+    const now = Date.now();
+    const diff = expiresAt - now;
+    if (diff <= 0) return "Expired";
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+    if (days > 30) return `${Math.floor(days / 30)}mo left`;
+    if (days > 1) return `${days}d left`;
+    if (days === 1) return `1d left`;
+    if (hours > 0) return `${hours}h left`;
+    return "< 1h left";
+  };
+
+  const getExpiryUrgency = (expiresAt: number | undefined) => {
+    if (!expiresAt) return "text-gray-400 dark:text-gray-500"; // No expiration
+    const now = Date.now();
+    const diff = expiresAt - now;
+    const days = diff / (1000 * 60 * 60 * 24);
+
+    if (diff <= 0) return "text-gray-500 dark:text-gray-600";
+    if (days < 1) return "text-red-500 dark:text-red-400";
+    if (days < 7) return "text-orange-500 dark:text-orange-400";
+    return "text-gray-400 dark:text-gray-500";
+  };
+
   const getViralityLabel = (level: number) => {
     if (level <= 25) return { label: 'Safe', color: 'text-green-500 bg-green-500/10 border-green-500/20' };
     if (level <= 50) return { label: 'Balanced', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20' };
@@ -382,16 +410,21 @@ const IdeasVault: React.FC<IdeasVaultProps> = ({ onSelectIdea }) => {
 
                   {/* Meta Info */}
                   <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500 pt-2 border-t border-gray-100 dark:border-white/5">
-                    <div className="flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDate(idea.savedAt)}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDate(idea.savedAt)}
+                      </div>
+                      {idea.expiresAt && (
+                        <div className={`flex items-center gap-1 ${getExpiryUrgency(idea.expiresAt)}`}>
+                          <span>•</span>
+                          {getRemainingTime(idea.expiresAt)}
+                        </div>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className={`px-1.5 py-0.5 rounded border ${viralityInfo.color}`}>
                         {viralityInfo.label}
-                      </span>
-                      <span className="text-gray-400" title={`Search: "${idea.searchQuery}"`}>
-                        "{idea.searchQuery.length > 15 ? idea.searchQuery.slice(0, 15) + '...' : idea.searchQuery}"
                       </span>
                     </div>
                   </div>
