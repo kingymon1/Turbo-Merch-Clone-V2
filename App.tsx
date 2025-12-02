@@ -8,6 +8,7 @@ import OverageDialog from './components/OverageDialog';
 import SuccessModal from './components/SuccessModal';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AppView, TrendData, MerchPackage, SavedListing } from './types';
+import { StorageService } from './services/storage';
 import { Shirt, Menu } from 'lucide-react';
 import { SignedIn, SignedOut, useUser } from "@clerk/nextjs";
 import { SUBSCRIPTION_CONFIG, STORAGE_CONFIG } from './config';
@@ -17,6 +18,7 @@ const TrendScanner = lazy(() => import('./components/TrendScanner'));
 const ListingGenerator = lazy(() => import('./components/ListingGenerator'));
 const PricingPlans = lazy(() => import('./components/PricingPlans'));
 const Library = lazy(() => import('./components/Library'));
+const IdeasVault = lazy(() => import('./components/IdeasVault'));
 const LegalDocs = lazy(() => import('./components/LegalDocs'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 
@@ -674,6 +676,17 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
       navigateTo(AppView.LISTING_GENERATOR);
   };
 
+  // Handle selecting an idea from the Ideas Vault
+  const handleSelectIdea = (trend: TrendData, ideaId: string) => {
+      // Mark idea as used in storage
+      StorageService.markIdeaAsUsed(ideaId);
+      // Navigate to listing generator with this trend
+      setSelectedTrend(trend);
+      setAutoRun(false);
+      setPreGenData(undefined);
+      navigateTo(AppView.LISTING_GENERATOR);
+  };
+
   const renderContent = () => {
     switch (currentView) {
       case AppView.DASHBOARD:
@@ -731,6 +744,8 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
         );
       case AppView.LIBRARY:
           return <Library savedListings={savedListings} onDelete={handleDeleteListing} onView={handleViewListing} userTier={userTier} />;
+      case AppView.IDEAS_VAULT:
+          return <IdeasVault onSelectIdea={handleSelectIdea} />;
       case AppView.SUBSCRIPTION:
         return <PricingPlans />;
       case AppView.REFUNDS:

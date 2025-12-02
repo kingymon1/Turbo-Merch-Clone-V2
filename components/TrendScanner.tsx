@@ -2,13 +2,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TrendData, ProcessingStage, MerchPackage, PromptMode } from '../types';
+import { TrendData, ProcessingStage, MerchPackage, PromptMode, SavedIdea } from '../types';
 import { searchTrends, analyzeNicheDeeply, generateListing, generateDesignImage, generateDesignImageEnhanced } from '../services/geminiService';
 import { VIRALITY_LEVELS, TREND_CONFIG } from '../config';
-import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper } from 'lucide-react';
+import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check, BookmarkPlus } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import BatchGenerationPanel from './BatchGenerationPanel';
 import { TierName, PRICING_TIERS } from '../lib/pricing';
+import { StorageService } from '../services/storage';
 
 interface TrendScannerProps {
     onTrendSelect: (trend: TrendData, autoRun?: boolean, preGenData?: MerchPackage) => void;
@@ -95,6 +96,11 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
     const [remainingQuota, setRemainingQuota] = useState(0);
     const [refreshKey, setRefreshKey] = useState(0);
 
+    // Ideas vault state
+    const [savedToVault, setSavedToVault] = useState<Set<string>>(new Set());
+    const [vaultFeedback, setVaultFeedback] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+    const [lastSearchQuery, setLastSearchQuery] = useState('');
+
     // Fetch user info for batch generation
     useEffect(() => {
         const fetchUserInfo = async () => {
@@ -153,6 +159,57 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
         return () => clearInterval(animationInterval);
     }, [isAutoPilot, targetProgress]);
 
+    // Save single idea to vault
+    const saveIdeaToVault = (trend: TrendData) => {
+        const idea: SavedIdea = {
+            id: crypto.randomUUID(),
+            trend,
+            savedAt: Date.now(),
+            searchQuery: lastSearchQuery || 'manual',
+            viralityLevel,
+        };
+
+        const success = StorageService.addToIdeasVault(idea);
+        if (success) {
+            setSavedToVault(prev => new Set([...prev, trend.topic]));
+            setVaultFeedback({ message: 'Idea saved to vault!', type: 'success' });
+        } else {
+            setVaultFeedback({ message: 'Already in vault', type: 'info' });
+        }
+
+        // Clear feedback after 2 seconds
+        setTimeout(() => setVaultFeedback(null), 2000);
+    };
+
+    // Save all current trends to vault
+    const saveAllToVault = () => {
+        const ideas: SavedIdea[] = trends.map(trend => ({
+            id: crypto.randomUUID(),
+            trend,
+            savedAt: Date.now(),
+            searchQuery: lastSearchQuery || 'manual',
+            viralityLevel,
+        }));
+
+        const result = StorageService.addMultipleToIdeasVault(ideas);
+
+        if (result.added > 0) {
+            const newSaved = new Set(savedToVault);
+            trends.forEach(t => newSaved.add(t.topic));
+            setSavedToVault(newSaved);
+        }
+
+        if (result.added > 0 && result.skipped === 0) {
+            setVaultFeedback({ message: `${result.added} ideas saved to vault!`, type: 'success' });
+        } else if (result.added > 0 && result.skipped > 0) {
+            setVaultFeedback({ message: `${result.added} saved, ${result.skipped} already in vault`, type: 'info' });
+        } else {
+            setVaultFeedback({ message: 'All ideas already in vault', type: 'info' });
+        }
+
+        setTimeout(() => setVaultFeedback(null), 3000);
+    };
+
     const executeSearch = async (searchTerm: string) => {
         setStatus(ProcessingStage.SEARCHING);
         setTrends([]);
@@ -160,6 +217,8 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
         setIsAutoPilot(false);
         setErrorMessage('');
         setProgressPercent(0);
+        setLastSearchQuery(searchTerm);
+        setSavedToVault(new Set()); // Reset saved state for new search
 
         try {
             const [trendResults, analysisResult] = await Promise.all([
@@ -727,10 +786,38 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
 
             {status === ProcessingStage.COMPLETE && !isAutoPilot && (
                 <div className="animate-fade-in space-y-6 pt-8 border-t border-gray-200 dark:border-white/10">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-brand-500 dark:text-brand-400" />
-                        Search Results
-                    </h3>
+                    {/* Vault Feedback Toast */}
+                    {vaultFeedback && (
+                        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in ${
+                            vaultFeedback.type === 'success'
+                                ? 'bg-green-500 text-white'
+                                : 'bg-blue-500 text-white'
+                        }`}>
+                            {vaultFeedback.type === 'success' ? (
+                                <Check className="w-4 h-4" />
+                            ) : (
+                                <Lightbulb className="w-4 h-4" />
+                            )}
+                            {vaultFeedback.message}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5 text-brand-500 dark:text-brand-400" />
+                            Search Results
+                            <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                                ({trends.length} ideas found)
+                            </span>
+                        </h3>
+                        <button
+                            onClick={saveAllToVault}
+                            className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 font-medium text-sm rounded-lg border border-yellow-500/20 transition-all"
+                        >
+                            <Lightbulb className="w-4 h-4" />
+                            Save All to Ideas Vault
+                        </button>
+                    </div>
 
                     {analysis && (
                         <div className="bg-white dark:bg-dark-800/50 border border-gray-200 dark:border-white/10 p-6 rounded-xl border-l-4 border-l-brand-500">
@@ -795,20 +882,46 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
                                 </div>
 
                                 <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-200 dark:border-white/5">
-                                    {trend.sourceUrl ? (
-                                        <a
-                                            href={trend.sourceUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-500 dark:hover:text-brand-400 transition-colors"
+                                    <div className="flex items-center gap-2">
+                                        {trend.sourceUrl ? (
+                                            <a
+                                                href={trend.sourceUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-500 dark:hover:text-brand-400 transition-colors"
+                                            >
+                                                <Globe className="w-3 h-3" />
+                                                <span className="truncate max-w-[100px]">Source</span>
+                                            </a>
+                                        ) : (
+                                            <span className="text-xs text-gray-400 dark:text-gray-600">Verified Trend</span>
+                                        )}
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                saveIdeaToVault(trend);
+                                            }}
+                                            className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-all ${
+                                                savedToVault.has(trend.topic)
+                                                    ? 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
+                                                    : 'text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/10 border border-transparent hover:border-yellow-500/20'
+                                            }`}
+                                            title={savedToVault.has(trend.topic) ? 'Saved to vault' : 'Save to Ideas Vault'}
                                         >
-                                            <Globe className="w-3 h-3" />
-                                            <span className="truncate max-w-[100px]">Source</span>
-                                        </a>
-                                    ) : (
-                                        <span className="text-xs text-gray-400 dark:text-gray-600">Verified Trend</span>
-                                    )}
+                                            {savedToVault.has(trend.topic) ? (
+                                                <>
+                                                    <Check className="w-3 h-3" />
+                                                    Saved
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <BookmarkPlus className="w-3 h-3" />
+                                                    Save
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
 
                                     <button className="text-sm font-bold text-brand-500 dark:text-brand-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                                         Build <ArrowRight className="w-4 h-4" />
