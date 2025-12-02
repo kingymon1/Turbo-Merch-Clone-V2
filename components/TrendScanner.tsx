@@ -68,6 +68,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
     const [viralityPreset, setViralityPreset] = useState<ViralityPreset>('balanced');
     const [promptMode, setPromptMode] = useState<PromptMode>('advanced');
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [testMode, setTestMode] = useState(false); // TEST MODE: FULL POWER
 
     // Compute actual virality level from preset
     const viralityLevel = VIRALITY_PRESETS[viralityPreset].value;
@@ -171,7 +172,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
 
         try {
             const [trendResults, analysisResult] = await Promise.all([
-                searchTrends(searchTerm, viralityLevel, (msg) => setAutoPilotMessage(msg)), // Use status update callback
+                searchTrends(searchTerm, viralityLevel, (msg) => setAutoPilotMessage(msg), testMode), // Use status update callback + testMode
                 analyzeNicheDeeply(searchTerm)
             ]);
 
@@ -278,7 +279,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
             setAutoPilotMessage(`Triangulating Signals (${currentLevel.label} Mode): ${sources.join(' + ')}...`);
             setTargetProgress(35); // Smoothly animate toward 35%
 
-            const trendResults = await searchTrends(discoveryQuery, viralityLevel, (msg) => setAutoPilotMessage(msg));
+            const trendResults = await searchTrends(discoveryQuery, viralityLevel, (msg) => setAutoPilotMessage(msg), testMode);
             const bestTrend = trendResults.find(t => t.volume === 'High' || t.volume === 'Breakout') || trendResults[0];
             setTargetProgress(45); // Phase 1 complete
 
@@ -570,6 +571,60 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
 
                 {showAdvanced && (
                     <div className="px-4 pb-4 space-y-6 border-t border-gray-200 dark:border-white/5 pt-4">
+                        {/* TEST MODE Toggle */}
+                        <div className={`p-4 rounded-xl border-2 transition-all ${testMode
+                            ? 'bg-gradient-to-r from-orange-500/10 via-red-500/10 to-purple-500/10 border-orange-500/50 dark:border-orange-400/50'
+                            : 'bg-gray-100 dark:bg-dark-900/50 border-gray-200 dark:border-white/5'}`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${testMode ? 'bg-orange-500/20' : 'bg-gray-200 dark:bg-dark-800'}`}>
+                                        <Zap className={`w-5 h-5 ${testMode ? 'text-orange-500' : 'text-gray-400'}`} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-semibold ${testMode ? 'text-orange-500 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                                                TEST MODE
+                                            </span>
+                                            {testMode && (
+                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-500/20 text-orange-500 rounded-full animate-pulse">
+                                                    FULL POWER
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                            {testMode
+                                                ? '5 agents • No limits • Underground first • Max creativity'
+                                                : 'Enable experimental deep exploration mode'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setTestMode(!testMode)}
+                                    className={`relative w-12 h-6 rounded-full transition-all ${
+                                        testMode
+                                            ? 'bg-gradient-to-r from-orange-500 to-red-500'
+                                            : 'bg-gray-300 dark:bg-dark-600'
+                                    }`}
+                                >
+                                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-md transition-all ${
+                                        testMode ? 'left-7' : 'left-1'
+                                    }`} />
+                                </button>
+                            </div>
+                            {testMode && (
+                                <div className="mt-3 pt-3 border-t border-orange-500/20 text-xs text-gray-500 dark:text-gray-400">
+                                    <p className="font-medium text-orange-500 dark:text-orange-400 mb-1">🔥 Agents Activated:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="px-2 py-1 bg-purple-500/10 text-purple-500 rounded">Wild Explorer</span>
+                                        <span className="px-2 py-1 bg-blue-500/10 text-blue-500 rounded">Crossover Agent</span>
+                                        <span className="px-2 py-1 bg-gray-500/10 text-gray-400 rounded">Grok Unleashed</span>
+                                        <span className="px-2 py-1 bg-orange-500/10 text-orange-500 rounded">Brave Max</span>
+                                        <span className="px-2 py-1 bg-green-500/10 text-green-500 rounded">Google Deep</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Active Research Agents */}
                         <div className="flex items-center gap-4 p-3 rounded-lg bg-gray-100 dark:bg-dark-900/50 border border-gray-200 dark:border-white/5">
                             <span className="text-xs text-gray-500 uppercase tracking-wider">Active Agents:</span>
