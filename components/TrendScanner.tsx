@@ -5,7 +5,7 @@ import React, { useState, useEffect } from 'react';
 import { TrendData, ProcessingStage, MerchPackage, PromptMode, SavedIdea } from '../types';
 import { searchTrends, analyzeNicheDeeply, generateListing, generateDesignImage, generateDesignImageEnhanced } from '../services/geminiService';
 import { VIRALITY_LEVELS, TREND_CONFIG } from '../config';
-import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check, BookmarkPlus } from 'lucide-react';
+import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import BatchGenerationPanel from './BatchGenerationPanel';
 import { TierName, PRICING_TIERS } from '../lib/pricing';
@@ -159,57 +159,6 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
         return () => clearInterval(animationInterval);
     }, [isAutoPilot, targetProgress]);
 
-    // Save single idea to vault
-    const saveIdeaToVault = (trend: TrendData) => {
-        const idea: SavedIdea = {
-            id: crypto.randomUUID(),
-            trend,
-            savedAt: Date.now(),
-            searchQuery: lastSearchQuery || 'manual',
-            viralityLevel,
-        };
-
-        const success = StorageService.addToIdeasVault(idea);
-        if (success) {
-            setSavedToVault(prev => new Set([...prev, trend.topic]));
-            setVaultFeedback({ message: 'Idea saved to vault!', type: 'success' });
-        } else {
-            setVaultFeedback({ message: 'Already in vault', type: 'info' });
-        }
-
-        // Clear feedback after 2 seconds
-        setTimeout(() => setVaultFeedback(null), 2000);
-    };
-
-    // Save all current trends to vault
-    const saveAllToVault = () => {
-        const ideas: SavedIdea[] = trends.map(trend => ({
-            id: crypto.randomUUID(),
-            trend,
-            savedAt: Date.now(),
-            searchQuery: lastSearchQuery || 'manual',
-            viralityLevel,
-        }));
-
-        const result = StorageService.addMultipleToIdeasVault(ideas);
-
-        if (result.added > 0) {
-            const newSaved = new Set(savedToVault);
-            trends.forEach(t => newSaved.add(t.topic));
-            setSavedToVault(newSaved);
-        }
-
-        if (result.added > 0 && result.skipped === 0) {
-            setVaultFeedback({ message: `${result.added} ideas saved to vault!`, type: 'success' });
-        } else if (result.added > 0 && result.skipped > 0) {
-            setVaultFeedback({ message: `${result.added} saved, ${result.skipped} already in vault`, type: 'info' });
-        } else {
-            setVaultFeedback({ message: 'All ideas already in vault', type: 'info' });
-        }
-
-        setTimeout(() => setVaultFeedback(null), 3000);
-    };
-
     const executeSearch = async (searchTerm: string) => {
         setStatus(ProcessingStage.SEARCHING);
         setTrends([]);
@@ -229,6 +178,29 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
             setTrends(trendResults);
             setAnalysis(analysisResult);
             setStatus(ProcessingStage.COMPLETE);
+
+            // Automatically save all ideas to vault
+            if (trendResults.length > 0) {
+                const ideas: SavedIdea[] = trendResults.map(trend => ({
+                    id: crypto.randomUUID(),
+                    trend,
+                    savedAt: Date.now(),
+                    searchQuery: searchTerm,
+                    viralityLevel,
+                }));
+
+                const result = StorageService.addMultipleToIdeasVault(ideas);
+
+                // Mark all as saved in UI
+                const savedTopics = new Set(trendResults.map(t => t.topic));
+                setSavedToVault(savedTopics);
+
+                // Show feedback
+                if (result.added > 0) {
+                    setVaultFeedback({ message: `${result.added} ideas auto-saved to vault`, type: 'success' });
+                    setTimeout(() => setVaultFeedback(null), 3000);
+                }
+            }
         } catch (error: any) {
             console.error('Search error:', error);
             setErrorMessage(error?.message || 'An unexpected error occurred');
@@ -810,13 +782,10 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
                                 ({trends.length} ideas found)
                             </span>
                         </h3>
-                        <button
-                            onClick={saveAllToVault}
-                            className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-600 dark:text-yellow-400 font-medium text-sm rounded-lg border border-yellow-500/20 transition-all"
-                        >
-                            <Lightbulb className="w-4 h-4" />
-                            Save All to Ideas Vault
-                        </button>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 text-green-600 dark:text-green-400 text-sm rounded-lg border border-green-500/20">
+                            <Check className="w-4 h-4" />
+                            Auto-saved to Ideas Vault
+                        </div>
                     </div>
 
                     {analysis && (
@@ -897,30 +866,10 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
                                         ) : (
                                             <span className="text-xs text-gray-400 dark:text-gray-600">Verified Trend</span>
                                         )}
-                                        <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                saveIdeaToVault(trend);
-                                            }}
-                                            className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-all ${
-                                                savedToVault.has(trend.topic)
-                                                    ? 'bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20'
-                                                    : 'text-yellow-600 dark:text-yellow-400 hover:bg-yellow-500/10 border border-transparent hover:border-yellow-500/20'
-                                            }`}
-                                            title={savedToVault.has(trend.topic) ? 'Saved to vault' : 'Save to Ideas Vault'}
-                                        >
-                                            {savedToVault.has(trend.topic) ? (
-                                                <>
-                                                    <Check className="w-3 h-3" />
-                                                    Saved
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <BookmarkPlus className="w-3 h-3" />
-                                                    Save
-                                                </>
-                                            )}
-                                        </button>
+                                        <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
+                                            <Check className="w-3 h-3" />
+                                            In Vault
+                                        </span>
                                     </div>
 
                                     <button className="text-sm font-bold text-brand-500 dark:text-brand-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
