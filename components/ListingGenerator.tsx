@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { TrendData, GeneratedListing, ProcessingStage, MerchPackage, PromptMode, ImageVersion, AppView } from '../types';
-import { generateListing, generateDesignImage } from '../services/geminiService';
+import { generateListing, generateDesignImageEnhanced } from '../services/geminiService';
 import { Loader2, CheckCircle, Edit3, ShieldCheck, AlertTriangle, FileText, Package, Image as ImageIcon, Download, Save, Lock, RefreshCw, Sparkles, Wand2, Copy } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import ImageRefinementChat from './ImageRefinementChat';
@@ -198,8 +198,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
         const result = await generateListing(selectedTrend);
         setListing(result);
 
-        const prompt = result.imagePrompt || `${selectedTrend.topic} graphic, ${result.keywords?.slice(0, 3).join(', ') || selectedTrend.topic}`;
-        triggerDesignGeneration(prompt, selectedTrend.visualStyle || 'Clean Bold', result.designText, selectedTrend.typographyStyle, selectedTrend.recommendedShirtColor);
+        // Use enhanced design generation - it uses the full trend context
+        triggerDesignGeneration();
 
       } catch (e) {
         setStatus(ProcessingStage.ERROR);
@@ -271,11 +271,12 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
       }
   }, [status, listing, imageUrl, imageHistory, hasAutoSaved, isSaving, onSave, selectedTrend, isAnonymous, promptMode, generatedAt, regenerationCount, savedDesignId]);
 
-  const triggerDesignGeneration = async (prompt: string, style: string, text?: string, typographyStyle?: string, shirtColor?: string, mode?: PromptMode, isRegeneration: boolean = false) => {
+  const triggerDesignGeneration = async (mode?: PromptMode, isRegeneration: boolean = false) => {
       setStatus(ProcessingStage.GENERATING_IMAGE);
       try {
         const modeToUse = mode || promptMode;
-        const url = await generateDesignImage(prompt, style, text, typographyStyle, shirtColor, modeToUse);
+        // Use Enhanced Pipeline - pass the full trend object for intelligent design research
+        const { imageUrl: url } = await generateDesignImageEnhanced(selectedTrend, true, modeToUse);
         setImageUrl(url);
 
         // Add to image history
@@ -354,15 +355,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
       setRegenerationCount(newCount);
 
       try {
-          const prompt = listing.imagePrompt || `${selectedTrend.topic} graphic, ${listing.keywords?.slice(0, 3).join(', ') || selectedTrend.topic}`;
-          const url = await generateDesignImage(
-              prompt,
-              selectedTrend.visualStyle || 'Clean Bold',
-              listing.designText,
-              selectedTrend.typographyStyle,
-              selectedTrend.recommendedShirtColor,
-              modeToUse
-          );
+          // Use Enhanced Pipeline for regeneration - pass the full trend object
+          const { imageUrl: url } = await generateDesignImageEnhanced(selectedTrend, true, modeToUse);
           setImageUrl(url);
 
           // Add regenerated image to history

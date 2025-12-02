@@ -1358,8 +1358,9 @@ const createEnhancedDesignPrompt = async (research: DesignResearch, promptMode: 
     // In a real scenario, we might want to pass keywords from the trend data
     // to getArchetypeForTrend, but for now we rely on the AI's selection in 'research'
     // or fallback to dynamic if not specified.
-    const archetypeId = research.archetypeId || 'dynamic';
-    const archetype = ARCHETYPES[archetypeId] || ARCHETYPES['dynamic'];
+    // Note: ARCHETYPES uses UPPERCASE keys, but archetypeId may be lowercase
+    const archetypeId = research.archetypeId || 'DYNAMIC';
+    const archetype = ARCHETYPES[archetypeId] || ARCHETYPES[archetypeId.toUpperCase()] || ARCHETYPES['DYNAMIC'];
 
     console.log(`✓ Selected Design Archetype: ${archetype.name}`);
 
@@ -1619,7 +1620,7 @@ export const refineDesignImage = async (
         const parts = response.candidates?.[0]?.content?.parts || [];
         for (const part of parts) {
             if (part.inlineData && part.inlineData.data) {
-                const refinedImageUrl = `data:${part.inlineData.mimeType || 'image/png'}; base64, ${part.inlineData.data} `;
+                const refinedImageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
                 console.log('✓ Image refinement successful');
                 return refinedImageUrl;
             }
@@ -1667,7 +1668,7 @@ export const generateDesignImage = async (
         for (const part of parts) {
             if (part.inlineData && part.inlineData.data) {
                 // inlineData.data contains the base64 encoded image
-                return `data:${part.inlineData.mimeType || 'image/png'}; base64, ${part.inlineData.data} `;
+                return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
             }
         }
 
@@ -1722,7 +1723,7 @@ export const generateDesignImageEnhanced = async (
             const parts = response.candidates?.[0]?.content?.parts || [];
             for (const part of parts) {
                 if (part.inlineData && part.inlineData.data) {
-                    const imageUrl = `data:${part.inlineData.mimeType || 'image/png'}; base64, ${part.inlineData.data} `;
+                    const imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
                     console.log('✓ Professional design generated successfully');
                     return { imageUrl, research };
                 }
