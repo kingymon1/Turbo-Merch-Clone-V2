@@ -38,26 +38,27 @@ const getCurrentDateContext = () => {
 };
 
 // --- HELPER: Get Grok date range based on virality level ---
+// WIDENED: Previous ranges were too narrow, missing real trending content
 const getGrokDateRange = (viralityLevel: number): { from_date: string; to_date: string } => {
     const today = new Date();
     let fromDate: Date;
 
     if (viralityLevel <= 25) {
-        // SAFE: Past month - established trends
+        // SAFE: Past 2 months - established trends with proven staying power
+        fromDate = new Date(today);
+        fromDate.setDate(fromDate.getDate() - 60);
+    } else if (viralityLevel <= 50) {
+        // BALANCED: Past month - rising trends with momentum
         fromDate = new Date(today);
         fromDate.setDate(fromDate.getDate() - 30);
-    } else if (viralityLevel <= 50) {
-        // BALANCED: Past 2 weeks - rising trends
+    } else if (viralityLevel <= 75) {
+        // AGGRESSIVE: Past 2 weeks - emerging trends gaining traction
         fromDate = new Date(today);
         fromDate.setDate(fromDate.getDate() - 14);
-    } else if (viralityLevel <= 75) {
-        // AGGRESSIVE: Past week - emerging trends
+    } else {
+        // PREDICTIVE: Past week - early signals (not just 2 days - too narrow!)
         fromDate = new Date(today);
         fromDate.setDate(fromDate.getDate() - 7);
-    } else {
-        // PREDICTIVE: Past 2 days - just appearing
-        fromDate = new Date(today);
-        fromDate.setDate(fromDate.getDate() - 2);
     }
 
     return {
@@ -67,33 +68,499 @@ const getGrokDateRange = (viralityLevel: number): { from_date: string; to_date: 
 };
 
 // --- HELPER: Get Grok X source configuration based on virality level ---
+// LOWERED: Previous thresholds were way too restrictive - 5000 likes filters out 99% of real trends
 const getGrokXSourceConfig = (viralityLevel: number): { type: string; post_favorite_count?: number; post_view_count?: number } => {
     if (viralityLevel <= 25) {
-        // SAFE: Only established viral content
+        // SAFE: Popular content with real engagement (but not viral-only)
         return {
             type: "x",
-            post_favorite_count: 5000,
-            post_view_count: 100000
+            post_favorite_count: 500,
+            post_view_count: 10000
         };
     } else if (viralityLevel <= 50) {
-        // BALANCED: Moderately popular content
-        return {
-            type: "x",
-            post_favorite_count: 1000,
-            post_view_count: 20000
-        };
-    } else if (viralityLevel <= 75) {
-        // AGGRESSIVE: Lower threshold, catching rising content
+        // BALANCED: Content getting attention
         return {
             type: "x",
             post_favorite_count: 100,
-            post_view_count: 5000
+            post_view_count: 2000
+        };
+    } else if (viralityLevel <= 75) {
+        // AGGRESSIVE: Catching early momentum - very low threshold
+        return {
+            type: "x",
+            post_favorite_count: 25,
+            post_view_count: 500
         };
     } else {
-        // PREDICTIVE: No filters, catch everything
+        // PREDICTIVE: No filters, catch everything early
         return {
             type: "x"
         };
+    }
+};
+
+// --- HELPER: Generate diverse search query angles ---
+// Instead of one generic query, search multiple specific angles to discover more trends
+const generateSearchAngles = (query: string, viralityLevel: number, testMode: boolean = false): string[] => {
+    const baseQuery = query.trim();
+    const date = getCurrentDateContext();
+
+    // TEST MODE: Maximum exploration - go EVERYWHERE
+    if (testMode) {
+        return [
+            // Underground/obscure first (reverse funnel)
+            `${baseQuery} obscure`,
+            `${baseQuery} underground scene`,
+            `${baseQuery} niche community`,
+            `${baseQuery} cult following`,
+            `${baseQuery} hidden gem`,
+            // Subcultures and micro-communities
+            `${baseQuery} subculture`,
+            `${baseQuery} fandom`,
+            `${baseQuery} insider slang`,
+            `${baseQuery} discord server`,
+            // Social platforms deep dive
+            `${baseQuery} reddit thread`,
+            `${baseQuery} tiktok trend ${date.year}`,
+            `${baseQuery} twitter viral`,
+            `${baseQuery} tumblr aesthetic`,
+            // Cultural crossovers
+            `${baseQuery} crossover`,
+            `${baseQuery} mashup`,
+            `${baseQuery} unexpected combination`,
+            // Purchase intent signals
+            `${baseQuery} "want this on a shirt"`,
+            `${baseQuery} "need this as merch"`,
+            `${baseQuery} "would buy"`,
+            // Trending and mainstream (last - after underground)
+            `${baseQuery} trending ${date.month} ${date.year}`,
+            `${baseQuery} viral meme`,
+        ];
+    }
+
+    // Core search angles that work for most topics
+    const angles: string[] = [
+        baseQuery, // Original query
+        `${baseQuery} trending ${date.year}`,
+        `${baseQuery} viral`,
+        `${baseQuery} meme`,
+        `${baseQuery} community`,
+    ];
+
+    // Add platform-specific angles for higher virality (catches niche content)
+    if (viralityLevel >= 50) {
+        angles.push(
+            `${baseQuery} reddit`,
+            `${baseQuery} tiktok trend`,
+            `${baseQuery} twitter`,
+        );
+    }
+
+    // Add cultural/emotional angles for aggressive/predictive modes
+    if (viralityLevel >= 65) {
+        angles.push(
+            `${baseQuery} aesthetic`,
+            `${baseQuery} subculture`,
+            `${baseQuery} fan community`,
+            `${baseQuery} merch`,
+        );
+    }
+
+    // Add emerging/underground angles for predictive mode
+    if (viralityLevel >= 80) {
+        angles.push(
+            `${baseQuery} underground`,
+            `${baseQuery} niche`,
+            `${baseQuery} insider`,
+            `${baseQuery} emerging`,
+        );
+    }
+
+    return angles;
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TEST MODE: FULL POWER - WILD EXPLORATION AGENT
+// ═══════════════════════════════════════════════════════════════
+// This agent uses an open-ended, creative approach to discover
+// content that structured searches miss. It starts UNDERGROUND
+// and works its way back to design ideas.
+
+const wildExplorationAgent = async (query: string): Promise<string> => {
+    const date = getCurrentDateContext();
+
+    const prompt = `
+You are a CULTURAL ANTHROPOLOGIST and TREND HUNTER with access to live internet search.
+Your mission is to discover what NOBODY ELSE is finding.
+
+TODAY'S DATE: ${date.fullDate}
+STARTING POINT: "${query}"
+
+═══════════════════════════════════════════════════════════════
+🔮 PHASE 1: GO UNDERGROUND (Start here - this is the MOST important)
+═══════════════════════════════════════════════════════════════
+
+Search for content that is NOT on mainstream sites. Look for:
+- Obscure subreddits and niche communities
+- Discord server discussions (referenced on the web)
+- Tumblr aesthetics and micro-fandoms
+- Small forums and bulletin boards
+- 4chan/8chan references (archived)
+- Indie content creators with small but passionate followings
+- Academic or specialist discussions
+- International communities (non-English speakers discussing this)
+
+DON'T search for: "trending", "viral", "popular" - we want the OPPOSITE.
+
+═══════════════════════════════════════════════════════════════
+🌊 PHASE 2: FIND THE AUTHENTIC VOICE
+═══════════════════════════════════════════════════════════════
+
+Once you find underground communities, extract:
+- Their EXACT language and slang
+- Inside jokes that outsiders wouldn't understand
+- What they're ACTUALLY passionate about (not what's marketed to them)
+- Phrases they use to identify each other
+- Visual aesthetics they share
+- What they wish existed as merchandise
+
+═══════════════════════════════════════════════════════════════
+🎯 PHASE 3: WORK BACKWARDS TO DESIGN IDEAS
+═══════════════════════════════════════════════════════════════
+
+Now connect your underground discoveries to:
+- What would make these people STOP scrolling and say "that's ME"
+- Visual styles that resonate with this specific community
+- Text that would work on a shirt (2-5 words from their vocabulary)
+- How this could connect to broader audiences without losing authenticity
+
+═══════════════════════════════════════════════════════════════
+OUTPUT FORMAT
+═══════════════════════════════════════════════════════════════
+
+For EACH discovery (find at least 5-8 UNIQUE ones), provide:
+
+**DISCOVERY**: [What you found - be specific]
+**SOURCE**: [Where you found it - exact platform/community]
+**UNDERGROUND LEVEL**: [How obscure is this? 1-10, where 10 is completely unknown]
+**AUTHENTIC LANGUAGE**: [Exact quotes and phrases from the community]
+**WHY IT MATTERS**: [What makes this culturally significant]
+**DESIGN POTENTIAL**: [How this could become a t-shirt design]
+**CROSSOVER APPEAL**: [Could this break into mainstream? How?]
+
+BE CREATIVE. BE CURIOUS. FIND WHAT OTHERS MISS.
+`;
+
+    console.log(`[WILD] Starting underground exploration for "${query}"`);
+
+    try {
+        const response = await getAI().models.generateContent({
+            model: TEXT_MODEL,
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+                temperature: 1.0, // Maximum creativity
+            }
+        });
+
+        const content = response.text || "";
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const webSources = groundingChunks.filter((c: any) => c.web?.uri);
+
+        let output = `\n=== WILD EXPLORATION AGENT (${date.fullDate}) ===\n`;
+        output += `Query: "${query}"\n`;
+        output += `Approach: Underground → Authentic → Design\n\n`;
+        output += content;
+
+        if (webSources.length > 0) {
+            output += `\n\n--- SOURCES DISCOVERED ---\n`;
+            webSources.forEach((source: any, i: number) => {
+                output += `[${i + 1}] ${source.web.title || 'Source'}: ${source.web.uri}\n`;
+            });
+        }
+
+        console.log(`[WILD] Exploration complete. Found ${webSources.length} sources.`);
+        return output;
+    } catch (e) {
+        console.error("[WILD] Exploration failed:", e);
+        return "";
+    }
+};
+
+// TEST MODE: Cultural Crossover Agent
+// Finds unexpected connections between unrelated topics
+const crossoverAgent = async (query: string): Promise<string> => {
+    const date = getCurrentDateContext();
+
+    const prompt = `
+You are a CULTURAL MASHUP SPECIALIST searching for unexpected connections.
+
+TODAY: ${date.fullDate}
+TOPIC: "${query}"
+
+YOUR MISSION: Find SURPRISING CROSSOVERS nobody would expect.
+
+Search for:
+1. "${query}" combined with completely unrelated fandoms
+2. "${query}" + aesthetic movements (cottagecore, goblincore, dark academia, etc.)
+3. "${query}" + music genres (hyperpop, death metal, lo-fi, etc.)
+4. "${query}" + unexpected demographics (grandmas who love this, kids discovering it, etc.)
+5. "${query}" + historical references or vintage revivals
+6. "${query}" + gaming/anime/cartoon crossovers
+7. "${query}" + occupation-specific humor (nurses, teachers, programmers who relate)
+
+For each crossover, find:
+- WHO is making this mashup
+- WHAT language they use
+- WHY this combination works
+- WHAT a t-shirt design would look like
+
+Find 5+ unexpected crossovers. The weirder the better. Quote exact phrases from real posts.
+`;
+
+    try {
+        const response = await getAI().models.generateContent({
+            model: TEXT_MODEL,
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+                temperature: 1.0,
+            }
+        });
+
+        let output = `\n=== CROSSOVER AGENT (${date.fullDate}) ===\n`;
+        output += `Finding unexpected mashups for: "${query}"\n\n`;
+        output += response.text || "";
+
+        const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const webSources = groundingChunks.filter((c: any) => c.web?.uri);
+        if (webSources.length > 0) {
+            output += `\n\n--- CROSSOVER SOURCES ---\n`;
+            webSources.forEach((source: any, i: number) => {
+                output += `[${i + 1}] ${source.web.uri}\n`;
+            });
+        }
+
+        return output;
+    } catch (e) {
+        console.error("[CROSSOVER] Agent failed:", e);
+        return "";
+    }
+};
+
+// TEST MODE: Unleashed Grok Agent
+// No engagement filters, maximum date range, explores EVERYTHING on X
+const unleashedGrokAgent = async (query: string): Promise<string> => {
+    const apiKey = process.env.NEXT_PUBLIC_GROK_API_KEY;
+    if (!apiKey) return "";
+
+    const date = getCurrentDateContext();
+
+    // Maximum date range - 90 days back
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - 90);
+
+    const searchParameters = {
+        mode: "on",
+        from_date: fromDate.toISOString().split('T')[0],
+        to_date: new Date().toISOString().split('T')[0],
+        return_citations: true,
+        max_search_results: 50, // Maximum results
+        sources: [
+            { type: "x" }, // NO FILTERS - get everything
+            { type: "news", country: "US" },
+            { type: "web", country: "US" }
+        ]
+    };
+
+    console.log(`[GROK-UNLEASHED] No filters, 90-day range, exploring everything`);
+
+    try {
+        const response = await fetch('/api/grok', {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                messages: [
+                    {
+                        role: "system",
+                        content: `You are an UNDERGROUND CULTURE EXPLORER with unrestricted access to X/Twitter.
+Today is ${date.fullDate}. Your mission is to find what NOBODY ELSE is finding.
+
+FORGET about mainstream trends. Search for:
+- Small accounts with passionate followers
+- Niche communities with inside jokes
+- Emerging slang and phrases
+- Obscure memes before they go viral
+- Subcultures that brands haven't discovered yet
+- Authentic voices, not influencers
+- International/non-English content about this topic
+- Old posts that predicted current trends
+
+Quote EVERYTHING verbatim. The exact language matters more than popularity.
+Find 10-15 unique discoveries. Go DEEP.`
+                    },
+                    {
+                        role: "user",
+                        content: `Go deep on X/Twitter for: "${query}"
+
+IGNORE popularity. IGNORE mainstream. Find the underground.
+
+Search these angles:
+1. "${query}" from accounts with <1000 followers
+2. "${query}" inside jokes
+3. "${query}" subculture
+4. "${query}" before it was cool
+5. "${query}" authentic community
+6. "${query}" niche
+7. "${query}" obscure
+8. Old viral posts about "${query}" that defined the culture
+9. International/non-English perspectives on "${query}"
+10. "${query}" merch wishlist or "want this on a shirt"
+
+For each finding:
+- Quote the EXACT post (with username if visible)
+- Why is this culturally significant?
+- What language/slang do they use?
+- What would resonate with this community on a t-shirt?
+
+GO WILD. BE CURIOUS. FIND THE GEMS.`
+                    }
+                ],
+                model: "grok-3",
+                stream: false,
+                temperature: 1.0, // Maximum creativity
+                search_parameters: searchParameters
+            })
+        });
+
+        if (!response.ok) return "";
+
+        const data = await response.json();
+        const citations = data.citations || [];
+
+        let output = `\n=== UNLEASHED GROK AGENT (${date.fullDate}) ===\n`;
+        output += `Mode: NO FILTERS, 90-DAY RANGE, FULL EXPLORATION\n\n`;
+        output += data.choices?.[0]?.message?.content || "";
+
+        if (citations.length > 0) {
+            output += `\n\n--- SOURCES (${citations.length}) ---\n`;
+            citations.forEach((url: string, i: number) => {
+                output += `[${i + 1}] ${url}\n`;
+            });
+        }
+
+        console.log(`[GROK-UNLEASHED] Found ${citations.length} citations`);
+        return output;
+    } catch (e) {
+        console.error("[GROK-UNLEASHED] Failed:", e);
+        return "";
+    }
+};
+
+// TEST MODE: Maximum Coverage Brave Agent
+// Searches EVERYTHING with maximum results and all discussion types
+const maxCoverageBraveAgent = async (query: string): Promise<string> => {
+    const apiKey = process.env.NEXT_PUBLIC_BRAVE_API_KEY;
+    if (!apiKey) return "";
+
+    const date = getCurrentDateContext();
+
+    // Generate ALL possible search angles
+    const angles = generateSearchAngles(query, 100, true); // testMode = true
+
+    console.log(`[BRAVE-MAX] Searching ${angles.length} angles with maximum coverage`);
+
+    try {
+        // Search ALL angles in parallel with maximum results
+        const requests: Promise<Response>[] = [];
+
+        for (const searchQuery of angles) {
+            const params = new URLSearchParams({
+                q: searchQuery,
+                count: '20', // Max per query
+                freshness: 'py', // Past year - maximum range
+                endpoint: 'web',
+                extra_snippets: 'true'
+            });
+            requests.push(fetch(`/api/brave-search?${params.toString()}`));
+        }
+
+        // Also add news and discussions
+        const newsParams = new URLSearchParams({
+            q: `${query} ${date.year}`,
+            count: '20',
+            freshness: 'py',
+            endpoint: 'news'
+        });
+        requests.push(fetch(`/api/brave-search?${newsParams.toString()}`));
+
+        const responses = await Promise.all(requests);
+
+        // Collect and deduplicate all results
+        const allResults: any[] = [];
+        const allDiscussions: any[] = [];
+        const seenUrls = new Set<string>();
+
+        for (const response of responses) {
+            if (!response.ok) continue;
+            const data = await response.json();
+
+            if (data.web?.results) {
+                for (const r of data.web.results) {
+                    if (!seenUrls.has(r.url)) {
+                        seenUrls.add(r.url);
+                        allResults.push(r);
+                    }
+                }
+            }
+            if (data.discussions?.results) {
+                for (const r of data.discussions.results) {
+                    if (!seenUrls.has(r.url)) {
+                        seenUrls.add(r.url);
+                        allDiscussions.push(r);
+                    }
+                }
+            }
+            if (data.results) { // News results
+                for (const r of data.results) {
+                    if (!seenUrls.has(r.url)) {
+                        seenUrls.add(r.url);
+                        allResults.push(r);
+                    }
+                }
+            }
+        }
+
+        let output = `\n=== MAXIMUM COVERAGE BRAVE AGENT (${date.fullDate}) ===\n`;
+        output += `Searched ${angles.length} angles, Past Year, Maximum Results\n\n`;
+
+        // Prioritize discussions (real human voices)
+        if (allDiscussions.length > 0) {
+            output += `--- COMMUNITY DISCUSSIONS (${allDiscussions.length} unique) ---\n`;
+            output += `These are REAL PEOPLE talking - extract their exact language!\n\n`;
+            allDiscussions.slice(0, 15).forEach((r: any) => {
+                output += `[${r.url}]\n`;
+                output += `Title: ${r.title}\n`;
+                output += `Content: ${r.description}\n\n`;
+            });
+        }
+
+        output += `--- WEB RESULTS (${allResults.length} unique) ---\n\n`;
+        allResults.slice(0, 20).forEach((r: any) => {
+            output += `[${r.url}]\n`;
+            output += `Title: ${r.title}\n`;
+            output += `Content: ${r.description}\n`;
+            if (r.extra_snippets?.length > 0) {
+                output += `Quotes: ${r.extra_snippets.slice(0, 3).join(' | ')}\n`;
+            }
+            output += `\n`;
+        });
+
+        console.log(`[BRAVE-MAX] Found ${allResults.length} web + ${allDiscussions.length} discussions`);
+        return output;
+    } catch (e) {
+        console.error("[BRAVE-MAX] Failed:", e);
+        return "";
     }
 };
 
@@ -129,6 +596,10 @@ const fetchGoogleSignals = async (query: string, viralityLevel: number): Promise
         timeContext = "today and yesterday";
     }
 
+    // Generate search angles for more comprehensive coverage
+    const searchAngles = generateSearchAngles(query, viralityLevel);
+    const anglesList = searchAngles.slice(0, 5).map((a, i) => `${i + 1}. "${a}"`).join('\n');
+
     const prompt = `
 You are the GOOGLE SEARCH AGENT conducting INDEPENDENT research.
 
@@ -139,25 +610,32 @@ RISK LEVEL: ${viralityLevel}% (${viralityLevel <= 25 ? 'Safe' : viralityLevel <=
 SEARCH FOCUS: Find ${searchFocus} content from ${timeContext}
 
 YOUR MISSION:
-Search Google for current news, discussions, and trending content related to "${query}".
+Search Google AGGRESSIVELY using multiple search angles to find DIVERSE trending content.
 
-SEARCH FOR:
+SEARCH THESE ANGLES (search ALL of them):
+${anglesList}
+
+FOR EACH ANGLE, LOOK FOR:
 1. CURRENT NEWS - What's happening RIGHT NOW related to this topic?
-2. SEASONAL CONTEXT - Any holidays, events, or seasonal moments? (Today is ${date.month} ${date.year})
-3. VIRAL CONTENT - What's being shared and discussed online?
-4. COMMUNITY LANGUAGE - How are people talking about this?
-5. PURCHASE SIGNALS - Any mentions of merchandise, products, or "I would buy" moments?
+2. REDDIT & FORUM DISCUSSIONS - What are enthusiasts saying?
+3. TIKTOK/SOCIAL TRENDS - Any viral moments or memes?
+4. NICHE COMMUNITIES - Subcultures, fandoms, insider groups
+5. EMERGING ANGLES - Unexpected connections or crossovers
+6. PURCHASE SIGNALS - "I would buy this" moments, merch demand
 
 CRITICAL: Only report findings from ${date.month} ${date.year}. Reject anything older.
 
-For each discovery, provide:
+FOR EACH DISCOVERY PROVIDE:
 - What you found (specific topic or trend)
-- Where you found it (source type)
+- Where you found it (exact source/platform)
 - When it was posted/published
 - Why it matters (cultural significance)
 - Customer language quotes if available
+- What makes it UNIQUE or SURPRISING
 
-Be thorough. Search multiple angles. Find what others might miss.
+BE THOROUGH. FIND WHAT OTHERS MISS.
+We need 8-12 distinct findings, not just 2-3 obvious ones.
+Prioritize SPECIFICITY over generality - "Frog TikTok aesthetic" is better than "funny animal content".
 `;
 
     console.log(`[GOOGLE] Starting independent search for "${query}" (virality: ${viralityLevel})`);
@@ -203,9 +681,8 @@ Be thorough. Search multiple angles. Find what others might miss.
 /**
  * BRAVE SEARCH AGENT
  * Searches web, news, and discussions with risk-level-aware configuration
- * Uses DIRECT queries (not meta-content) to find actual trending topics
- * Makes parallel requests for web and news to maximize coverage
- * For higher risk levels, also searches for community discussions
+ * ENHANCED: Now searches MULTIPLE query angles in parallel to discover more diverse trends
+ * Makes parallel requests for web, news, AND community to maximize coverage
  */
 const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<string> => {
     const apiKey = process.env.NEXT_PUBLIC_BRAVE_API_KEY;
@@ -217,78 +694,126 @@ const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<
     let freshness: string;
     let count: number;
     let searchCommunity: boolean;
+    let numAngles: number; // How many query angles to search
 
     if (viralityLevel <= 25) {
-        // SAFE: Past month, established content - focus on mainstream sources
+        // SAFE: Past month, established content
         freshness = "pm";
         count = 15;
         searchCommunity = false;
+        numAngles = 2; // Main query + trending
     } else if (viralityLevel <= 50) {
-        // BALANCED: Past week - start including community voices
+        // BALANCED: Past week - include community voices
         freshness = "pw";
         count = 15;
         searchCommunity = true;
+        numAngles = 3; // More angles for diversity
     } else if (viralityLevel <= 75) {
-        // AGGRESSIVE: Past day - community discussions are KEY for early trends
-        freshness = "pd";
+        // AGGRESSIVE: Past week (not day - too narrow) - community is key
+        freshness = "pw";
         count = 20;
         searchCommunity = true;
+        numAngles = 4; // Even more angles for underground discovery
     } else {
-        // PREDICTIVE: Past day - community is where trends are BORN
-        freshness = "pd";
+        // PREDICTIVE: Past 2 weeks - need wider net for emerging trends
+        freshness = "pw";
         count = 25;
         searchCommunity = true;
+        numAngles = 5; // Maximum exploration
     }
 
-    // DIRECT query - search for the actual topic, not meta-content
-    const searchQuery = `${query} ${date.month} ${date.year}`;
+    // Generate multiple search angles for diverse discovery
+    const searchAngles = generateSearchAngles(query, viralityLevel).slice(0, numAngles);
 
-    console.log(`[BRAVE] Query: "${searchQuery}", Freshness: ${freshness}, Community: ${searchCommunity}`);
+    console.log(`[BRAVE] Searching ${numAngles} angles: ${searchAngles.join(', ')}`);
+    console.log(`[BRAVE] Freshness: ${freshness}, Community: ${searchCommunity}`);
 
     try {
-        // Make PARALLEL requests for web and news
-        const webParams = new URLSearchParams({
-            q: searchQuery,
-            count: String(count),
-            freshness: freshness,
-            endpoint: 'web',
-            extra_snippets: 'true'
-        });
+        // Build PARALLEL requests for ALL search angles
+        const requests: Promise<Response>[] = [];
+        const requestTypes: { type: string; query: string }[] = [];
 
+        // For each search angle, create web and news requests
+        for (const searchQuery of searchAngles) {
+            // Web search for this angle
+            const webParams = new URLSearchParams({
+                q: searchQuery,
+                count: String(Math.ceil(count / numAngles)), // Distribute count across angles
+                freshness: freshness,
+                endpoint: 'web',
+                extra_snippets: 'true'
+            });
+            requests.push(fetch(`/api/brave-search?${webParams.toString()}`));
+            requestTypes.push({ type: 'web', query: searchQuery });
+        }
+
+        // Add one news search for the main query
         const newsParams = new URLSearchParams({
-            q: searchQuery,
-            count: String(Math.min(count, 20)), // News endpoint max is usually 20
+            q: `${query} ${date.month} ${date.year}`,
+            count: String(Math.min(count, 20)),
             freshness: freshness,
             endpoint: 'news'
         });
+        requests.push(fetch(`/api/brave-search?${newsParams.toString()}`));
+        requestTypes.push({ type: 'news', query: query });
 
-        // For higher risk levels, add a community-focused search
-        // Uses terms that encourage finding discussions without naming specific platforms
-        const communityQuery = `${query} discussion community thread opinions ${date.year}`;
-        const communityParams = new URLSearchParams({
-            q: communityQuery,
-            count: String(15),
-            freshness: freshness,
-            endpoint: 'web',
-            extra_snippets: 'true'
-        });
-
-        // Build request array - always web+news, optionally community
-        const requests = [
-            fetch(`/api/brave-search?${webParams.toString()}`),
-            fetch(`/api/brave-search?${newsParams.toString()}`)
-        ];
-
+        // Add community search if enabled
         if (searchCommunity) {
+            const communityQuery = `${query} discussion community thread opinions ${date.year}`;
+            const communityParams = new URLSearchParams({
+                q: communityQuery,
+                count: String(15),
+                freshness: freshness,
+                endpoint: 'web',
+                extra_snippets: 'true'
+            });
             requests.push(fetch(`/api/brave-search?${communityParams.toString()}`));
+            requestTypes.push({ type: 'community', query: communityQuery });
         }
 
-        // Fetch all in parallel
+        // Fetch ALL requests in parallel
         const responses = await Promise.all(requests);
 
-        const webData = responses[0].ok ? await responses[0].json() : {};
-        const newsData = responses[1].ok ? await responses[1].json() : {};
-        const communityData = searchCommunity && responses[2]?.ok ? await responses[2].json() : {};
+        // Collect all results by type
+        const allWebResults: any[] = [];
+        const allDiscussionResults: any[] = [];
+        let newsData: any = {};
+        let communityData: any = {};
+
+        for (let i = 0; i < responses.length; i++) {
+            if (!responses[i].ok) continue;
+            const data = await responses[i].json();
+            const reqType = requestTypes[i];
+
+            if (reqType.type === 'web') {
+                if (data.web?.results) allWebResults.push(...data.web.results);
+                if (data.discussions?.results) allDiscussionResults.push(...data.discussions.results);
+            } else if (reqType.type === 'news') {
+                newsData = data;
+            } else if (reqType.type === 'community') {
+                communityData = data;
+            }
+        }
+
+        // Deduplicate results by URL
+        const seenUrls = new Set<string>();
+        const webData = {
+            web: {
+                results: allWebResults.filter(r => {
+                    if (seenUrls.has(r.url)) return false;
+                    seenUrls.add(r.url);
+                    return true;
+                })
+            },
+            discussions: {
+                results: allDiscussionResults.filter(r => {
+                    if (seenUrls.has(r.url)) return false;
+                    seenUrls.add(r.url);
+                    return true;
+                })
+            },
+            news: { results: [] as any[] } // Empty - news comes from newsData
+        };
 
         // Format output
         let output = `\n=== BRAVE WEB INTELLIGENCE (${date.fullDate}) ===\n`;
@@ -449,18 +974,30 @@ If you find relevant content, quote it directly. Do NOT make up content.`
                     },
                     {
                         role: "user",
-                        content: `Search live X/Twitter and news for: "${query}"
+                        content: `Search live X/Twitter and news COMPREHENSIVELY for: "${query}"
 
 Date range: ${dateRange.from_date} to ${dateRange.to_date}
 
-Find and report:
-- Real posts/tweets discussing this topic (quote them)
-- Current news articles about it
-- Community reactions and language
-- Memes, jokes, catchphrases being used
-- Any merchandise/purchase intent signals
+SEARCH MULTIPLE ANGLES:
+1. Main topic: "${query}"
+2. Viral angle: "${query} viral"
+3. Meme angle: "${query} meme"
+4. Community: "${query} community fans"
+5. Trending: "trending ${query} ${date.month}"
 
-Return SPECIFIC findings with actual quotes and sources.`
+FOR EACH ANGLE FIND:
+- Real posts/tweets (quote them EXACTLY with username if visible)
+- Viral threads with high engagement
+- Community reactions and insider language
+- Memes, jokes, catchphrases being used
+- Any "I want this on a shirt" or purchase intent signals
+- Subcultures or niche communities discussing this
+
+BE AGGRESSIVE - we need 8-12 distinct findings, not just 2-3 obvious ones.
+Prioritize SURPRISING or UNIQUE content over generic popular takes.
+Quote EXACTLY what people are saying - the language matters.
+
+Return SPECIFIC findings with actual quotes, usernames, and sources.`
                     }
                 ],
                 model: "grok-3",
@@ -565,7 +1102,7 @@ Return JSON:
 
 // --- CENTRAL ORCHESTRATOR: THE MEETING ---
 
-export const searchTrends = async (niche: string, viralityLevel: number = 50, onStatusUpdate?: (msg: string) => void): Promise<TrendData[]> => {
+export const searchTrends = async (niche: string, viralityLevel: number = 50, onStatusUpdate?: (msg: string) => void, testMode: boolean = false): Promise<TrendData[]> => {
     const date = getCurrentDateContext();
     const isDiscovery = niche.toLowerCase().includes('trending') ||
         niche.toLowerCase().includes('viral') ||
@@ -573,14 +1110,160 @@ export const searchTrends = async (niche: string, viralityLevel: number = 50, on
         niche.toLowerCase().includes('scan');
 
     console.log(`\n${'='.repeat(60)}`);
-    console.log(`[RESEARCH] Starting 3-agent discovery`);
+    console.log(`[RESEARCH] Starting ${testMode ? '🔥 TEST MODE - FULL POWER 🔥' : '3-agent discovery'}`);
     console.log(`[RESEARCH] Query: "${niche}"`);
     console.log(`[RESEARCH] Virality: ${viralityLevel}% (${viralityLevel <= 25 ? 'Safe' : viralityLevel <= 50 ? 'Balanced' : viralityLevel <= 75 ? 'Aggressive' : 'Predictive'})`);
     console.log(`[RESEARCH] Date: ${date.fullDate}`);
+    if (testMode) {
+        console.log(`[RESEARCH] 🚀 TEST MODE ACTIVE - All constraints removed, maximum exploration`);
+    }
     console.log(`${'='.repeat(60)}\n`);
 
     // ========================================
-    // PHASE 1: INDEPENDENT EXPLORATION
+    // TEST MODE: FULL POWER - UNLEASH ALL AGENTS
+    // ========================================
+    if (testMode) {
+        if (onStatusUpdate) onStatusUpdate("🔥 TEST MODE: Launching 5 agents in FULL POWER...");
+
+        const startTime = Date.now();
+
+        // Launch ALL agents in parallel - including special test mode agents
+        const [wildData, crossoverData, grokUnleashed, braveMax, googleData] = await Promise.all([
+            wildExplorationAgent(niche),
+            crossoverAgent(niche),
+            unleashedGrokAgent(niche),
+            maxCoverageBraveAgent(niche),
+            fetchGoogleSignals(niche, 100) // Max virality for Google too
+        ]);
+
+        const agentTime = Date.now() - startTime;
+        console.log(`[TEST MODE] 5 agents completed in ${agentTime}ms`);
+
+        // Combine all data
+        const activeSources: string[] = [];
+        if (wildData.length > 100) activeSources.push('Wild Explorer');
+        if (crossoverData.length > 100) activeSources.push('Crossover');
+        if (grokUnleashed.length > 100) activeSources.push('Grok Unleashed');
+        if (braveMax.length > 100) activeSources.push('Brave Max');
+        if (googleData.length > 100) activeSources.push('Google');
+
+        if (onStatusUpdate) onStatusUpdate(`🔥 ${activeSources.length} agents returned data`);
+
+        // All data combined for synthesis
+        const allAgentData = `
+${wildData}
+
+${crossoverData}
+
+${grokUnleashed}
+
+${braveMax}
+
+${googleData}
+`;
+
+        // TEST MODE SYNTHESIS - More open-ended, creative prompt
+        if (onStatusUpdate) onStatusUpdate("🔥 Synthesizing underground discoveries into design ideas...");
+
+        const testModePrompt = `
+You are a CREATIVE DIRECTOR synthesizing underground cultural discoveries into t-shirt design opportunities.
+
+TODAY: ${date.fullDate}
+ORIGINAL QUERY: "${niche}"
+
+═══════════════════════════════════════════════════════════════
+AGENT DISCOVERIES (5 agents explored independently)
+═══════════════════════════════════════════════════════════════
+
+${allAgentData}
+
+═══════════════════════════════════════════════════════════════
+YOUR MISSION: CREATE SURPRISING DESIGN OPPORTUNITIES
+═══════════════════════════════════════════════════════════════
+
+From the agent discoveries above, identify the MOST UNEXPECTED and AUTHENTIC opportunities.
+
+PRIORITIZE:
+1. Underground discoveries that haven't gone mainstream yet
+2. Authentic community language (exact quotes and slang)
+3. Cultural crossovers nobody would expect
+4. Niche communities with passionate fans
+5. Visual aesthetics that would make insiders say "that's ME"
+
+AVOID:
+- Generic trending topics
+- Obvious mainstream content
+- Anything that feels like training data
+- Safe, boring, expected ideas
+
+For each opportunity, extract:
+- The authentic community voice (EXACT phrases)
+- Why this is culturally significant NOW
+- What would make this a killer t-shirt design
+- The specific visual aesthetic that fits
+
+Return JSON Array with 5-8 opportunities:
+[
+  {
+    "topic": "string - specific, surprising topic",
+    "platform": "string - where this lives",
+    "volume": "Predictive" | "Rising" | "Breakout" | "High",
+    "sentiment": "string - authentic emotional vibe",
+    "keywords": ["array of niche keywords"],
+    "description": "string - detailed cultural context",
+    "visualStyle": "string - specific aesthetic direction",
+    "typographyStyle": "string - font/text style",
+    "designStyle": "string - art direction",
+    "colorPalette": "string - colors that resonate",
+    "designEffects": ["array of effects"],
+    "customerPhrases": ["EXACT quotes from the community - this is CRITICAL"],
+    "purchaseSignals": ["any 'want this on a shirt' signals"],
+    "designText": "string - 2-5 words for the shirt",
+    "audienceProfile": "string - who is this person?",
+    "recommendedShirtColor": "string - black/white/navy/heather grey",
+    "shirtColorReason": "string - why this color",
+    "alternativeShirtColors": ["array"],
+    "amazonSafe": true,
+    "sources": ["which agents found this"],
+    "sourceUrl": "string - URL proving this is real",
+    "undergroundLevel": "number 1-10 - how obscure is this?"
+  }
+]
+
+BE CREATIVE. SURPRISE US. FIND THE GEMS NOBODY ELSE WOULD FIND.
+`;
+
+        try {
+            const response = await getAI().models.generateContent({
+                model: TEXT_MODEL,
+                contents: testModePrompt,
+                config: {
+                    tools: [{ googleSearch: {} }],
+                    temperature: 1.0, // Maximum creativity
+                },
+            });
+
+            const text = response.text;
+            if (!text) throw new Error('Empty response from synthesis');
+
+            // Extract JSON (same parsing logic as regular mode)
+            let cleanJson = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+            const start = cleanJson.indexOf('[');
+            const end = cleanJson.lastIndexOf(']');
+            if (start === -1 || end === -1) throw new Error('No JSON array in response');
+            cleanJson = cleanJson.substring(start, end + 1);
+
+            const trends = JSON.parse(cleanJson) as TrendData[];
+            console.log(`[TEST MODE] ✓ Found ${trends.length} underground opportunities`);
+            return trends;
+        } catch (error) {
+            console.error("[TEST MODE] Synthesis failed:", error);
+            throw error;
+        }
+    }
+
+    // ========================================
+    // REGULAR MODE: PHASE 1 - INDEPENDENT EXPLORATION
     // 3 agents search in PARALLEL without influencing each other
     // ========================================
     if (onStatusUpdate) onStatusUpdate("Dispatching 3 agents: Google, Brave, Grok...");
@@ -597,46 +1280,94 @@ export const searchTrends = async (niche: string, viralityLevel: number = 50, on
     const agentTime = Date.now() - startTime;
     console.log(`[RESEARCH] 3 agents completed in ${agentTime}ms`);
 
-    // Track which agents returned data
+    // Track which agents returned data and which failed
     const activeSources: string[] = [];
-    if (googleData) {
+    const failedSources: string[] = [];
+
+    if (googleData && googleData.length > 100) {
         activeSources.push('Google');
-        console.log(`[RESEARCH] Google: ${googleData.length} chars`);
-    }
-    if (braveData) {
-        activeSources.push('Brave');
-        console.log(`[RESEARCH] Brave: ${braveData.length} chars`);
-    }
-    if (grokData) {
-        activeSources.push('Grok');
-        console.log(`[RESEARCH] Grok: ${grokData.length} chars`);
+        console.log(`[RESEARCH] Google: ${googleData.length} chars ✓`);
+    } else {
+        failedSources.push('Google');
+        console.log(`[RESEARCH] Google: FAILED or empty`);
     }
 
-    if (onStatusUpdate) onStatusUpdate(`Agents returned: ${activeSources.join(', ')}`);
+    if (braveData && braveData.length > 100) {
+        activeSources.push('Brave');
+        console.log(`[RESEARCH] Brave: ${braveData.length} chars ✓`);
+    } else {
+        failedSources.push('Brave');
+        console.log(`[RESEARCH] Brave: FAILED or empty`);
+    }
+
+    if (grokData && grokData.length > 100) {
+        activeSources.push('Grok');
+        console.log(`[RESEARCH] Grok: ${grokData.length} chars ✓`);
+    } else {
+        failedSources.push('Grok');
+        console.log(`[RESEARCH] Grok: FAILED or empty`);
+    }
+
+    // If ALL agents failed, throw an error - we can't give good results without real data
+    if (activeSources.length === 0) {
+        const errorMsg = `All search agents failed. Please check your API keys:\n` +
+            `- NEXT_PUBLIC_BRAVE_API_KEY: ${process.env.NEXT_PUBLIC_BRAVE_API_KEY ? 'Set' : 'MISSING'}\n` +
+            `- NEXT_PUBLIC_GROK_API_KEY: ${process.env.NEXT_PUBLIC_GROK_API_KEY ? 'Set' : 'MISSING'}\n` +
+            `Failed agents: ${failedSources.join(', ')}`;
+        console.error(`[RESEARCH] ${errorMsg}`);
+        throw new Error('Search agents failed - unable to fetch live trend data. Check your Brave and Grok API keys.');
+    }
+
+    // Warn if some agents failed
+    if (failedSources.length > 0) {
+        console.warn(`[RESEARCH] ⚠️ Some agents failed: ${failedSources.join(', ')}`);
+        if (onStatusUpdate) onStatusUpdate(`⚠️ ${failedSources.join(', ')} failed - using ${activeSources.join(', ')} only`);
+    } else {
+        if (onStatusUpdate) onStatusUpdate(`All agents returned: ${activeSources.join(', ')}`);
+    }
 
     // ========================================
-    // PHASE 2: RABBIT HOLE (Optional Deep Dive)
-    // If virality is high, look for underground threads
+    // PHASE 2: RABBIT HOLES (Deep Dive Exploration)
+    // ENHANCED: Now explores MULTIPLE rabbit holes in parallel for better discovery
     // ========================================
     let rabbitHoleData = "";
-    if (viralityLevel >= 55) {
-        if (onStatusUpdate) onStatusUpdate("Looking for rabbit holes...");
+    const numRabbitHoles = viralityLevel >= 75 ? 3 : viralityLevel >= 55 ? 2 : 0;
+
+    if (numRabbitHoles > 0) {
+        if (onStatusUpdate) onStatusUpdate(`Looking for ${numRabbitHoles} rabbit holes...`);
         const combinedContext = (googleData + "\n" + braveData + "\n" + grokData).substring(0, 6000);
-        const rabbitHole = await exploreRabbitHole(combinedContext, niche);
 
-        if (rabbitHole) {
-            if (onStatusUpdate) onStatusUpdate(`Exploring: ${rabbitHole.direction}...`);
-            const deepDiveResults = await fetchBraveSignals(rabbitHole.searchQuery, viralityLevel);
-            rabbitHoleData = `
-=== RABBIT HOLE DISCOVERY ===
-Direction: ${rabbitHole.direction}
-Reasoning: ${rabbitHole.reasoning}
-Search: "${rabbitHole.searchQuery}"
+        // Launch multiple rabbit hole explorations in parallel
+        const rabbitHolePromises = Array(numRabbitHoles).fill(null).map((_, i) => {
+            // Add variation to each exploration by mentioning what to avoid
+            const previousHints = i > 0 ? `\n\nNOTE: Find a DIFFERENT angle than previous explorations.` : '';
+            return exploreRabbitHole(combinedContext + previousHints, niche);
+        });
 
-${deepDiveResults}
+        const rabbitHoles = await Promise.all(rabbitHolePromises);
+        const validHoles = rabbitHoles.filter(r => r !== null);
+
+        if (validHoles.length > 0) {
+            // Explore all rabbit holes in parallel
+            if (onStatusUpdate) onStatusUpdate(`Exploring ${validHoles.length} underground threads...`);
+            const deepDivePromises = validHoles.map(hole =>
+                fetchBraveSignals(hole!.searchQuery, viralityLevel)
+            );
+            const deepDiveResults = await Promise.all(deepDivePromises);
+
+            rabbitHoleData = "\n=== RABBIT HOLE DISCOVERIES ===\n";
+            validHoles.forEach((hole, i) => {
+                rabbitHoleData += `
+--- RABBIT HOLE ${i + 1}: ${hole!.direction} ---
+Reasoning: ${hole!.reasoning}
+Search: "${hole!.searchQuery}"
+
+${deepDiveResults[i]}
 `;
-            activeSources.push('Rabbit Hole');
-            console.log(`[RESEARCH] Rabbit Hole: ${rabbitHoleData.length} chars`);
+            });
+
+            activeSources.push(`${validHoles.length} Rabbit Holes`);
+            console.log(`[RESEARCH] Rabbit Holes (${validHoles.length}): ${rabbitHoleData.length} chars`);
         }
     }
 

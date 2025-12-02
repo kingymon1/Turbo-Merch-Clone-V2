@@ -1,7 +1,8 @@
-import { SavedListing } from '../types';
+import { SavedListing, SavedIdea } from '../types';
 
 const STORAGE_KEYS = {
   LIBRARY: 'turbomerch_library',
+  IDEAS_VAULT: 'turbomerch_ideas_vault',
   USER_PREFERENCES: 'turbomerch_preferences',
   LAST_SYNC: 'turbomerch_last_sync'
 } as const;
@@ -71,6 +72,142 @@ export const StorageService = {
       return true;
     } catch (error) {
       console.error('Failed to clear library:', error);
+      return false;
+    }
+  },
+
+  // ==================== IDEAS VAULT ====================
+
+  /**
+   * Save ideas vault to localStorage
+   */
+  saveIdeasVault(ideas: SavedIdea[]): boolean {
+    try {
+      const data = JSON.stringify(ideas);
+      localStorage.setItem(STORAGE_KEYS.IDEAS_VAULT, data);
+      return true;
+    } catch (error) {
+      console.error('Failed to save ideas vault:', error);
+      if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+        console.error('Storage quota exceeded. Consider clearing old ideas.');
+      }
+      return false;
+    }
+  },
+
+  /**
+   * Load ideas vault from localStorage (auto-cleans expired ideas)
+   */
+  loadIdeasVault(): SavedIdea[] {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.IDEAS_VAULT);
+      if (!data) return [];
+
+      const ideas = JSON.parse(data) as SavedIdea[];
+      const now = Date.now();
+
+      // Filter out expired ideas (but keep ideas without expiresAt for backwards compatibility)
+      const validIdeas = ideas.filter(idea => !idea.expiresAt || idea.expiresAt > now);
+
+      // If some ideas were expired, save the cleaned list
+      if (validIdeas.length < ideas.length) {
+        console.log(`Cleaned ${ideas.length - validIdeas.length} expired ideas from vault`);
+        this.saveIdeasVault(validIdeas);
+      }
+
+      return validIdeas;
+    } catch (error) {
+      console.error('Failed to load ideas vault:', error);
+      return [];
+    }
+  },
+
+  /**
+   * Add a single idea to vault
+   */
+  addToIdeasVault(idea: SavedIdea): boolean {
+    const vault = this.loadIdeasVault();
+    // Check for duplicates by topic
+    const exists = vault.some(i => i.trend.topic === idea.trend.topic);
+    if (exists) {
+      console.log('Idea already exists in vault:', idea.trend.topic);
+      return false;
+    }
+    vault.unshift(idea);
+    return this.saveIdeasVault(vault);
+  },
+
+  /**
+   * Add multiple ideas to vault (from a research session)
+   */
+  addMultipleToIdeasVault(ideas: SavedIdea[]): { added: number; skipped: number } {
+    const vault = this.loadIdeasVault();
+    const existingTopics = new Set(vault.map(i => i.trend.topic));
+
+    let added = 0;
+    let skipped = 0;
+
+    for (const idea of ideas) {
+      if (!existingTopics.has(idea.trend.topic)) {
+        vault.unshift(idea);
+        existingTopics.add(idea.trend.topic);
+        added++;
+      } else {
+        skipped++;
+      }
+    }
+
+    if (added > 0) {
+      this.saveIdeasVault(vault);
+    }
+
+    return { added, skipped };
+  },
+
+  /**
+   * Remove idea from vault by ID
+   */
+  removeFromIdeasVault(id: string): boolean {
+    const vault = this.loadIdeasVault();
+    const filtered = vault.filter(idea => idea.id !== id);
+    return this.saveIdeasVault(filtered);
+  },
+
+  /**
+   * Mark idea as used
+   */
+  markIdeaAsUsed(id: string): boolean {
+    const vault = this.loadIdeasVault();
+    const updated = vault.map(idea =>
+      idea.id === id
+        ? { ...idea, isUsed: true, usedAt: Date.now() }
+        : idea
+    );
+    return this.saveIdeasVault(updated);
+  },
+
+  /**
+   * Update idea notes
+   */
+  updateIdeaNotes(id: string, notes: string): boolean {
+    const vault = this.loadIdeasVault();
+    const updated = vault.map(idea =>
+      idea.id === id
+        ? { ...idea, notes }
+        : idea
+    );
+    return this.saveIdeasVault(updated);
+  },
+
+  /**
+   * Clear all ideas from vault
+   */
+  clearIdeasVault(): boolean {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.IDEAS_VAULT);
+      return true;
+    } catch (error) {
+      console.error('Failed to clear ideas vault:', error);
       return false;
     }
   },

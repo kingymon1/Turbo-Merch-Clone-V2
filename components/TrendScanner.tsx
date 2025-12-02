@@ -2,13 +2,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { TrendData, ProcessingStage, MerchPackage, PromptMode } from '../types';
+import { TrendData, ProcessingStage, MerchPackage, PromptMode, SavedIdea } from '../types';
 import { searchTrends, analyzeNicheDeeply, generateListing, generateDesignImage, generateDesignImageEnhanced } from '../services/geminiService';
 import { VIRALITY_LEVELS, TREND_CONFIG } from '../config';
-import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper } from 'lucide-react';
+import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import BatchGenerationPanel from './BatchGenerationPanel';
-import { TierName, PRICING_TIERS } from '../lib/pricing';
+import { TierName, PRICING_TIERS, parseRetentionDays } from '../lib/pricing';
+import { StorageService } from '../services/storage';
 
 interface TrendScannerProps {
     onTrendSelect: (trend: TrendData, autoRun?: boolean, preGenData?: MerchPackage) => void;
@@ -67,6 +68,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
     const [viralityPreset, setViralityPreset] = useState<ViralityPreset>('balanced');
     const [promptMode, setPromptMode] = useState<PromptMode>('advanced');
     const [showAdvanced, setShowAdvanced] = useState(false);
+    const [testMode, setTestMode] = useState(false); // TEST MODE: FULL POWER
 
     // Compute actual virality level from preset
     const viralityLevel = VIRALITY_PRESETS[viralityPreset].value;
@@ -94,6 +96,11 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
     const [userTier, setUserTier] = useState<TierName>('free');
     const [remainingQuota, setRemainingQuota] = useState(0);
     const [refreshKey, setRefreshKey] = useState(0);
+
+    // Ideas vault state
+    const [savedToVault, setSavedToVault] = useState<Set<string>>(new Set());
+    const [vaultFeedback, setVaultFeedback] = useState<{ message: string; type: 'success' | 'info' } | null>(null);
+    const [lastSearchQuery, setLastSearchQuery] = useState('');
 
     // Fetch user info for batch generation
     useEffect(() => {
@@ -160,16 +167,49 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
         setIsAutoPilot(false);
         setErrorMessage('');
         setProgressPercent(0);
+        setLastSearchQuery(searchTerm);
+        setSavedToVault(new Set()); // Reset saved state for new search
 
         try {
             const [trendResults, analysisResult] = await Promise.all([
-                searchTrends(searchTerm, viralityLevel, (msg) => setAutoPilotMessage(msg)), // Use status update callback
+                searchTrends(searchTerm, viralityLevel, (msg) => setAutoPilotMessage(msg), testMode), // Use status update callback + testMode
                 analyzeNicheDeeply(searchTerm)
             ]);
 
             setTrends(trendResults);
             setAnalysis(analysisResult);
             setStatus(ProcessingStage.COMPLETE);
+
+            // Automatically save all ideas to vault
+            if (trendResults.length > 0) {
+                // Calculate expiration based on user's subscription tier
+                const tierConfig = PRICING_TIERS[userTier];
+                const retentionDays = parseRetentionDays(tierConfig.limits.historyRetention);
+                const now = Date.now();
+                const expiresAt = now + (retentionDays * 24 * 60 * 60 * 1000);
+
+                const ideas: SavedIdea[] = trendResults.map(trend => ({
+                    id: crypto.randomUUID(),
+                    trend,
+                    savedAt: now,
+                    expiresAt,
+                    tierAtCreation: userTier,
+                    searchQuery: searchTerm,
+                    viralityLevel,
+                }));
+
+                const result = StorageService.addMultipleToIdeasVault(ideas);
+
+                // Mark all as saved in UI
+                const savedTopics = new Set(trendResults.map(t => t.topic));
+                setSavedToVault(savedTopics);
+
+                // Show feedback
+                if (result.added > 0) {
+                    setVaultFeedback({ message: `${result.added} ideas auto-saved to vault`, type: 'success' });
+                    setTimeout(() => setVaultFeedback(null), 3000);
+                }
+            }
         } catch (error: any) {
             console.error('Search error:', error);
             setErrorMessage(error?.message || 'An unexpected error occurred');
@@ -239,7 +279,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
             setAutoPilotMessage(`Triangulating Signals (${currentLevel.label} Mode): ${sources.join(' + ')}...`);
             setTargetProgress(35); // Smoothly animate toward 35%
 
-            const trendResults = await searchTrends(discoveryQuery, viralityLevel, (msg) => setAutoPilotMessage(msg));
+            const trendResults = await searchTrends(discoveryQuery, viralityLevel, (msg) => setAutoPilotMessage(msg), testMode);
             const bestTrend = trendResults.find(t => t.volume === 'High' || t.volume === 'Breakout') || trendResults[0];
             setTargetProgress(45); // Phase 1 complete
 
@@ -531,6 +571,60 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
 
                 {showAdvanced && (
                     <div className="px-4 pb-4 space-y-6 border-t border-gray-200 dark:border-white/5 pt-4">
+                        {/* TEST MODE Toggle */}
+                        <div className={`p-4 rounded-xl border-2 transition-all ${testMode
+                            ? 'bg-gradient-to-r from-orange-500/10 via-red-500/10 to-purple-500/10 border-orange-500/50 dark:border-orange-400/50'
+                            : 'bg-gray-100 dark:bg-dark-900/50 border-gray-200 dark:border-white/5'}`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${testMode ? 'bg-orange-500/20' : 'bg-gray-200 dark:bg-dark-800'}`}>
+                                        <Zap className={`w-5 h-5 ${testMode ? 'text-orange-500' : 'text-gray-400'}`} />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-sm font-semibold ${testMode ? 'text-orange-500 dark:text-orange-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                                                TEST MODE
+                                            </span>
+                                            {testMode && (
+                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-500/20 text-orange-500 rounded-full animate-pulse">
+                                                    FULL POWER
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                            {testMode
+                                                ? '5 agents • No limits • Underground first • Max creativity'
+                                                : 'Enable experimental deep exploration mode'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setTestMode(!testMode)}
+                                    className={`relative w-12 h-6 rounded-full transition-all ${
+                                        testMode
+                                            ? 'bg-gradient-to-r from-orange-500 to-red-500'
+                                            : 'bg-gray-300 dark:bg-dark-600'
+                                    }`}
+                                >
+                                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow-md transition-all ${
+                                        testMode ? 'left-7' : 'left-1'
+                                    }`} />
+                                </button>
+                            </div>
+                            {testMode && (
+                                <div className="mt-3 pt-3 border-t border-orange-500/20 text-xs text-gray-500 dark:text-gray-400">
+                                    <p className="font-medium text-orange-500 dark:text-orange-400 mb-1">🔥 Agents Activated:</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="px-2 py-1 bg-purple-500/10 text-purple-500 rounded">Wild Explorer</span>
+                                        <span className="px-2 py-1 bg-blue-500/10 text-blue-500 rounded">Crossover Agent</span>
+                                        <span className="px-2 py-1 bg-gray-500/10 text-gray-400 rounded">Grok Unleashed</span>
+                                        <span className="px-2 py-1 bg-orange-500/10 text-orange-500 rounded">Brave Max</span>
+                                        <span className="px-2 py-1 bg-green-500/10 text-green-500 rounded">Google Deep</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         {/* Active Research Agents */}
                         <div className="flex items-center gap-4 p-3 rounded-lg bg-gray-100 dark:bg-dark-900/50 border border-gray-200 dark:border-white/5">
                             <span className="text-xs text-gray-500 uppercase tracking-wider">Active Agents:</span>
@@ -727,10 +821,35 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
 
             {status === ProcessingStage.COMPLETE && !isAutoPilot && (
                 <div className="animate-fade-in space-y-6 pt-8 border-t border-gray-200 dark:border-white/10">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <TrendingUp className="w-5 h-5 text-brand-500 dark:text-brand-400" />
-                        Search Results
-                    </h3>
+                    {/* Vault Feedback Toast */}
+                    {vaultFeedback && (
+                        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in ${
+                            vaultFeedback.type === 'success'
+                                ? 'bg-green-500 text-white'
+                                : 'bg-blue-500 text-white'
+                        }`}>
+                            {vaultFeedback.type === 'success' ? (
+                                <Check className="w-4 h-4" />
+                            ) : (
+                                <Lightbulb className="w-4 h-4" />
+                            )}
+                            {vaultFeedback.message}
+                        </div>
+                    )}
+
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            <TrendingUp className="w-5 h-5 text-brand-500 dark:text-brand-400" />
+                            Search Results
+                            <span className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                                ({trends.length} ideas found)
+                            </span>
+                        </h3>
+                        <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 text-green-600 dark:text-green-400 text-sm rounded-lg border border-green-500/20">
+                            <Check className="w-4 h-4" />
+                            Auto-saved to Ideas Vault
+                        </div>
+                    </div>
 
                     {analysis && (
                         <div className="bg-white dark:bg-dark-800/50 border border-gray-200 dark:border-white/10 p-6 rounded-xl border-l-4 border-l-brand-500">
@@ -795,20 +914,26 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
                                 </div>
 
                                 <div className="mt-auto flex items-center justify-between pt-4 border-t border-gray-200 dark:border-white/5">
-                                    {trend.sourceUrl ? (
-                                        <a
-                                            href={trend.sourceUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={(e) => e.stopPropagation()}
-                                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-500 dark:hover:text-brand-400 transition-colors"
-                                        >
-                                            <Globe className="w-3 h-3" />
-                                            <span className="truncate max-w-[100px]">Source</span>
-                                        </a>
-                                    ) : (
-                                        <span className="text-xs text-gray-400 dark:text-gray-600">Verified Trend</span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                        {trend.sourceUrl ? (
+                                            <a
+                                                href={trend.sourceUrl}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                onClick={(e) => e.stopPropagation()}
+                                                className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-500 dark:hover:text-brand-400 transition-colors"
+                                            >
+                                                <Globe className="w-3 h-3" />
+                                                <span className="truncate max-w-[100px]">Source</span>
+                                            </a>
+                                        ) : (
+                                            <span className="text-xs text-gray-400 dark:text-gray-600">Verified Trend</span>
+                                        )}
+                                        <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20">
+                                            <Check className="w-3 h-3" />
+                                            In Vault
+                                        </span>
+                                    </div>
 
                                     <button className="text-sm font-bold text-brand-500 dark:text-brand-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
                                         Build <ArrowRight className="w-4 h-4" />

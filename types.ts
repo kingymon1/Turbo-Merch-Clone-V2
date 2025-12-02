@@ -2,8 +2,10 @@
 export enum AppView {
   DASHBOARD = 'DASHBOARD',
   TREND_RESEARCH = 'TREND_RESEARCH',
+  TREND_LAB = 'TREND_LAB',
   LISTING_GENERATOR = 'LISTING_GENERATOR',
   LIBRARY = 'LIBRARY',
+  IDEAS_VAULT = 'IDEAS_VAULT',
   SUBSCRIPTION = 'SUBSCRIPTION',
   REFUNDS = 'REFUNDS',
   TERMS = 'TERMS',
@@ -166,4 +168,18 @@ export interface SavedListing extends MerchPackage {
   createdAt: number;
   expiresAt: number;
   tierAtCreation: string;
+}
+
+// Ideas Vault - stores trend ideas for later use
+export interface SavedIdea {
+  id: string;
+  trend: TrendData;
+  savedAt: number;
+  expiresAt: number; // Expiration based on user's subscription tier
+  tierAtCreation: string; // The tier the user was on when the idea was saved
+  searchQuery: string; // The original search query that generated this idea
+  viralityLevel: number; // The virality level used during search
+  notes?: string; // Optional user notes
+  isUsed?: boolean; // Track if this idea was already used to create a listing
+  usedAt?: number; // When it was used
 }
