@@ -597,22 +597,51 @@ export const searchTrends = async (niche: string, viralityLevel: number = 50, on
     const agentTime = Date.now() - startTime;
     console.log(`[RESEARCH] 3 agents completed in ${agentTime}ms`);
 
-    // Track which agents returned data
+    // Track which agents returned data and which failed
     const activeSources: string[] = [];
-    if (googleData) {
+    const failedSources: string[] = [];
+
+    if (googleData && googleData.length > 100) {
         activeSources.push('Google');
-        console.log(`[RESEARCH] Google: ${googleData.length} chars`);
-    }
-    if (braveData) {
-        activeSources.push('Brave');
-        console.log(`[RESEARCH] Brave: ${braveData.length} chars`);
-    }
-    if (grokData) {
-        activeSources.push('Grok');
-        console.log(`[RESEARCH] Grok: ${grokData.length} chars`);
+        console.log(`[RESEARCH] Google: ${googleData.length} chars ✓`);
+    } else {
+        failedSources.push('Google');
+        console.log(`[RESEARCH] Google: FAILED or empty`);
     }
 
-    if (onStatusUpdate) onStatusUpdate(`Agents returned: ${activeSources.join(', ')}`);
+    if (braveData && braveData.length > 100) {
+        activeSources.push('Brave');
+        console.log(`[RESEARCH] Brave: ${braveData.length} chars ✓`);
+    } else {
+        failedSources.push('Brave');
+        console.log(`[RESEARCH] Brave: FAILED or empty`);
+    }
+
+    if (grokData && grokData.length > 100) {
+        activeSources.push('Grok');
+        console.log(`[RESEARCH] Grok: ${grokData.length} chars ✓`);
+    } else {
+        failedSources.push('Grok');
+        console.log(`[RESEARCH] Grok: FAILED or empty`);
+    }
+
+    // If ALL agents failed, throw an error - we can't give good results without real data
+    if (activeSources.length === 0) {
+        const errorMsg = `All search agents failed. Please check your API keys:\n` +
+            `- NEXT_PUBLIC_BRAVE_API_KEY: ${process.env.NEXT_PUBLIC_BRAVE_API_KEY ? 'Set' : 'MISSING'}\n` +
+            `- NEXT_PUBLIC_GROK_API_KEY: ${process.env.NEXT_PUBLIC_GROK_API_KEY ? 'Set' : 'MISSING'}\n` +
+            `Failed agents: ${failedSources.join(', ')}`;
+        console.error(`[RESEARCH] ${errorMsg}`);
+        throw new Error('Search agents failed - unable to fetch live trend data. Check your Brave and Grok API keys.');
+    }
+
+    // Warn if some agents failed
+    if (failedSources.length > 0) {
+        console.warn(`[RESEARCH] ⚠️ Some agents failed: ${failedSources.join(', ')}`);
+        if (onStatusUpdate) onStatusUpdate(`⚠️ ${failedSources.join(', ')} failed - using ${activeSources.join(', ')} only`);
+    } else {
+        if (onStatusUpdate) onStatusUpdate(`All agents returned: ${activeSources.join(', ')}`);
+    }
 
     // ========================================
     // PHASE 2: RABBIT HOLE (Optional Deep Dive)

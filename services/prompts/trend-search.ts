@@ -84,37 +84,55 @@ VIRALITY LEVEL: ${viralityLevel}% (0=mainstream, 100=predictive)
 ${strategyContext}
 
 ═══════════════════════════════════════════════════════════════
+⚠️ CRITICAL: YOU MUST ONLY USE DATA FROM AGENT REPORTS BELOW ⚠️
+═══════════════════════════════════════════════════════════════
+
+You are STRICTLY FORBIDDEN from:
+- Making up trends from your training data
+- Suggesting generic evergreen topics (like "coffee lovers", "dog mom", "gym motivation")
+- Inventing customer quotes that aren't in the agent reports
+- Suggesting topics that don't have SPECIFIC citations from the reports below
+
+If an agent says "No data available" - that source provides ZERO trends.
+You can ONLY extract trends that have REAL citations and quotes from the live search results below.
+
+═══════════════════════════════════════════════════════════════
 INTELLIGENCE REPORTS FROM YOUR 3 AGENTS
 (Each agent searched INDEPENDENTLY - cross-reference their findings)
 ═══════════════════════════════════════════════════════════════
 
 --- GOOGLE AGENT (News & Current Events) ---
-${googleData || "GOOGLE AGENT: No data available"}
+${googleData || "GOOGLE AGENT: No data available - DO NOT invent trends from this source"}
 
 --- BRAVE AGENT (Web Search & Discussions) ---
-${braveData || "BRAVE AGENT: No data available"}
+${braveData || "BRAVE AGENT: No data available - DO NOT invent trends from this source"}
 
 --- GROK AGENT (Live X/Twitter & Social) ---
-${grokData || "GROK AGENT: No data available"}
+${grokData || "GROK AGENT: No data available - DO NOT invent trends from this source"}
 
 --- RABBIT HOLE (Deep Exploration) ---
 ${rabbitHoleData || "RABBIT HOLE: No deep dive conducted"}
 
 ═══════════════════════════════════════════════════════════════
-YOUR TASK: SYNTHESIZE & DECIDE
+YOUR TASK: SYNTHESIZE FROM AGENT DATA ONLY
 ═══════════════════════════════════════════════════════════════
 
 Cross-reference all 3 agent findings and identify the BEST opportunities.
 
+⚠️ MANDATORY VERIFICATION FOR EACH TREND:
+- Can you point to a SPECIFIC URL or quote from the agent reports above?
+- If NO - do NOT include that trend
+- Every trend MUST have at least one real source from the reports
+
 STRATEGY FOR THIS SESSION (Virality: ${viralityLevel}%):
-${viralityLevel >= 55 
+${viralityLevel >= 55
   ? `
   **PRIORITY: HIGH SIGNAL & UNIQUE DISCOVERIES**
   - We are looking for "Breakout" and "Predictive" trends.
   - **DO NOT** filter for consensus. If only ONE agent found a strong signal (e.g., a specific Reddit thread), **INCLUDE IT**.
   - Value "Intensity of Engagement" over "Number of Sources".
   - It is better to be EARLY and RIGHT about a niche topic than late and safe with a generic one.
-  ` 
+  `
   : `
   **PRIORITY: HIGH CONFIDENCE & CONSENSUS**
   - We are looking for "Safe" and "Rising" trends.
@@ -126,9 +144,10 @@ ${viralityLevel >= 55
 
 VALIDATION CHECKLIST:
 ✓ Is this trend actually from ${date.month} ${date.year}?
-✓ Does it have current sources/citations?
+✓ Does it have current sources/citations FROM THE AGENT REPORTS ABOVE?
 ✓ Would someone searching TODAY find this relevant?
-✓ Is there evidence of real community engagement?
+✓ Is there evidence of real community engagement IN THE REPORTS?
+✓ Can you quote the EXACT source from the agent data?
 
 ${viralityLevel >= 55 ? "When in doubt, prefer FRESH/UNIQUE over POPULAR/CONSENSUS." : "When in doubt, prefer PROVEN/POPULAR over UNVERIFIED."}
 
@@ -202,8 +221,11 @@ Return JSON Array:
     "shirtColorReason": "string - why this color works for this design and audience",
     "alternativeShirtColors": ["array of other colors that would work"],
     "amazonSafe": true,
-    "sources": ["array of sources that contributed: Google, Brave, Grok, Rabbit Hole"]
+    "sources": ["array of sources that contributed: Google, Brave, Grok, Rabbit Hole"],
+    "sourceUrl": "string - REQUIRED: the primary URL from the agent report that proves this trend is real"
   }
 ]
+
+⚠️ IMPORTANT: If you cannot provide a real sourceUrl from the agent reports above, DO NOT include that trend.
 `;
 }
