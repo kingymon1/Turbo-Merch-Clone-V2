@@ -24,6 +24,24 @@ const getAI = (): GoogleGenAI => {
 const TEXT_MODEL = AI_CONFIG.models.text;
 const IMAGE_MODEL = AI_CONFIG.models.image;
 
+// --- HELPER: Timeout wrapper to prevent infinite hangs ---
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+        )
+    ]);
+};
+
+// Default timeouts (in milliseconds)
+const API_TIMEOUTS = {
+    search: 60000,      // 60 seconds for search operations
+    listing: 45000,     // 45 seconds for listing generation
+    image: 120000,      // 120 seconds for image generation
+    research: 60000,    // 60 seconds for design research
+};
+
 // --- HELPER: Get current date context ---
 const getCurrentDateContext = () => {
     const now = new Date();
@@ -645,13 +663,17 @@ Prioritize SPECIFICITY over generality - "Frog TikTok aesthetic" is better than 
     const ai = getAI();
 
     try {
-        const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }], // Enable Google Search grounding
-            }
-        });
+        const response = await withTimeout(
+            ai.models.generateContent({
+                model: TEXT_MODEL,
+                contents: prompt,
+                config: {
+                    tools: [{ googleSearch: {} }], // Enable Google Search grounding
+                }
+            }),
+            API_TIMEOUTS.search,
+            'Google search timed out after 60 seconds'
+        );
 
         const content = response.text || "";
 
@@ -1846,27 +1868,31 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
   `;
 
     const ai = getAI();
-    const response = await ai.models.generateContent({
-        model: TEXT_MODEL,
-        contents: prompt,
-        config: {
-            systemInstruction: COMPLIANCE_SYSTEM_INSTRUCTION,
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING },
-                    brand: { type: Type.STRING },
-                    bullet1: { type: Type.STRING },
-                    bullet2: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
-                    imagePrompt: { type: Type.STRING },
-                    designText: { type: Type.STRING },
+    const response = await withTimeout(
+        ai.models.generateContent({
+            model: TEXT_MODEL,
+            contents: prompt,
+            config: {
+                systemInstruction: COMPLIANCE_SYSTEM_INSTRUCTION,
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        title: { type: Type.STRING },
+                        brand: { type: Type.STRING },
+                        bullet1: { type: Type.STRING },
+                        bullet2: { type: Type.STRING },
+                        description: { type: Type.STRING },
+                        keywords: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        imagePrompt: { type: Type.STRING },
+                        designText: { type: Type.STRING },
+                    }
                 }
-            }
-        },
-    });
+            },
+        }),
+        API_TIMEOUTS.listing,
+        'Listing generation timed out after 45 seconds'
+    );
 
     // Clean markdown from response
     let cleanedText = (response.text || '{}').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
@@ -2092,13 +2118,17 @@ export const performDesignResearch = async (trend: TrendData, promptMode: Prompt
 
     try {
         const ai = getAI();
-        const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
-            contents: prompt,
-            config: {
-                responseMimeType: "application/json",
-            },
-        });
+        const response = await withTimeout(
+            ai.models.generateContent({
+                model: TEXT_MODEL,
+                contents: prompt,
+                config: {
+                    responseMimeType: "application/json",
+                },
+            }),
+            API_TIMEOUTS.research,
+            'Design research timed out after 60 seconds'
+        );
 
         const rawText = response.text || '';
         console.log('[Design Research] Raw response length:', rawText.length);
