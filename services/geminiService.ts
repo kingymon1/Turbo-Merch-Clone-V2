@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TrendData, GeneratedListing, DesignResearch, PromptMode } from '../types';
-import { COMPLIANCE_SYSTEM_INSTRUCTION, NATURAL_LANGUAGE_INSTRUCTION } from './compliance';
+import { COMPLIANCE_SYSTEM_INSTRUCTION, NATURAL_LANGUAGE_INSTRUCTION, sanitizeListing } from './compliance';
 import { COMPLIANCE_RULES } from './design-system/compliance';
 import { AI_CONFIG, TREND_CONFIG, API_ENDPOINTS, DESIGN_AESTHETICS } from '../config';
 import { T_SHIRT_DESIGN_EDUCATION } from './prompts/design-education';
@@ -446,7 +446,7 @@ For each finding:
 GO WILD. BE CURIOUS. FIND THE GEMS.`
                     }
                 ],
-                model: "grok-3",
+                model: "grok-4",
                 stream: false,
                 temperature: 1.0, // Maximum creativity
                 search_parameters: searchParameters
@@ -1026,7 +1026,7 @@ Quote EXACTLY what people are saying - the language matters.
 Return SPECIFIC findings with actual quotes, usernames, and sources.`
                     }
                 ],
-                model: "grok-3",
+                model: "grok-4",
                 stream: false,
                 temperature: 0.3,
                 search_parameters: searchParameters
@@ -1432,13 +1432,18 @@ ${deepDiveResults[i]}
     const ai = getAI();
 
     try {
-        const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-            },
-        });
+        const response = await withTimeout(
+            ai.models.generateContent({
+                model: TEXT_MODEL,
+                contents: prompt,
+                config: {
+                    tools: [{ googleSearch: {} }],
+                    maxOutputTokens: 8192, // Ensure we have enough tokens for full JSON
+                },
+            }),
+            API_TIMEOUTS.search,
+            'Trend synthesis timed out. Please try again.'
+        );
 
         const text = response.text;
         console.log('Gemini API Response Text:', text?.substring(0, 500)); // Log first 500 chars
@@ -1770,7 +1775,8 @@ export const generateListingVariation = async (
         designText: parsed.designText || sourceListing.designText,
     };
 
-    return listing;
+    // Enforce compliance constraints
+    return sanitizeListing(listing);
 };
 
 export const generateListing = async (trend: TrendData): Promise<GeneratedListing> => {
@@ -1915,7 +1921,8 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
         designText: parsed.designText || trend.designText || trend.topic?.split(' ').slice(0, 3).join(' ').toUpperCase() || 'DESIGN',
     };
 
-    return listing;
+    // Enforce compliance constraints
+    return sanitizeListing(listing);
 };
 
 const optimizeDesignPrompt = async (subject: string, style: string, typographyStyle?: string, text?: string): Promise<string> => {

@@ -1,5 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
+import { sanitizeDesignText } from '@/services/compliance';
+
+// Vercel Pro timeout
+export const maxDuration = 60;
+
+// Timeout wrapper to prevent hanging
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error(errorMessage)), timeoutMs)
+        )
+    ]);
+};
 
 // Initialize Gemini - use same env vars as main service
 const getAI = (): GoogleGenAI => {
@@ -235,17 +249,21 @@ ${constraints?.some((c: any) => c.type === 'element') ?
 BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
 `;
 
-        // Call Gemini with Google Search grounding
+        // Call Gemini with Google Search grounding (with timeout)
         const ai = getAI();
 
-        const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-                temperature: interpretation >= 75 ? 1.0 : interpretation >= 50 ? 0.8 : 0.6,
-            },
-        });
+        const response = await withTimeout(
+            ai.models.generateContent({
+                model: TEXT_MODEL,
+                contents: prompt,
+                config: {
+                    tools: [{ googleSearch: {} }],
+                    temperature: interpretation >= 75 ? 1.0 : interpretation >= 50 ? 0.8 : 0.6,
+                },
+            }),
+            55000, // 55 second timeout (before Vercel's 60s limit)
+            'Trend Lab search timed out. Please try again.'
+        );
 
         const text = response.text;
 
@@ -259,12 +277,20 @@ BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
         const end = cleanJson.lastIndexOf(']');
 
         if (start === -1 || end === -1) {
-            console.error('[TREND LAB] No JSON array found in response');
-            throw new Error('Invalid response format');
+            console.error('[TREND LAB] No JSON array found in response:', text.substring(0, 500));
+            throw new Error('Invalid response format - no JSON array found');
         }
 
         cleanJson = cleanJson.substring(start, end + 1);
-        let trends = JSON.parse(cleanJson);
+
+        let trends;
+        try {
+            trends = JSON.parse(cleanJson);
+        } catch (parseError) {
+            console.error('[TREND LAB] JSON parse failed:', parseError);
+            console.error('[TREND LAB] Raw JSON (first 500 chars):', cleanJson.substring(0, 500));
+            throw new Error('Failed to parse AI response. Please try again.');
+        }
 
         // Post-process: Enforce phrase constraint if set to strict
         const phraseConstraint = constraints?.find((c: any) => c.type === 'phrase');
@@ -272,7 +298,13 @@ BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
             console.log(`[TREND LAB] Enforcing required phrase: "${phraseConstraint.value}"`);
             trends = trends.map((trend: any) => ({
                 ...trend,
-                designText: phraseConstraint.value // Force the exact phrase
+                designText: sanitizeDesignText(phraseConstraint.value)
+            }));
+        } else {
+            // Sanitize all designText fields (enforce 5 word max, banned words, etc.)
+            trends = trends.map((trend: any) => ({
+                ...trend,
+                designText: sanitizeDesignText(trend.designText || '')
             }));
         }
 
