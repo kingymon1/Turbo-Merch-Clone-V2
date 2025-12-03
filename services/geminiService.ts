@@ -1633,49 +1633,56 @@ export const generateListingVariation = async (
     sourceListing: GeneratedListing,
     variationIndex: number
 ): Promise<GeneratedListing> => {
+    // Extract original keywords to pass to AI
+    const originalKeywords = Array.isArray(sourceListing.keywords)
+        ? sourceListing.keywords.join(', ')
+        : 'Not available';
+
     const prompt = `
-    You are an expert Amazon Merch seller creating a SLIGHT VARIATION of a winning design.
+    You are creating a NICHE SATURATION variation for Amazon Merch.
 
-    This is for NICHE SATURATION - like how searching "chillin with my snowmies t-shirt" on Amazon
-    shows 2000+ similar designs all competing for the same keywords.
-
-    ORIGINAL WINNING DESIGN (keep this concept!):
+    ORIGINAL WINNING DESIGN - COPY THESE CLOSELY:
     Title: ${sourceListing.title}
     Brand: ${sourceListing.brand}
-    Design Text: "${sourceListing.designText}"
+    Design Text on Shirt: "${sourceListing.designText}"
+    Bullet 1: ${sourceListing.bullet1 || 'Not provided'}
+    Bullet 2: ${sourceListing.bullet2 || 'Not provided'}
+    Description: ${sourceListing.description || 'Not provided'}
+    Keywords: ${originalKeywords}
     Image Concept: ${sourceListing.imagePrompt || trend.visualStyle}
 
-    YOUR MISSION - VARIATION #${variationIndex}:
-    Create a SLIGHT variation that targets the EXACT SAME search terms but looks different enough
-    to be a separate listing. Think of it like creating another competitor in the same niche.
+    VARIATION #${variationIndex} INSTRUCTIONS:
 
-    WHAT TO KEEP THE SAME:
-    - The core slogan/text (keep "${sourceListing.designText}" or make TINY tweaks like punctuation, capitalization)
-    - The same keywords (these are what customers search for!)
-    - The same target audience and vibe
-    - The same general concept
+    KEEP EXACTLY THE SAME:
+    - designText: Use EXACTLY "${sourceListing.designText}" (copy it character for character)
+    - keywords: Copy ALL the original keywords listed above
+    - The same niche, audience, and selling points
 
-    WHAT TO VARY SLIGHTLY:
-    - Visual execution (different illustration style, layout, or graphic treatment)
-    - Title wording (rearrange words, add synonyms, but keep main keywords)
-    - Brand name (create a new micro-brand)
-    - Minor text tweaks if any (e.g., "Chillin With My Snowmies" vs "Chillin' With My Snowmies")
+    VARY ONLY THESE:
+    - title: Rearrange words slightly but keep all main keywords
+    - brand: Create a new 3+ word brand name
+    - bullet1/bullet2: Reword slightly, same selling points
+    - description: Reword slightly, same message
+    - imagePrompt: DIFFERENT visual style for the SAME concept. Pick ONE:
+      * Style ${variationIndex % 4 + 1}: ${['Cartoon/illustrated style', 'Minimalist/clean style', 'Retro/vintage style', 'Bold/graphic style'][variationIndex % 4]}
 
-    VARIATION STRATEGIES FOR IMAGE (pick one):
-    1. Different art style (cartoon vs realistic vs minimalist vs retro)
-    2. Different composition (centered vs off-center, single element vs multiple)
-    3. Different color palette (same concept, different colors)
-    4. Different typography treatment (same text, different font style)
+    CRITICAL FOR imagePrompt:
+    - Must describe the SAME subject matter as original
+    - Must include the text "${sourceListing.designText}" prominently
+    - Only change the artistic style, not the concept
+    - Example: If original was "snowman with text", keep "snowman with text" but in different art style
 
-    REQUIREMENTS:
-    - Design Text: Keep "${sourceListing.designText}" OR make only tiny variations
-    - Title: 50-60 chars, MUST include the same main keywords, just rearranged/reworded
-    - Keywords: Use the SAME keywords as original (this is critical for niche saturation!)
-    - imagePrompt: Describe a visually DIFFERENT execution of the SAME concept
-    - Brand: New micro-brand name (3+ words)
-    - Bullets: 200-256 chars each, similar selling points
-
-    Return JSON with: title, brand, bullet1, bullet2, description, keywords[], imagePrompt, designText
+    Return complete JSON with ALL fields filled:
+    {
+      "title": "...",
+      "brand": "...",
+      "bullet1": "200-256 chars...",
+      "bullet2": "200-256 chars...",
+      "description": "...",
+      "keywords": ["copy", "all", "original", "keywords"],
+      "imagePrompt": "detailed prompt for same concept in ${['cartoon', 'minimalist', 'retro', 'bold graphic'][variationIndex % 4]} style with text ${sourceListing.designText}",
+      "designText": "${sourceListing.designText}"
+    }
     `;
 
     const response = await getAI().models.generateContent({

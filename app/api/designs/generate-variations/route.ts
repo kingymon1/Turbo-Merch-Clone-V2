@@ -203,11 +203,11 @@ async function generateSingleVariation(
   const variationId = randomUUID();
 
   try {
-    // Modify the trend slightly for variation
+    // Pass source listing context for niche saturation
     const variedTrend = {
       ...baseTrend,
       _variationIndex: variationIndex,
-      _variationNote: `Create a DIFFERENT but related design. This is variation #${variationIndex}. Use the same theme but vary the visual approach, typography, and exact text.`,
+      _variationNote: `Niche saturation variation #${variationIndex}. Keep the SAME concept and keywords, just vary the visual style.`,
     };
 
     // Generate varied listing
