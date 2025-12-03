@@ -1432,13 +1432,18 @@ ${deepDiveResults[i]}
     const ai = getAI();
 
     try {
-        const response = await ai.models.generateContent({
-            model: TEXT_MODEL,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-            },
-        });
+        const response = await withTimeout(
+            ai.models.generateContent({
+                model: TEXT_MODEL,
+                contents: prompt,
+                config: {
+                    tools: [{ googleSearch: {} }],
+                    maxOutputTokens: 8192, // Ensure we have enough tokens for full JSON
+                },
+            }),
+            API_TIMEOUTS.search,
+            'Trend synthesis timed out. Please try again.'
+        );
 
         const text = response.text;
         console.log('Gemini API Response Text:', text?.substring(0, 500)); // Log first 500 chars
