@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
+import { sanitizeDesignText } from '@/services/compliance';
 
 // Initialize Gemini - use same env vars as main service
 const getAI = (): GoogleGenAI => {
@@ -272,7 +273,13 @@ BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
             console.log(`[TREND LAB] Enforcing required phrase: "${phraseConstraint.value}"`);
             trends = trends.map((trend: any) => ({
                 ...trend,
-                designText: phraseConstraint.value // Force the exact phrase
+                designText: sanitizeDesignText(phraseConstraint.value)
+            }));
+        } else {
+            // Sanitize all designText fields (enforce 5 word max, banned words, etc.)
+            trends = trends.map((trend: any) => ({
+                ...trend,
+                designText: sanitizeDesignText(trend.designText || '')
             }));
         }
 
