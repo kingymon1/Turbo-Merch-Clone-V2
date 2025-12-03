@@ -1099,7 +1099,14 @@ Return JSON:
                 tools: [{ googleSearch: {} }]
             }
         });
-        return JSON.parse(response.text || "null");
+        // Clean markdown from response
+        let cleanedText = (response.text || "null").replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        const start = cleanedText.indexOf('{');
+        const end = cleanedText.lastIndexOf('}');
+        if (start !== -1 && end !== -1) {
+            cleanedText = cleanedText.substring(start, end + 1);
+        }
+        return JSON.parse(cleanedText);
     } catch (e) {
         console.warn("Rabbit hole exploration failed", e);
         return null;
@@ -1719,7 +1726,14 @@ export const generateListingVariation = async (
         },
     });
 
-    return JSON.parse(response.text || '{}') as GeneratedListing;
+    // Clean markdown from response
+    let cleanedText = (response.text || '{}').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const start = cleanedText.indexOf('{');
+    const end = cleanedText.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+        cleanedText = cleanedText.substring(start, end + 1);
+    }
+    return JSON.parse(cleanedText) as GeneratedListing;
 };
 
 export const generateListing = async (trend: TrendData): Promise<GeneratedListing> => {
@@ -1839,7 +1853,14 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
         },
     });
 
-    return JSON.parse(response.text || '{}') as GeneratedListing;
+    // Clean markdown from response
+    let cleanedText = (response.text || '{}').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+    const start = cleanedText.indexOf('{');
+    const end = cleanedText.lastIndexOf('}');
+    if (start !== -1 && end !== -1) {
+        cleanedText = cleanedText.substring(start, end + 1);
+    }
+    return JSON.parse(cleanedText) as GeneratedListing;
 };
 
 const optimizeDesignPrompt = async (subject: string, style: string, typographyStyle?: string, text?: string): Promise<string> => {
@@ -2051,7 +2072,17 @@ export const performDesignResearch = async (trend: TrendData, promptMode: Prompt
             },
         });
 
-        const research = JSON.parse(response.text || '{}') as DesignResearch;
+        // Clean markdown code blocks from response before parsing
+        let cleanedText = (response.text || '{}').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+
+        // Find JSON object boundaries if wrapped in extra text
+        const start = cleanedText.indexOf('{');
+        const end = cleanedText.lastIndexOf('}');
+        if (start !== -1 && end !== -1) {
+            cleanedText = cleanedText.substring(start, end + 1);
+        }
+
+        const research = JSON.parse(cleanedText) as DesignResearch;
         console.log(`✓ Design approach determined: ${research.aesthetic} `);
         return research;
     } catch (error) {
