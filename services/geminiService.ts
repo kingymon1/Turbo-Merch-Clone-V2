@@ -7,15 +7,14 @@ import { T_SHIRT_DESIGN_EDUCATION } from './prompts/design-education';
 import { buildTrendSearchPrompt } from './prompts/trend-search';
 import { ARCHETYPES, getArchetypeForTrend } from './design-system/archetypes';
 
-// Lazy initialization of API client to prevent errors when env var is missing
+// Lazy initialization of API client
 // SECURITY: Prefer server-side GEMINI_API_KEY over client-exposed NEXT_PUBLIC_API_KEY
 let aiClient: GoogleGenAI | null = null;
-const getAI = () => {
+const getAI = (): GoogleGenAI => {
     if (!aiClient) {
         const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
         if (!apiKey) {
-            console.warn('⚠️ No API Key found - Running in MOCK MODE');
-            return null;
+            throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY environment variable is required');
         }
         aiClient = new GoogleGenAI({ apiKey });
     }
@@ -253,36 +252,6 @@ BE CREATIVE. BE CURIOUS. FIND WHAT OTHERS MISS.
     console.log(`[WILD] Starting underground exploration for "${query}"`);
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning mock trend search results');
-        return `
-        [
-            {
-                "topic": "Mock Trend ${query}",
-                "platform": "TikTok",
-                "volume": "High",
-                "sentiment": "Positive",
-                "keywords": ["mock", "trend", "test"],
-                "description": "This is a mock trend result for testing purposes.",
-                "visualStyle": "Retro",
-                "typographyStyle": "Bold",
-                "designStyle": "Graphic",
-                "colorPalette": "Vibrant",
-                "designEffects": ["Distressed"],
-                "customerPhrases": ["Mock phrase 1", "Mock phrase 2"],
-                "purchaseSignals": ["Giftable"],
-                "designText": "MOCK DESIGN",
-                "audienceProfile": "General",
-                "recommendedShirtColor": "Black",
-                "shirtColorReason": "Popular",
-                "alternativeShirtColors": ["Navy"],
-                "amazonSafe": true,
-                "sourceUrl": "http://example.com",
-                "interpretationLevel": "Commercial"
-            }
-        ]
-        `;
-    }
 
     try {
         const response = await ai.models.generateContent({
@@ -350,36 +319,6 @@ Find 5+ unexpected crossovers. The weirder the better. Quote exact phrases from 
 `;
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning mock trend analysis');
-        return `
-        [
-            {
-                "topic": "Mock Analysis ${query}",
-                "platform": "Instagram",
-                "volume": "Rising",
-                "sentiment": "Excited",
-                "keywords": ["mock", "analysis"],
-                "description": "Mock analysis description.",
-                "visualStyle": "Minimalist",
-                "typographyStyle": "Sans-serif",
-                "designStyle": "Clean",
-                "colorPalette": "Pastel",
-                "designEffects": ["None"],
-                "customerPhrases": ["Love this"],
-                "purchaseSignals": ["Trending"],
-                "designText": "MOCK ANALYSIS",
-                "audienceProfile": "Teens",
-                "recommendedShirtColor": "White",
-                "shirtColorReason": "Clean look",
-                "alternativeShirtColors": ["Grey"],
-                "amazonSafe": true,
-                "sourceUrl": "http://example.com",
-                "interpretationLevel": "Niche"
-            }
-        ]
-        `;
-    }
 
     try {
         const response = await ai.models.generateContent({
@@ -704,25 +643,6 @@ Prioritize SPECIFICITY over generality - "Frog TikTok aesthetic" is better than 
     console.log(`[GOOGLE] Starting independent search for "${query}" (virality: ${viralityLevel})`);
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning mock Google search results');
-        return `
-        === GOOGLE SEARCH INTELLIGENCE (${date.fullDate}) ===
-        Query: "${query}"
-        Search Focus: ${searchFocus}
-        Time Window: ${timeContext}
-
-        - What you found: Mock Google Trend for "${query}"
-        - Where you found it: MockBlog.com
-        - When it was posted/published: ${date.fullDate}
-        - Why it matters: Represents a simulated emerging trend.
-        - Customer language quotes: "This is so cool!", "Need this now!"
-        - What makes it UNIQUE or SURPRISING: It's a mock result!
-
-        --- SOURCES FOUND ---
-        [1] Mock Source: http://mockgoogle.com/trend
-        `;
-    }
 
     try {
         const response = await ai.models.generateContent({
@@ -811,47 +731,6 @@ const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<
 
     console.log(`[BRAVE] Searching ${numAngles} angles: ${searchAngles.join(', ')}`);
     console.log(`[BRAVE] Freshness: ${freshness}, Community: ${searchCommunity}`);
-
-    const ai = getAI(); // Brave agent doesn't use AI directly, but the mock check is for the API key.
-    if (!apiKey) { // Re-checking apiKey as per original logic for Brave
-        console.log('🎭 MOCK MODE: Returning mock Brave search results');
-        return `
-        === BRAVE WEB INTELLIGENCE (${date.fullDate}) ===
-        Query: "${query}"
-        Freshness: ${freshness === 'pd' ? 'Last 24 hours' : freshness === 'pw' ? 'Past week' : 'Past month'}
-
-        --- COMMUNITY DISCUSSIONS (1) ---
-        (These are early signals - pay attention to language and sentiment)
-
-        [http://mockbravecommunity.com/thread]
-        Title: Mock Discussion about ${query}
-        Content: People are saying "This is the next big thing!" and "I love this community."
-
-        --- WEB RESULTS (2) ---
-
-        [http://mockbraveweb.com/article1]
-        Title: Article on ${query} trends
-        Content: This article discusses the rising popularity of ${query}.
-        Extra: "Key phrase 1" | "Key phrase 2"
-        Age: 1 day ago
-
-        [http://mockbraveweb.com/article2]
-        Title: Another take on ${query}
-        Content: Exploring the cultural impact of ${query}.
-        Extra: "Insightful quote"
-        Age: 3 days ago
-
-        --- NEWS RESULTS (1) ---
-
-        [http://mockbravenews.com/report]
-        Source: MockNewsOutlet.com
-        Title: News Report on ${query}
-        Content: Latest updates on ${query} in the media.
-        Age: 2 days ago
-
-        INSTRUCTION: Extract exact phrases, customer language, and trending topics from these results.
-        `;
-    }
 
     try {
         // Build PARALLEL requests for ALL search angles
@@ -1074,27 +953,6 @@ const fetchGrokSignals = async (query: string, viralityLevel: number): Promise<s
     console.log(`[GROK] Live search enabled: ${dateRange.from_date} to ${dateRange.to_date}`);
     console.log(`[GROK] X filters: likes >= ${xSourceConfig.post_favorite_count || 'none'}, views >= ${xSourceConfig.post_view_count || 'none'}`);
 
-    const ai = getAI(); // Grok agent doesn't use AI directly, but the mock check is for the API key.
-    if (!apiKey) { // Re-checking apiKey as per original logic for Grok
-        console.log('🎭 MOCK MODE: Returning mock Grok search results');
-        return `
-        === GROK LIVE X/TWITTER INTELLIGENCE (${date.fullDate}) ===
-        Query: "${query}"
-        Date Range: ${dateRange.from_date} to ${dateRange.to_date}
-        Sources Searched: 3
-
-        - Real post: "@MockUser This ${query} trend is wild! #${query} #viral"
-        - Viral thread: "Thread on ${query} memes, so many laughs!"
-        - Community reaction: "Our ${query} community is buzzing with new ideas."
-        - Meme: "That ${query} meme with the cat is everything."
-        - Purchase intent: "I'd totally buy a shirt with that ${query} design!"
-
-        --- SOURCES CITED ---
-        [1] http://mockgrok.com/tweet1
-        [2] http://mockgrok.com/thread
-        `;
-    }
-
     try {
         const response = await fetch('/api/grok', {
             method: "POST",
@@ -1231,14 +1089,6 @@ Return JSON:
 `;
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning mock rabbit hole exploration');
-        return {
-            direction: `Mock rabbit hole for ${originalQuery}`,
-            searchQuery: `mock ${originalQuery} subculture`,
-            reasoning: `This is a mock rabbit hole to simulate deeper exploration.`
-        };
-    }
 
     try {
         const response = await ai.models.generateContent({
@@ -1390,36 +1240,6 @@ BE CREATIVE. SURPRISE US. FIND THE GEMS NOBODY ELSE WOULD FIND.
 `;
 
         const ai = getAI();
-        if (!ai) {
-            console.log('🎭 MOCK MODE: Returning mock deep dive');
-            return [
-                {
-                    "topic": `Mock Test Mode Trend for ${niche}`,
-                    "platform": "Mock Social",
-                    "volume": "Predictive",
-                    "sentiment": "Enthusiastic",
-                    "keywords": ["mock", "test", "underground"],
-                    "description": "This is a mock trend generated in test mode for synthesis.",
-                    "visualStyle": "Abstract",
-                    "typographyStyle": "Handwritten",
-                    "designStyle": "Minimalist",
-                    "colorPalette": "Monochromatic",
-                    "designEffects": ["Grainy"],
-                    "customerPhrases": ["So me!", "Gotta have it"],
-                    "purchaseSignals": ["Want this on a tee"],
-                    "designText": "MOCK TEST",
-                    "audienceProfile": "Early Adopters",
-                    "recommendedShirtColor": "Black",
-                    "shirtColorReason": "Versatile",
-                    "alternativeShirtColors": ["White"],
-                    "amazonSafe": true,
-                    "sources": ["Mock Agent"],
-                    "sourceUrl": "http://mocktest.com",
-                    "interpretationLevel": "Niche",
-                    "undergroundLevel": 8
-                }
-            ];
-        }
 
         try {
             const response = await ai.models.generateContent({
@@ -1581,35 +1401,6 @@ ${deepDiveResults[i]}
     console.log(`[RESEARCH] Synthesis prompt: ${prompt.length} chars`);
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning mock synthesis results');
-        return [
-            {
-                "topic": `Mock Trend for ${niche}`,
-                "platform": "Mock Platform",
-                "volume": "Rising",
-                "sentiment": "Positive",
-                "keywords": ["mock", "trend", "synthesis"],
-                "description": "This is a mock trend generated by the synthesis phase.",
-                "visualStyle": "Modern",
-                "typographyStyle": "Sans-serif",
-                "designStyle": "Clean",
-                "colorPalette": "Bright",
-                "designEffects": ["Gradient"],
-                "customerPhrases": ["Love it!", "So true"],
-                "purchaseSignals": ["Must buy"],
-                "designText": "MOCK SYNTHESIS",
-                "audienceProfile": "General Audience",
-                "recommendedShirtColor": "White",
-                "shirtColorReason": "Popular",
-                "alternativeShirtColors": ["Black"],
-                "amazonSafe": true,
-                "sources": ["Mock Agent"],
-                "sourceUrl": "http://mocksynthesis.com",
-                "interpretationLevel": "Commercial"
-            }
-        ];
-    }
 
     try {
         const response = await ai.models.generateContent({
@@ -1832,10 +1623,6 @@ ${deepDiveResults[i]}
 
 export const analyzeNicheDeeply = async (niche: string): Promise<string> => {
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning mock deep niche analysis');
-        return `Mock analysis for "${niche}": This niche shows strong mock potential with a viral hook around "mock-core" aesthetics.`;
-    }
     try {
         const response = await ai.models.generateContent({
             model: TEXT_MODEL,
@@ -1910,21 +1697,6 @@ export const generateListingVariation = async (
     `;
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 Generating MOCK listing variation...');
-        await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate delay
-        return {
-            title: `[MOCK] ${sourceListing.title} - V${variationIndex}`,
-            brand: `Mock Brand ${variationIndex}`,
-            bullet1: `[MOCK] This is a simulated variation of the original design. In a real environment, this would be AI-generated text.`,
-            bullet2: `[MOCK] The style has been adjusted to match the requested variation.`,
-            description: `[MOCK] Full description of the variation #${variationIndex}.`,
-            keywords: [...sourceListing.keywords, "mock", "variation"],
-            refinementInstruction: `[MOCK] Change style to variation style ${variationIndex}`,
-            designText: sourceListing.designText
-        };
-    }
-
     const response = await ai.models.generateContent({
         model: TEXT_MODEL,
         contents: prompt,
@@ -2045,25 +1817,6 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
   `;
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 Generating MOCK listing...');
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
-        return {
-            title: `[MOCK] ${trend.topic} - ${trend.visualStyle}`,
-            brand: `Mock ${trend.platform} Co`,
-            bullet1: `[MOCK] This is a simulated listing for "${trend.topic}". Perfect for ${trend.sentiment} vibes. In a real environment, this would be AI-generated copy that speaks to the community.`,
-            bullet2: `[MOCK] Features ${trend.visualStyle} aesthetic with ${trend.typographyStyle || 'bold'} typography. Designed for fans of ${trend.platform} culture.`,
-            description: `[MOCK] Full description for ${trend.topic}. ${trend.description}. This design captures the essence of the trend with authentic community language.`,
-            keywords: trend.keywords || ['mock', 'design', 'test'],
-            imagePrompt: `${trend.visualStyle} style graphic design featuring ${trend.topic}, ${trend.typographyStyle || 'bold sans-serif'} typography, text says "${trend.designText || trend.topic}", 4500x5400px, black background`,
-            designText: trend.designText || trend.topic.split(' ').slice(0, 3).join(' ').toUpperCase(),
-            price: '19.99'
-        };
-    }
-
-    // The existing code already checks if 'ai' is null.
-    // If 'ai' is not null, it proceeds to call ai.models.generateContent.
-    // This is the intended null check.
     const response = await ai.models.generateContent({
         model: TEXT_MODEL,
         contents: prompt,
@@ -2139,11 +1892,6 @@ const optimizeDesignPrompt = async (subject: string, style: string, typographySt
     `;
 
     const ai = getAI();
-    if (!ai) {
-        console.log('🎭 MOCK MODE: Returning basic prompt');
-        return `${style} style graphic design, ${subject}, vector art, isolated on black background, 4500x5400px`;
-    }
-
     const response = await ai.models.generateContent({
         model: TEXT_MODEL,
         contents: prompt,
@@ -2294,44 +2042,6 @@ export const performDesignResearch = async (trend: TrendData, promptMode: Prompt
 
     try {
         const ai = getAI();
-        if (!ai) {
-            console.log('🎭 Generating MOCK design research...');
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            return {
-                archetypeId: 'bold_statement',
-                aesthetic: 'Modern graphic design',
-                targetDemographic: `${trend.topic} enthusiasts`,
-                designBrief: {
-                    exactText: trend.designText || trend.topic.split(' ').slice(0, 3).join(' ').toUpperCase(),
-                    typography: {
-                        primaryFont: trend.typographyStyle || 'Bold sans-serif',
-                        weight: 'bold',
-                        effects: ['clean', 'modern'],
-                        letterSpacing: 'normal',
-                        hierarchy: 'single level'
-                    },
-                    placement: {
-                        position: 'center chest',
-                        size: 'large 10 inches',
-                        orientation: 'horizontal'
-                    },
-                    visualElements: {
-                        primaryImagery: trend.visualStyle || 'Modern graphic',
-                        style: 'vector illustration',
-                        composition: 'centered bold text',
-                        effects: ['high contrast', 'clean lines']
-                    },
-                    colorStrategy: {
-                        palette: 'monochrome on black background',
-                        contrast: 'high contrast white on black',
-                        meaning: 'bold and impactful'
-                    }
-                },
-                culturalContext: trend.description || `Design for ${trend.topic} community`,
-                referenceStyles: ['Modern graphic design', 'Bold typography', 'Minimalist aesthetic']
-            };
-        }
-
         const response = await ai.models.generateContent({
             model: TEXT_MODEL,
             contents: prompt,
@@ -2645,13 +2355,6 @@ export const refineDesignImage = async (
 
         // Send image + instruction to Gemini for refinement
         const ai = getAI();
-        if (!ai) {
-            console.log('🎭 Generating MOCK refined image...');
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
-            // Return a placeholder image with text overlay
-            return `https://placehold.co/1024x1024/1a1a1a/FFF?text=MOCK+VARIATION+${encodeURIComponent(instruction.substring(0, 20))}`;
-        }
-
         const response = await ai.models.generateContent({
             model: IMAGE_MODEL,
             contents: [
@@ -2715,12 +2418,6 @@ export const generateDesignImage = async (
 
         // Using Gemini image generation (Nano Banana)
         const ai = getAI();
-        if (!ai) {
-            console.log('🎭 Generating MOCK design image...');
-            await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate delay
-            return `https://placehold.co/1024x1024/000000/FFF?text=${encodeURIComponent(textOnDesign || 'MOCK DESIGN')}`;
-        }
-
         const response = await ai.models.generateContent({
             model: IMAGE_MODEL,
             contents: finalPrompt,
@@ -2779,15 +2476,6 @@ export const generateDesignImageEnhanced = async (
             console.log('🖼️  Generating professional design...');
 
             const ai = getAI();
-            if (!ai) {
-                console.log('🎭 MOCK MODE: Returning mock enhanced image');
-                await new Promise(resolve => setTimeout(resolve, 2000));
-                return {
-                    imageUrl: "https://placehold.co/1024x1024/png?text=Mock+Enhanced+Design",
-                    research: research
-                };
-            }
-
             const response = await ai.models.generateContent({
                 model: IMAGE_MODEL,
                 contents: designPrompt,
