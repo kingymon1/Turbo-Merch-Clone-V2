@@ -1624,51 +1624,56 @@ export const analyzeNicheDeeply = async (niche: string): Promise<string> => {
 };
 
 /**
- * Generate a variation of an existing listing
- * Uses the same trend/research but creates a distinctly different design
+ * Generate a SLIGHT variation of an existing listing
+ * Creates near-identical designs for niche saturation (like Amazon sellers do)
+ * Same concept, same keywords, minor visual/text tweaks
  */
 export const generateListingVariation = async (
     trend: TrendData,
     sourceListing: GeneratedListing,
     variationIndex: number
 ): Promise<GeneratedListing> => {
-    const customerPhrasesContext = trend.customerPhrases ? trend.customerPhrases.join(", ") : "Use general slang";
-
     const prompt = `
-    You are an expert Amazon Merch copywriter creating a VARIATION of an existing design.
+    You are an expert Amazon Merch seller creating a SLIGHT VARIATION of a winning design.
 
-    ORIGINAL DESIGN REFERENCE (DO NOT COPY - Use as inspiration only):
+    This is for NICHE SATURATION - like how searching "chillin with my snowmies t-shirt" on Amazon
+    shows 2000+ similar designs all competing for the same keywords.
+
+    ORIGINAL WINNING DESIGN (keep this concept!):
     Title: ${sourceListing.title}
     Brand: ${sourceListing.brand}
-    Design Text: ${sourceListing.designText}
-
-    TREND CONTEXT:
-    Topic: ${trend.topic}
-    Platform Origin: ${trend.platform}
-    Audience Sentiment: ${trend.sentiment}
-    Visual Style Direction: ${trend.visualStyle}
-    Typography Style: ${trend.typographyStyle || 'Not specified'}
-    Authentic Audience Language: ${customerPhrasesContext}
+    Design Text: "${sourceListing.designText}"
+    Image Concept: ${sourceListing.imagePrompt || trend.visualStyle}
 
     YOUR MISSION - VARIATION #${variationIndex}:
-    Create a COMPLETELY DIFFERENT design that appeals to the SAME audience but with:
-    - A DIFFERENT catchy phrase/slogan (2-5 words)
-    - A DIFFERENT visual concept
-    - A DIFFERENT title approach
-    - The SAME overall vibe and quality
+    Create a SLIGHT variation that targets the EXACT SAME search terms but looks different enough
+    to be a separate listing. Think of it like creating another competitor in the same niche.
 
-    VARIATION STRATEGIES (pick one):
-    1. Different angle on the same topic (e.g., if original was about "cat mom life", try "feline obsession")
-    2. Different emotional tone (e.g., if original was funny, try wholesome)
-    3. Different visual metaphor (e.g., if original was minimal text, try graphic-heavy)
-    4. Different catchphrase from the same culture
+    WHAT TO KEEP THE SAME:
+    - The core slogan/text (keep "${sourceListing.designText}" or make TINY tweaks like punctuation, capitalization)
+    - The same keywords (these are what customers search for!)
+    - The same target audience and vibe
+    - The same general concept
+
+    WHAT TO VARY SLIGHTLY:
+    - Visual execution (different illustration style, layout, or graphic treatment)
+    - Title wording (rearrange words, add synonyms, but keep main keywords)
+    - Brand name (create a new micro-brand)
+    - Minor text tweaks if any (e.g., "Chillin With My Snowmies" vs "Chillin' With My Snowmies")
+
+    VARIATION STRATEGIES FOR IMAGE (pick one):
+    1. Different art style (cartoon vs realistic vs minimalist vs retro)
+    2. Different composition (centered vs off-center, single element vs multiple)
+    3. Different color palette (same concept, different colors)
+    4. Different typography treatment (same text, different font style)
 
     REQUIREMENTS:
-    - Title: 50-60 chars, SEO-optimized, DIFFERENT from original
-    - Brand: Create a NEW micro-brand name (3+ words)
-    - Design Text: 2-5 words MAX, catchy and DIFFERENT from "${sourceListing.designText}"
-    - Bullets: Full 200-256 chars each, focus on the NEW design concept
-    - Keywords: 20-30 terms, mix of original topic + new variation angle
+    - Design Text: Keep "${sourceListing.designText}" OR make only tiny variations
+    - Title: 50-60 chars, MUST include the same main keywords, just rearranged/reworded
+    - Keywords: Use the SAME keywords as original (this is critical for niche saturation!)
+    - imagePrompt: Describe a visually DIFFERENT execution of the SAME concept
+    - Brand: New micro-brand name (3+ words)
+    - Bullets: 200-256 chars each, similar selling points
 
     Return JSON with: title, brand, bullet1, bullet2, description, keywords[], imagePrompt, designText
     `;
