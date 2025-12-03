@@ -446,7 +446,7 @@ For each finding:
 GO WILD. BE CURIOUS. FIND THE GEMS.`
                     }
                 ],
-                model: "grok-3",
+                model: "grok-4",
                 stream: false,
                 temperature: 1.0, // Maximum creativity
                 search_parameters: searchParameters
@@ -1026,7 +1026,7 @@ Quote EXACTLY what people are saying - the language matters.
 Return SPECIFIC findings with actual quotes, usernames, and sources.`
                     }
                 ],
-                model: "grok-3",
+                model: "grok-4",
                 stream: false,
                 temperature: 0.3,
                 search_parameters: searchParameters

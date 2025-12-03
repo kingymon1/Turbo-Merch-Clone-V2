@@ -152,7 +152,7 @@ export async function GET(request: NextRequest) {
               content: 'Say "API test successful"',
             },
           ],
-          model: 'grok-3',
+          model: 'grok-4',
           temperature: 0,
           max_tokens: 10,
         }),

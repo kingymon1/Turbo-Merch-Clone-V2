@@ -127,7 +127,7 @@ Vercel will automatically deploy your changes.
       "configured": true,
       "latency": 890,
       "response": {
-        "model": "grok-3",
+        "model": "grok-4",
         "message": "API test successful",
         "finishReason": "stop"
       }
