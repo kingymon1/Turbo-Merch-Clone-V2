@@ -2068,21 +2068,38 @@ export const performDesignResearch = async (trend: TrendData, promptMode: Prompt
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
-                tools: [{ googleSearch: {} }], // Enable search for visual style research
             },
         });
 
+        const rawText = response.text || '';
+        console.log('[Design Research] Raw response length:', rawText.length);
+
+        if (!rawText || rawText.trim() === '') {
+            console.warn('[Design Research] Empty response, using fallback');
+            throw new Error('Empty response from AI');
+        }
+
         // Clean markdown code blocks from response before parsing
-        let cleanedText = (response.text || '{}').replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+        let cleanedText = rawText.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
 
         // Find JSON object boundaries if wrapped in extra text
         const start = cleanedText.indexOf('{');
         const end = cleanedText.lastIndexOf('}');
-        if (start !== -1 && end !== -1) {
-            cleanedText = cleanedText.substring(start, end + 1);
+        if (start === -1 || end === -1 || end <= start) {
+            console.error('[Design Research] No valid JSON object found in response:', cleanedText.substring(0, 500));
+            throw new Error('No valid JSON object in response');
+        }
+        cleanedText = cleanedText.substring(start, end + 1);
+
+        let research: DesignResearch;
+        try {
+            research = JSON.parse(cleanedText) as DesignResearch;
+        } catch (parseError) {
+            console.error('[Design Research] JSON parse failed. First 500 chars:', cleanedText.substring(0, 500));
+            console.error('[Design Research] Last 200 chars:', cleanedText.substring(Math.max(0, cleanedText.length - 200)));
+            throw parseError;
         }
 
-        const research = JSON.parse(cleanedText) as DesignResearch;
         console.log(`✓ Design approach determined: ${research.aesthetic} `);
         return research;
     } catch (error) {

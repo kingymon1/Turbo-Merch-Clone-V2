@@ -853,8 +853,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                   <div className="group">
                     <div className="flex justify-between items-center">
                         <label className="text-xs font-mono text-gray-500 uppercase tracking-wider">Title</label>
-                        <span className={`text-[10px] font-mono ${(listing?.title.length || 0) > 45 ? 'text-green-500 dark:text-green-400' : 'text-yellow-500'}`}>
-                            {listing?.title.length}/60 {((listing?.title.length || 0) < 45) && "(Low Density)"}
+                        <span className={`text-[10px] font-mono ${(listing?.title?.length || 0) > 45 ? 'text-green-500 dark:text-green-400' : 'text-yellow-500'}`}>
+                            {listing?.title?.length || 0}/60 {((listing?.title?.length || 0) < 45) && "(Low Density)"}
                         </span>
                     </div>
                     <div className="text-gray-900 dark:text-white font-medium bg-gray-50 dark:bg-dark-900 p-3 rounded-lg border border-gray-200 dark:border-white/5 mt-1 group-hover:border-brand-500/30 transition-colors select-all truncate">
@@ -867,8 +867,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                 <div className="group">
                   <div className="flex justify-between items-center">
                      <label className="text-xs font-mono text-gray-500 uppercase tracking-wider">Bullet 1</label>
-                     <span className={`text-[10px] font-mono ${(listing?.bullet1.length || 0) > 200 ? 'text-green-500 dark:text-green-400' : 'text-yellow-500'}`}>
-                         {listing?.bullet1.length}/256
+                     <span className={`text-[10px] font-mono ${(listing?.bullet1?.length || 0) > 200 ? 'text-green-500 dark:text-green-400' : 'text-yellow-500'}`}>
+                         {listing?.bullet1?.length || 0}/256
                      </span>
                   </div>
                   <div className="text-gray-600 dark:text-gray-300 text-sm bg-gray-50 dark:bg-dark-900 p-3 rounded-lg border border-gray-200 dark:border-white/5 mt-1 group-hover:border-brand-500/30 transition-colors select-all">
@@ -878,8 +878,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                 <div className="group">
                   <div className="flex justify-between items-center">
                      <label className="text-xs font-mono text-gray-500 uppercase tracking-wider">Bullet 2</label>
-                     <span className={`text-[10px] font-mono ${(listing?.bullet2.length || 0) > 200 ? 'text-green-500 dark:text-green-400' : 'text-yellow-500'}`}>
-                         {listing?.bullet2.length}/256
+                     <span className={`text-[10px] font-mono ${(listing?.bullet2?.length || 0) > 200 ? 'text-green-500 dark:text-green-400' : 'text-yellow-500'}`}>
+                         {listing?.bullet2?.length || 0}/256
                      </span>
                   </div>
                   <div className="text-gray-600 dark:text-gray-300 text-sm bg-gray-50 dark:bg-dark-900 p-3 rounded-lg border border-gray-200 dark:border-white/5 mt-1 group-hover:border-brand-500/30 transition-colors select-all">
@@ -891,7 +891,7 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               <div className="group">
                  <div className="flex justify-between items-center">
                      <label className="text-xs font-mono text-brand-500 dark:text-brand-400 uppercase tracking-wider font-semibold">Product Description</label>
-                     <span className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">{listing?.description.length} chars</span>
+                     <span className="text-[10px] text-gray-400 dark:text-gray-600 font-mono">{listing?.description?.length || 0} chars</span>
                   </div>
                   <div className="text-gray-600 dark:text-gray-300 text-sm bg-gray-50 dark:bg-dark-900 p-4 rounded-lg border border-gray-200 dark:border-white/5 mt-1 group-hover:border-brand-500/30 transition-colors select-all whitespace-pre-wrap leading-relaxed">
                     {listing?.description}
