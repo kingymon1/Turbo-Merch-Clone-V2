@@ -1624,53 +1624,65 @@ export const analyzeNicheDeeply = async (niche: string): Promise<string> => {
 };
 
 /**
- * Generate a variation of an existing listing
- * Uses the same trend/research but creates a distinctly different design
+ * Generate a SLIGHT variation of an existing listing
+ * Creates near-identical designs for niche saturation (like Amazon sellers do)
+ * Same concept, same keywords, minor visual/text tweaks
  */
 export const generateListingVariation = async (
     trend: TrendData,
     sourceListing: GeneratedListing,
     variationIndex: number
 ): Promise<GeneratedListing> => {
-    const customerPhrasesContext = trend.customerPhrases ? trend.customerPhrases.join(", ") : "Use general slang";
+    // Extract original keywords to pass to AI
+    const originalKeywords = Array.isArray(sourceListing.keywords)
+        ? sourceListing.keywords.join(', ')
+        : 'Not available';
 
     const prompt = `
-    You are an expert Amazon Merch copywriter creating a VARIATION of an existing design.
+    You are creating a NICHE SATURATION variation for Amazon Merch.
 
-    ORIGINAL DESIGN REFERENCE (DO NOT COPY - Use as inspiration only):
+    ORIGINAL WINNING DESIGN - COPY THESE CLOSELY:
     Title: ${sourceListing.title}
     Brand: ${sourceListing.brand}
-    Design Text: ${sourceListing.designText}
+    Design Text on Shirt: "${sourceListing.designText}"
+    Bullet 1: ${sourceListing.bullet1 || 'Not provided'}
+    Bullet 2: ${sourceListing.bullet2 || 'Not provided'}
+    Description: ${sourceListing.description || 'Not provided'}
+    Keywords: ${originalKeywords}
+    Image Concept: ${sourceListing.imagePrompt || trend.visualStyle}
 
-    TREND CONTEXT:
-    Topic: ${trend.topic}
-    Platform Origin: ${trend.platform}
-    Audience Sentiment: ${trend.sentiment}
-    Visual Style Direction: ${trend.visualStyle}
-    Typography Style: ${trend.typographyStyle || 'Not specified'}
-    Authentic Audience Language: ${customerPhrasesContext}
+    VARIATION #${variationIndex} INSTRUCTIONS:
 
-    YOUR MISSION - VARIATION #${variationIndex}:
-    Create a COMPLETELY DIFFERENT design that appeals to the SAME audience but with:
-    - A DIFFERENT catchy phrase/slogan (2-5 words)
-    - A DIFFERENT visual concept
-    - A DIFFERENT title approach
-    - The SAME overall vibe and quality
+    KEEP EXACTLY THE SAME:
+    - designText: Use EXACTLY "${sourceListing.designText}" (copy it character for character)
+    - keywords: Copy ALL the original keywords listed above
+    - The same niche, audience, and selling points
 
-    VARIATION STRATEGIES (pick one):
-    1. Different angle on the same topic (e.g., if original was about "cat mom life", try "feline obsession")
-    2. Different emotional tone (e.g., if original was funny, try wholesome)
-    3. Different visual metaphor (e.g., if original was minimal text, try graphic-heavy)
-    4. Different catchphrase from the same culture
+    VARY ONLY THESE:
+    - title: Rearrange words slightly but keep all main keywords
+    - brand: Create a new 3+ word brand name
+    - bullet1/bullet2: Reword slightly, same selling points
+    - description: Reword slightly, same message
+    - imagePrompt: DIFFERENT visual style for the SAME concept. Pick ONE:
+      * Style ${variationIndex % 4 + 1}: ${['Cartoon/illustrated style', 'Minimalist/clean style', 'Retro/vintage style', 'Bold/graphic style'][variationIndex % 4]}
 
-    REQUIREMENTS:
-    - Title: 50-60 chars, SEO-optimized, DIFFERENT from original
-    - Brand: Create a NEW micro-brand name (3+ words)
-    - Design Text: 2-5 words MAX, catchy and DIFFERENT from "${sourceListing.designText}"
-    - Bullets: Full 200-256 chars each, focus on the NEW design concept
-    - Keywords: 20-30 terms, mix of original topic + new variation angle
+    CRITICAL FOR imagePrompt:
+    - Must describe the SAME subject matter as original
+    - Must include the text "${sourceListing.designText}" prominently
+    - Only change the artistic style, not the concept
+    - Example: If original was "snowman with text", keep "snowman with text" but in different art style
 
-    Return JSON with: title, brand, bullet1, bullet2, description, keywords[], imagePrompt, designText
+    Return complete JSON with ALL fields filled:
+    {
+      "title": "...",
+      "brand": "...",
+      "bullet1": "200-256 chars...",
+      "bullet2": "200-256 chars...",
+      "description": "...",
+      "keywords": ["copy", "all", "original", "keywords"],
+      "imagePrompt": "detailed prompt for same concept in ${['cartoon', 'minimalist', 'retro', 'bold graphic'][variationIndex % 4]} style with text ${sourceListing.designText}",
+      "designText": "${sourceListing.designText}"
+    }
     `;
 
     const response = await getAI().models.generateContent({

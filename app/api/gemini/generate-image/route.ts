@@ -6,6 +6,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+// Increase timeout for AI image generation (max 300s on Vercel Pro)
+export const maxDuration = 300;
 import { generateDesignImage, generateDesignImageEnhanced } from '@/services/geminiService';
 import { TrendData, PromptMode } from '@/types';
 
