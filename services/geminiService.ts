@@ -1733,7 +1733,22 @@ export const generateListingVariation = async (
     if (start !== -1 && end !== -1) {
         cleanedText = cleanedText.substring(start, end + 1);
     }
-    return JSON.parse(cleanedText) as GeneratedListing;
+    const parsed = JSON.parse(cleanedText);
+
+    // Validate and provide defaults for required fields
+    const listing: GeneratedListing = {
+        title: parsed.title || sourceListing.title,
+        brand: parsed.brand || sourceListing.brand,
+        bullet1: parsed.bullet1 || sourceListing.bullet1,
+        bullet2: parsed.bullet2 || sourceListing.bullet2,
+        description: parsed.description || sourceListing.description,
+        keywords: parsed.keywords || sourceListing.keywords,
+        imagePrompt: parsed.imagePrompt || sourceListing.imagePrompt,
+        refinementInstruction: parsed.refinementInstruction || `Variation ${variationIndex}`,
+        designText: parsed.designText || sourceListing.designText,
+    };
+
+    return listing;
 };
 
 export const generateListing = async (trend: TrendData): Promise<GeneratedListing> => {
@@ -1860,7 +1875,21 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
     if (start !== -1 && end !== -1) {
         cleanedText = cleanedText.substring(start, end + 1);
     }
-    return JSON.parse(cleanedText) as GeneratedListing;
+    const parsed = JSON.parse(cleanedText);
+
+    // Validate and provide defaults for required fields
+    const listing: GeneratedListing = {
+        title: parsed.title || `${trend.topic} T-Shirt`,
+        brand: parsed.brand || 'Original Design',
+        bullet1: parsed.bullet1 || `Perfect for ${trend.audienceProfile || 'fans'} who love ${trend.topic}.`,
+        bullet2: parsed.bullet2 || `Features ${trend.visualStyle || 'unique'} design that stands out.`,
+        description: parsed.description || `${trend.description || trend.topic} - A must-have for your collection.`,
+        keywords: parsed.keywords || trend.keywords || [],
+        imagePrompt: parsed.imagePrompt || `${trend.visualStyle || 'Modern'} t-shirt design featuring ${trend.topic}`,
+        designText: parsed.designText || trend.designText || trend.topic?.split(' ').slice(0, 3).join(' ').toUpperCase() || 'DESIGN',
+    };
+
+    return listing;
 };
 
 const optimizeDesignPrompt = async (subject: string, style: string, typographyStyle?: string, text?: string): Promise<string> => {
