@@ -43,6 +43,10 @@ export interface TrendData {
   sourceUrl?: string;
   sources?: string[]; // e.g. ['Google', 'Grok', 'Brave', 'Rabbit Hole']
   amazonSafe?: boolean; // Safe for print-on-demand
+
+  // Trend Classification
+  interpretationLevel?: string; // Commercial, Niche, etc.
+  undergroundLevel?: number; // 1-10 scale of how obscure the trend is
 }
 
 export interface GeneratedListing {

@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GoogleGenAI } from "@google/genai";
 
 // Initialize Gemini - use same env vars as main service
-const getAI = () => {
+const getAI = (): GoogleGenAI => {
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
     if (!apiKey) {
-        console.warn('⚠️ No API Key found - Trend Lab will use MOCK MODE');
-        return null;
+        throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY environment variable is required');
     }
     return new GoogleGenAI({ apiKey });
 };
@@ -209,8 +208,26 @@ Each MUST include clear design direction that matches the user's constraints.
   }
 ]
 
-${constraints?.some((c: any) => c.type === 'phrase') ?
-                `CRITICAL: The designText field MUST contain the phrase specified by the user: "${constraints.find((c: any) => c.type === 'phrase')?.value}"` : ''}
+${(() => {
+    const phraseConstraint = constraints?.find((c: any) => c.type === 'phrase');
+    if (phraseConstraint) {
+        const isStrict = phraseConstraint.strictness >= 70 || agentFreedom < 30;
+        return isStrict
+            ? `
+═══════════════════════════════════════════════════════════════
+⚠️ MANDATORY PHRASE REQUIREMENT ⚠️
+═══════════════════════════════════════════════════════════════
+The user has REQUIRED this EXACT phrase on ALL designs:
+"${phraseConstraint.value}"
+
+The "designText" field in EVERY result MUST be EXACTLY: "${phraseConstraint.value}"
+DO NOT modify, paraphrase, or change this phrase in any way.
+This is NON-NEGOTIABLE.
+`
+            : `IMPORTANT: Try to use this phrase in designText: "${phraseConstraint.value}"`;
+    }
+    return '';
+})()}
 
 ${constraints?.some((c: any) => c.type === 'element') ?
                 `CRITICAL: The visualStyle MUST describe how to incorporate: ${constraints.filter((c: any) => c.type === 'element').map((c: any) => c.value).join(', ')}` : ''}
@@ -220,38 +237,6 @@ BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
 
         // Call Gemini with Google Search grounding
         const ai = getAI();
-
-        // MOCK MODE: If no API key, return mock trends
-        if (!ai) {
-            console.log('🎭 Generating MOCK trends for Trend Lab...');
-            await new Promise(resolve => setTimeout(resolve, 1500));
-
-            const mockTrends = Array.from({ length: 3 }, (_, i) => ({
-                topic: `[MOCK] ${query} Trend ${i + 1}`,
-                platform: 'Mock Platform',
-                volume: ['Predictive', 'Rising', 'Breakout'][i % 3] as any,
-                sentiment: interpretConfig.name,
-                keywords: [query.toLowerCase(), 'mock', 'trend', 'design'],
-                description: `This is a mock trend for "${query}" in ${interpretConfig.name} mode. ${interpretConfig.focus}`,
-                visualStyle: ['Vintage distressed', 'Modern minimalist', 'Retro pixel art'][i % 3],
-                typographyStyle: ['Bold sans-serif', 'Script handwritten', 'Geometric modern'][i % 3],
-                designStyle: interpretConfig.name,
-                colorPalette: 'Monochrome with accent colors',
-                designEffects: ['texture', 'shadow'],
-                customerPhrases: [`${query} vibes`, `${query} energy`, `${query} aesthetic`],
-                purchaseSignals: ['Perfect gift', 'Unique design', 'Trending topic'],
-                designText: constraints?.find((c: any) => c.type === 'phrase')?.value || `${query.split(' ').slice(0, 3).join(' ').toUpperCase()}`,
-                audienceProfile: `Fans of ${query}`,
-                recommendedShirtColor: 'black',
-                shirtColorReason: 'Classic and versatile',
-                alternativeShirtColors: ['white', 'navy'],
-                amazonSafe: true,
-                sourceUrl: 'https://example.com/mock',
-                interpretationLevel: interpretConfig.name
-            }));
-
-            return NextResponse.json({ trends: mockTrends });
-        }
 
         const response = await ai.models.generateContent({
             model: TEXT_MODEL,
@@ -279,7 +264,17 @@ BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
         }
 
         cleanJson = cleanJson.substring(start, end + 1);
-        const trends = JSON.parse(cleanJson);
+        let trends = JSON.parse(cleanJson);
+
+        // Post-process: Enforce phrase constraint if set to strict
+        const phraseConstraint = constraints?.find((c: any) => c.type === 'phrase');
+        if (phraseConstraint && (phraseConstraint.strictness >= 70 || agentFreedom < 30)) {
+            console.log(`[TREND LAB] Enforcing required phrase: "${phraseConstraint.value}"`);
+            trends = trends.map((trend: any) => ({
+                ...trend,
+                designText: phraseConstraint.value // Force the exact phrase
+            }));
+        }
 
         console.log(`[TREND LAB] Found ${trends.length} trends`);
 
