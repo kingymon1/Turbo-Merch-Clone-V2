@@ -7,6 +7,9 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+
+// Increase timeout for AI generation (requires Vercel Pro plan for >10s)
+export const maxDuration = 60;
 import { auth } from '@clerk/nextjs/server';
 import prisma from '@/lib/prisma';
 import { PRICING_TIERS, TierName } from '@/lib/pricing';
