@@ -17,6 +17,7 @@ interface VariationsModalProps {
   onClose: () => void;
   designId: string;
   designTitle: string;
+  design?: any; // Full design object for guest mode
   userTier: TierName;
   remainingQuota: number;
   onVariationsGenerated?: (variations: VariationResult[]) => void;
@@ -27,6 +28,7 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
   onClose,
   designId,
   designTitle,
+  design,
   userTier,
   remainingQuota,
   onVariationsGenerated,
@@ -56,6 +58,7 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
         body: JSON.stringify({
           designId,
           count,
+          guestDesign: design, // Send full design for guest mode
         }),
       });
 
@@ -227,9 +230,8 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
               {results.map((result, idx) => (
                 <div
                   key={result.id}
-                  className={`relative rounded-lg overflow-hidden border ${
-                    result.success ? 'border-green-500/30' : 'border-red-500/30'
-                  }`}
+                  className={`relative rounded-lg overflow-hidden border ${result.success ? 'border-green-500/30' : 'border-red-500/30'
+                    }`}
                 >
                   {result.success && result.imageUrl ? (
                     <img

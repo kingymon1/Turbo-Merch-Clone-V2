@@ -53,6 +53,7 @@ export interface GeneratedListing {
   description: string;
   keywords: string[];
   imagePrompt: string; // AI crafted prompt for the image generator
+  refinementInstruction?: string; // Instruction for image-to-image refinement
   designText: string; // Specific text to be rendered on the shirt
   price?: number;
 }

@@ -14,16 +14,17 @@ interface LibraryProps {
   userTier?: string;
   remainingQuota?: number;
   onRefresh?: () => void;
+  isLoading?: boolean;
 }
 
-const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, userTier = 'free', remainingQuota: propQuota, onRefresh }) => {
+const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, userTier = 'free', remainingQuota: propQuota, onRefresh, isLoading = false }) => {
   const [now, setNow] = useState(Date.now());
   const [exporting, setExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [downloadingZip, setDownloadingZip] = useState(false);
 
   // Variations modal state
-  const [variationsDesign, setVariationsDesign] = useState<{ id: string; title: string } | null>(null);
+  const [variationsDesign, setVariationsDesign] = useState<SavedListing | null>(null);
 
   // Fetch actual remaining quota
   const [remainingQuota, setRemainingQuota] = useState(propQuota ?? 0);
@@ -51,7 +52,7 @@ const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, user
   }, []); // Fetch on mount
 
   // Helper to open variations modal with fresh quota
-  const openVariationsModal = async (id: string, title: string) => {
+  const openVariationsModal = async (design: SavedListing) => {
     try {
       const response = await fetch('/api/user');
       if (response.ok) {
@@ -63,7 +64,7 @@ const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, user
     } catch (err) {
       console.log('Could not fetch quota before opening modal');
     }
-    setVariationsDesign({ id, title });
+    setVariationsDesign(design);
   };
 
   const isPaidPlan = userTier !== 'free' && userTier !== 'Free';
@@ -317,11 +318,11 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
   const getRemainingTime = (expiresAt: number) => {
     const diff = expiresAt - now;
     if (diff <= 0) return "Expired";
-    
+
     const days = Math.floor(diff / (1000 * 60 * 60 * 24));
     const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    
+
     if (days > 1) return `${days} days left`;
     if (days === 1) return `1 day left`;
     if (hours > 0) return `${hours}h ${minutes}m left`;
@@ -338,11 +339,55 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
     return "text-green-500 dark:text-green-400 bg-green-500/10 border-green-500/20";
   };
 
+  if (isLoading) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div className="h-8 w-48 bg-gray-200 dark:bg-dark-700 rounded animate-pulse mb-2"></div>
+            <div className="h-4 w-64 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+          </div>
+          <div className="h-10 w-32 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="bg-white dark:bg-dark-800 border border-gray-200 dark:border-white/10 rounded-xl overflow-hidden shadow-lg">
+              <div className="p-4 border-b border-gray-200 dark:border-white/5 flex justify-between items-start bg-gray-50 dark:bg-dark-900/50">
+                <div className="flex items-start gap-3 flex-1">
+                  <div className="flex flex-col space-y-2 w-full">
+                    <div className="h-3 w-20 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                    <div className="h-5 w-3/4 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 flex gap-4">
+                <div className="w-24 h-32 bg-gray-200 dark:bg-dark-700 rounded-lg animate-pulse flex-shrink-0"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 w-full bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                  <div className="h-4 w-2/3 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                  <div className="flex gap-1 mt-2">
+                    <div className="h-5 w-16 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                    <div className="h-5 w-16 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-dark-900/30 border-t border-gray-200 dark:border-white/5 flex justify-between items-center">
+                <div className="h-8 w-8 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+                <div className="h-8 w-24 bg-gray-200 dark:bg-dark-700 rounded animate-pulse"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   if (savedListings.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-[60vh] text-center space-y-4 animate-fade-in">
         <div className="p-6 bg-gray-100 dark:bg-dark-800 rounded-full border border-gray-200 dark:border-white/5 shadow-xl shadow-black/20 dark:shadow-black/50">
-            <FolderHeart className="w-16 h-16 text-gray-400 dark:text-gray-600" />
+          <FolderHeart className="w-16 h-16 text-gray-400 dark:text-gray-600" />
         </div>
         <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Your Library is Empty</h3>
         <p className="text-gray-500 dark:text-gray-400 max-w-md">
@@ -361,12 +406,12 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
         </div>
         <div className="flex items-center gap-3">
           <div className="text-sm text-gray-500 font-mono bg-gray-100 dark:bg-dark-800 px-4 py-2 rounded-lg border border-gray-200 dark:border-white/5 min-w-[140px]">
-             {savedListings.length} Item{savedListings.length !== 1 ? 's' : ''} Saved
-             {isPaidPlan && selectedIds.size > 0 && (
-               <span className="ml-2 text-brand-500 dark:text-brand-400">
-                 • {selectedIds.size} Selected
-               </span>
-             )}
+            {savedListings.length} Item{savedListings.length !== 1 ? 's' : ''} Saved
+            {isPaidPlan && selectedIds.size > 0 && (
+              <span className="ml-2 text-brand-500 dark:text-brand-400">
+                • {selectedIds.size} Selected
+              </span>
+            )}
           </div>
           {savedListings.length > 0 && (
             <div className="flex gap-2 flex-nowrap">
@@ -460,120 +505,120 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
         {savedListings.map((item) => {
           const isSelected = selectedIds.has(item.id);
           return (
-          <div
-            key={item.id}
-            className={`bg-white dark:bg-dark-800 border rounded-xl overflow-hidden group hover:border-brand-500/30 transition-all duration-300 shadow-lg ${
-              isSelected ? 'border-brand-500 ring-2 ring-brand-500/20' : 'border-gray-200 dark:border-white/10'
-            }`}
-          >
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-white/5 flex justify-between items-start bg-gray-50 dark:bg-dark-900/50">
-               <div className="flex items-start gap-3 flex-1">
-                   {isPaidPlan && (
-                     <button
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         toggleSelection(item.id);
-                       }}
-                       className="mt-1 p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded transition-colors"
-                       title={isSelected ? "Deselect" : "Select"}
-                     >
-                       {isSelected ? (
-                         <CheckSquare className="w-5 h-5 text-brand-500 dark:text-brand-400" />
-                       ) : (
-                         <Square className="w-5 h-5 text-gray-400 dark:text-gray-500" />
-                       )}
-                     </button>
-                   )}
-                   <div className="flex flex-col">
-                       <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider mb-1">
-                           {item.tierAtCreation} Plan • Saved
-                       </span>
-                       <h4 className="text-gray-900 dark:text-white font-bold truncate max-w-[180px]">{item.listing?.brand || 'Untitled'}</h4>
-                   </div>
-               </div>
-               <div className={`flex items-center gap-1.5 text-[10px] font-mono px-2 py-1 rounded border ${getUrgencyColor(item.expiresAt)}`}>
-                   <Clock className="w-3 h-3" />
-                   {getRemainingTime(item.expiresAt)}
-               </div>
-            </div>
+            <div
+              key={item.id}
+              className={`bg-white dark:bg-dark-800 border rounded-xl overflow-hidden group hover:border-brand-500/30 transition-all duration-300 shadow-lg ${isSelected ? 'border-brand-500 ring-2 ring-brand-500/20' : 'border-gray-200 dark:border-white/10'
+                }`}
+            >
+              {/* Header */}
+              <div className="p-4 border-b border-gray-200 dark:border-white/5 flex justify-between items-start bg-gray-50 dark:bg-dark-900/50">
+                <div className="flex items-start gap-3 flex-1">
+                  {isPaidPlan && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleSelection(item.id);
+                      }}
+                      className="mt-1 p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded transition-colors"
+                      title={isSelected ? "Deselect" : "Select"}
+                    >
+                      {isSelected ? (
+                        <CheckSquare className="w-5 h-5 text-brand-500 dark:text-brand-400" />
+                      ) : (
+                        <Square className="w-5 h-5 text-gray-400 dark:text-gray-500" />
+                      )}
+                    </button>
+                  )}
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider mb-1">
+                      {item.tierAtCreation} Plan • Saved
+                    </span>
+                    <h4 className="text-gray-900 dark:text-white font-bold truncate max-w-[180px]">{item.listing?.brand || 'Untitled'}</h4>
+                  </div>
+                </div>
+                <div className={`flex items-center gap-1.5 text-[10px] font-mono px-2 py-1 rounded border ${getUrgencyColor(item.expiresAt)}`}>
+                  <Clock className="w-3 h-3" />
+                  {getRemainingTime(item.expiresAt)}
+                </div>
+              </div>
 
-            {/* Content */}
-            <div className="p-4 flex gap-4">
+              {/* Content */}
+              <div className="p-4 flex gap-4">
                 <div className="w-24 h-32 bg-gray-100 dark:bg-black rounded-lg border border-gray-200 dark:border-white/10 flex-shrink-0 overflow-hidden relative group-hover:border-brand-500/20 transition-colors">
-                    <img src={item.imageUrl} alt="Thumbnail" className="w-full h-full object-contain" />
-                    {item.expiresAt < now && (
-                        <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-sm">
-                             <div className="flex flex-col items-center gap-1">
-                                <AlertCircle className="w-6 h-6 text-red-500" />
-                                <span className="text-[10px] text-red-400 font-bold">EXPIRED</span>
-                             </div>
-                        </div>
-                    )}
+                  <img src={item.imageUrl} alt="Thumbnail" className="w-full h-full object-contain" />
+                  {item.expiresAt < now && (
+                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center backdrop-blur-sm">
+                      <div className="flex flex-col items-center gap-1">
+                        <AlertCircle className="w-6 h-6 text-red-500" />
+                        <span className="text-[10px] text-red-400 font-bold">EXPIRED</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex-1 min-w-0 flex flex-col justify-center space-y-2">
-                     <h5 className="text-sm text-gray-700 dark:text-gray-200 font-medium line-clamp-2 leading-relaxed" title={item.listing.title}>
-                         {item.listing.title}
-                     </h5>
-                     <div className="flex flex-wrap gap-1">
-                         {(item.trend.keywords || []).slice(0, 2).map((kw, i) => (
-                             <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded border border-gray-200 dark:border-white/5">
-                                 #{kw}
-                             </span>
-                         ))}
-                     </div>
+                  <h5 className="text-sm text-gray-700 dark:text-gray-200 font-medium line-clamp-2 leading-relaxed" title={item.listing.title}>
+                    {item.listing.title}
+                  </h5>
+                  <div className="flex flex-wrap gap-1">
+                    {(item.trend.keywords || []).slice(0, 2).map((kw, i) => (
+                      <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded border border-gray-200 dark:border-white/5">
+                        #{kw}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-            </div>
+              </div>
 
-            {/* Footer Actions */}
-            <div className="p-3 bg-gray-50 dark:bg-dark-900/30 border-t border-gray-200 dark:border-white/5 flex justify-between items-center">
+              {/* Footer Actions */}
+              <div className="p-3 bg-gray-50 dark:bg-dark-900/30 border-t border-gray-200 dark:border-white/5 flex justify-between items-center">
                 <button
-                    onClick={() => onDelete(item.id)}
-                    className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                    title="Delete Listing"
+                  onClick={() => onDelete(item.id)}
+                  className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                  title="Delete Listing"
                 >
-                    <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4" />
                 </button>
 
                 <div className="flex gap-2">
-                    {isPaidPlan && (
-                        <button
-                            onClick={() => openVariationsModal(item.id, item.listing?.brand || 'Design')}
-                            className="px-3 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-medium rounded-lg border border-brand-500/20 transition-all flex items-center gap-1.5"
-                            title="Generate Variations"
-                        >
-                            <Copy className="w-3 h-3" />
-                            Variations
-                        </button>
-                    )}
+                  {isPaidPlan && (
                     <button
-                        onClick={() => onView(item)}
-                        className="px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-brand-500/10 text-gray-900 dark:text-white text-xs font-bold rounded-lg border border-gray-200 dark:border-white/5 hover:border-brand-500/30 transition-all flex items-center gap-2"
+                      onClick={() => openVariationsModal(item)}
+                      className="px-3 py-2 bg-brand-500/10 hover:bg-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-medium rounded-lg border border-brand-500/20 transition-all flex items-center gap-1.5"
+                      title="Generate Variations"
                     >
-                        <ExternalLink className="w-3 h-3" />
-                        Open Studio
+                      <Copy className="w-3 h-3" />
+                      Variations
                     </button>
+                  )}
+                  <button
+                    onClick={() => onView(item)}
+                    className="px-4 py-2 bg-gray-100 dark:bg-white/5 hover:bg-brand-500/10 text-gray-900 dark:text-white text-xs font-bold rounded-lg border border-gray-200 dark:border-white/5 hover:border-brand-500/30 transition-all flex items-center gap-2"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Open Studio
+                  </button>
                 </div>
+              </div>
             </div>
-          </div>
           );
         })}
       </div>
 
       {/* Variations Modal */}
       {variationsDesign && (
-          <VariationsModal
-              isOpen={true}
-              onClose={() => setVariationsDesign(null)}
-              designId={variationsDesign.id}
-              designTitle={variationsDesign.title}
-              userTier={userTier as TierName}
-              remainingQuota={remainingQuota}
-              onVariationsGenerated={() => {
-                  setVariationsDesign(null);
-                  onRefresh?.();
-              }}
-          />
+        <VariationsModal
+          isOpen={true}
+          onClose={() => setVariationsDesign(null)}
+          designId={variationsDesign.id}
+          designTitle={variationsDesign.listing?.brand || 'Design'}
+          design={variationsDesign}
+          userTier={userTier as TierName}
+          remainingQuota={remainingQuota}
+          onVariationsGenerated={() => {
+            setVariationsDesign(null);
+            onRefresh?.();
+          }}
+        />
       )}
     </div>
   );

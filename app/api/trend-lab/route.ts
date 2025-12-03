@@ -4,7 +4,10 @@ import { GoogleGenAI } from "@google/genai";
 // Initialize Gemini - use same env vars as main service
 const getAI = () => {
     const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
-    if (!apiKey) throw new Error('Missing Gemini API key (GEMINI_API_KEY or NEXT_PUBLIC_API_KEY)');
+    if (!apiKey) {
+        console.warn('⚠️ No API Key found - Trend Lab will use MOCK MODE');
+        return null;
+    }
     return new GoogleGenAI({ apiKey });
 };
 
@@ -66,14 +69,14 @@ const buildConstraintInstructions = (constraints: any[], agentFreedom: number): 
     }
 
     const freedomModifier = agentFreedom < 30 ? 'STRICTLY REQUIRED' :
-                           agentFreedom < 70 ? 'should be followed' :
-                           'consider as suggestions';
+        agentFreedom < 70 ? 'should be followed' :
+            'consider as suggestions';
 
     let instructions = `\n## User Constraints (${freedomModifier}):\n`;
 
     constraints.forEach((c, i) => {
         const strictnessLabel = c.strictness < 30 ? 'suggestion' :
-                               c.strictness < 70 ? 'important' : 'REQUIRED';
+            c.strictness < 70 ? 'important' : 'REQUIRED';
 
         switch (c.type) {
             case 'phrase':
@@ -207,16 +210,49 @@ Each MUST include clear design direction that matches the user's constraints.
 ]
 
 ${constraints?.some((c: any) => c.type === 'phrase') ?
-    `CRITICAL: The designText field MUST contain the phrase specified by the user: "${constraints.find((c: any) => c.type === 'phrase')?.value}"` : ''}
+                `CRITICAL: The designText field MUST contain the phrase specified by the user: "${constraints.find((c: any) => c.type === 'phrase')?.value}"` : ''}
 
 ${constraints?.some((c: any) => c.type === 'element') ?
-    `CRITICAL: The visualStyle MUST describe how to incorporate: ${constraints.filter((c: any) => c.type === 'element').map((c: any) => c.value).join(', ')}` : ''}
+                `CRITICAL: The visualStyle MUST describe how to incorporate: ${constraints.filter((c: any) => c.type === 'element').map((c: any) => c.value).join(', ')}` : ''}
 
 BE CREATIVE BUT STAY ON THEME. Every result must clearly relate to "${query}".
 `;
 
         // Call Gemini with Google Search grounding
         const ai = getAI();
+
+        // MOCK MODE: If no API key, return mock trends
+        if (!ai) {
+            console.log('🎭 Generating MOCK trends for Trend Lab...');
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+            const mockTrends = Array.from({ length: 3 }, (_, i) => ({
+                topic: `[MOCK] ${query} Trend ${i + 1}`,
+                platform: 'Mock Platform',
+                volume: ['Predictive', 'Rising', 'Breakout'][i % 3] as any,
+                sentiment: interpretConfig.name,
+                keywords: [query.toLowerCase(), 'mock', 'trend', 'design'],
+                description: `This is a mock trend for "${query}" in ${interpretConfig.name} mode. ${interpretConfig.focus}`,
+                visualStyle: ['Vintage distressed', 'Modern minimalist', 'Retro pixel art'][i % 3],
+                typographyStyle: ['Bold sans-serif', 'Script handwritten', 'Geometric modern'][i % 3],
+                designStyle: interpretConfig.name,
+                colorPalette: 'Monochrome with accent colors',
+                designEffects: ['texture', 'shadow'],
+                customerPhrases: [`${query} vibes`, `${query} energy`, `${query} aesthetic`],
+                purchaseSignals: ['Perfect gift', 'Unique design', 'Trending topic'],
+                designText: constraints?.find((c: any) => c.type === 'phrase')?.value || `${query.split(' ').slice(0, 3).join(' ').toUpperCase()}`,
+                audienceProfile: `Fans of ${query}`,
+                recommendedShirtColor: 'black',
+                shirtColorReason: 'Classic and versatile',
+                alternativeShirtColors: ['white', 'navy'],
+                amazonSafe: true,
+                sourceUrl: 'https://example.com/mock',
+                interpretationLevel: interpretConfig.name
+            }));
+
+            return NextResponse.json({ trends: mockTrends });
+        }
+
         const response = await ai.models.generateContent({
             model: TEXT_MODEL,
             contents: prompt,

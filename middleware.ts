@@ -18,6 +18,7 @@ const isPublicRoute = createRouteMatcher([
   '/api/packaging',
   '/api/reset-rate-limit',
   '/api/test-apis', // API testing endpoint
+  '/api/trend-lab', // Trend Lab search (guest mode support)
   '/api/webhooks/stripe', // Stripe webhooks must be public
 ]);
 

@@ -20,6 +20,7 @@ import { randomUUID } from 'crypto';
 interface GenerateVariationsRequest {
   designId: string; // Source design to create variations from
   count: number; // Number of variations to generate (1-10)
+  guestDesign?: any; // Full design object for guest mode
 }
 
 interface VariationResult {
@@ -34,15 +35,68 @@ export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
 
+    const body: GenerateVariationsRequest = await request.json();
+    const { designId, count, guestDesign } = body;
+
+    // GUEST MODE BYPASS
+    if (guestDesign) {
+      console.log('[Variations] Guest mode detected');
+
+      // Mock user and tier for guest
+      const userId = 'guest-user';
+      const tierConfig = PRICING_TIERS['free'];
+
+      // Use guest design data
+      const sourceListing = guestDesign.listing;
+      const sourcePrompt = guestDesign.trend; // In guest mode, trend data is often stored here
+
+      const baseTrend = {
+        topic: guestDesign.trend?.topic || sourceListing?.title?.split(' ').slice(0, 3).join(' ') || 'Design',
+        platform: 'Library',
+        volume: 'Established',
+        sentiment: 'Positive',
+        keywords: sourceListing?.keywords || [],
+        description: sourceListing?.description || '',
+        visualStyle: guestDesign.trend?.visualStyle || 'Modern graphic',
+        typographyStyle: guestDesign.trend?.typographyStyle || 'Bold sans-serif',
+        customerPhrases: [],
+        designText: sourceListing?.designText || '',
+        recommendedShirtColor: guestDesign.shirtColor || 'black',
+      };
+
+      console.log(`[Variations] Generating ${count} variations for guest design`);
+
+      const results: VariationResult[] = [];
+      // Generate variations sequentially for guest to avoid rate limits
+      for (let i = 0; i < count; i++) {
+        const result = await generateSingleVariation(
+          userId,
+          baseTrend,
+          sourceListing,
+          i + 1,
+          guestDesign.shirtColor || 'black',
+          'advanced', // Default to advanced for guest
+          tierConfig,
+          guestDesign.imageUrl
+        );
+        results.push(result);
+      }
+
+      return NextResponse.json({
+        success: true,
+        generated: results.filter(r => r.success).length,
+        requested: count,
+        variations: results,
+      });
+    }
+
+    // REGULAR AUTH FLOW
     if (!userId) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
-
-    const body: GenerateVariationsRequest = await request.json();
-    const { designId, count } = body;
 
     if (!designId || !count || count < 1 || count > 10) {
       return NextResponse.json(
@@ -95,6 +149,7 @@ export async function POST(request: NextRequest) {
         targetMarket: true,
         shirtColor: true,
         promptMode: true,
+        imageUrl: true, // Fetch the source image URL
       },
     });
 
@@ -160,7 +215,8 @@ export async function POST(request: NextRequest) {
           variationIndex,
           sourceDesign.shirtColor || 'black',
           (sourceDesign.promptMode as 'simple' | 'advanced') || 'advanced',
-          tierConfig
+          tierConfig,
+          sourceDesign.imageUrl // Pass the source image URL
         ));
       }
 
@@ -198,7 +254,8 @@ async function generateSingleVariation(
   variationIndex: number,
   shirtColor: string,
   promptMode: 'simple' | 'advanced',
-  tierConfig: any
+  tierConfig: any,
+  sourceImageUrl: string | null
 ): Promise<VariationResult> {
   const variationId = randomUUID();
 
@@ -214,49 +271,60 @@ async function generateSingleVariation(
     const listing = await generateListingVariation(variedTrend, sourceListing, variationIndex);
 
     // Generate varied image
-    const imageUrl = await generateDesignImage(
-      listing.imagePrompt || baseTrend.visualStyle,
-      baseTrend.visualStyle,
-      listing.designText,
-      baseTrend.typographyStyle,
-      shirtColor,
-      promptMode
-    );
+    let imageUrl: string;
+
+    if (sourceImageUrl && listing.refinementInstruction) {
+      // Use image-to-image refinement if source image and instruction exist
+      const { refineDesignImage } = await import('@/services/geminiService');
+      imageUrl = await refineDesignImage(sourceImageUrl, listing.refinementInstruction);
+    } else {
+      // Fallback to text-to-image generation if no source image or instruction
+      imageUrl = await generateDesignImage(
+        listing.imagePrompt || baseTrend.visualStyle,
+        baseTrend.visualStyle,
+        listing.designText,
+        baseTrend.typographyStyle,
+        shirtColor,
+        promptMode
+      );
+    }
 
     // Calculate retention
     const retentionDays = parseInt(tierConfig.limits.historyRetention) || 30;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + retentionDays);
 
-    // Save to database
-    const design = await prisma.designHistory.create({
-      data: {
-        userId,
-        runId: variationId,
-        runConfig: { type: 'variation', sourceDesignId: baseTrend.sourceDesignId, variationIndex },
-        niche: baseTrend.topic,
-        slogan: listing.designText,
-        designCount: 1,
-        targetMarket: baseTrend.platform,
-        listingData: JSON.parse(JSON.stringify(listing)),
-        artPrompt: JSON.parse(JSON.stringify({ prompt: listing.imagePrompt, style: baseTrend.visualStyle })),
-        imageUrl,
-        imageHistory: [{
+    // Save to database ONLY if not guest
+    if (userId !== 'guest-user') {
+      await prisma.designHistory.create({
+        data: {
+          userId,
+          runId: variationId,
+          runConfig: { type: 'variation', sourceDesignId: baseTrend.sourceDesignId, variationIndex },
+          niche: baseTrend.topic,
+          slogan: listing.designText,
+          designCount: 1,
+          targetMarket: baseTrend.platform,
+          listingData: JSON.parse(JSON.stringify(listing)),
+          artPrompt: JSON.parse(JSON.stringify({ prompt: listing.imagePrompt, style: baseTrend.visualStyle })),
           imageUrl,
+          imageHistory: [{
+            imageUrl,
+            promptMode,
+            generatedAt: Date.now(),
+            regenerationIndex: 0,
+          }],
+          imageQuality: 'high',
+          canDownload: true,
           promptMode,
-          generatedAt: Date.now(),
-          regenerationIndex: 0,
-        }],
-        imageQuality: 'high',
-        canDownload: true,
-        promptMode,
-        shirtColor,
-        expiresAt,
-      },
-    });
+          shirtColor,
+          expiresAt,
+        },
+      });
+    }
 
     return {
-      id: design.id,
+      id: userId === 'guest-user' ? variationId : variationId, // Just return ID
       listing,
       imageUrl,
       success: true,
