@@ -437,17 +437,28 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
             }
 
             try {
-                // 1. Scaling
+                // 1. Scaling - fit image to canvas without cropping
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
 
-                const zoomFactor = 1.05;
-                const scaledWidth = canvas.width * zoomFactor;
-                const scaledHeight = canvas.height * zoomFactor;
+                // Calculate scale to FIT the entire image within canvas (no cropping)
+                const scaleX = canvas.width / img.width;
+                const scaleY = canvas.height / img.height;
+                const scale = Math.min(scaleX, scaleY); // Use smaller scale to ensure entire image fits
+
+                const scaledWidth = img.width * scale;
+                const scaledHeight = img.height * scale;
+
+                // Center the image on the canvas
                 const offsetX = (canvas.width - scaledWidth) / 2;
                 const offsetY = (canvas.height - scaledHeight) / 2;
 
+                // Fill background with transparent first
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
                 ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+
+                console.log(`[Download] Image scaling: ${img.width}x${img.height} → ${Math.round(scaledWidth)}x${Math.round(scaledHeight)} (scale: ${scale.toFixed(2)})`);
 
                 // 2. Processing (Optimized Single Pass)
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
