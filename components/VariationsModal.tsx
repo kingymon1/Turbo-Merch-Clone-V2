@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2, Copy, AlertTriangle, CheckCircle, Sparkles, Minus, Plus } from 'lucide-react';
 import { PRICING_TIERS, TierName } from '../lib/pricing';
 
@@ -19,7 +19,7 @@ interface VariationsModalProps {
   designTitle: string;
   design?: any; // Full design object for guest mode
   userTier: TierName;
-  remainingQuota: number;
+  remainingQuota?: number; // Now optional - we'll fetch fresh data
   onVariationsGenerated?: (variations: VariationResult[]) => void;
 }
 
@@ -30,7 +30,7 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
   designTitle,
   design,
   userTier,
-  remainingQuota,
+  remainingQuota: propQuota,
   onVariationsGenerated,
 }) => {
   const [count, setCount] = useState(1);
@@ -39,8 +39,47 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
   const [results, setResults] = useState<VariationResult[]>([]);
   const [stage, setStage] = useState<'input' | 'generating' | 'complete'>('input');
 
+  // Fetch fresh quota when modal opens instead of relying on potentially stale props
+  const [fetchedQuota, setFetchedQuota] = useState<number | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
+
+  // Fetch fresh quota data when modal opens
+  useEffect(() => {
+    if (isOpen && fetchedQuota === null) {
+      const fetchQuota = async () => {
+        setQuotaLoading(true);
+        try {
+          const response = await fetch('/api/user');
+          if (response.ok) {
+            const data = await response.json();
+            const remaining = data.usage?.remaining ?? 0;
+            console.log('[VariationsModal] Fetched fresh quota:', remaining);
+            setFetchedQuota(remaining);
+          }
+        } catch (err) {
+          console.log('[VariationsModal] Could not fetch quota:', err);
+          // Fall back to prop value if fetch fails
+          setFetchedQuota(propQuota ?? 0);
+        } finally {
+          setQuotaLoading(false);
+        }
+      };
+      fetchQuota();
+    }
+  }, [isOpen, fetchedQuota, propQuota]);
+
+  // Reset fetched quota when modal closes so we refetch next time
+  useEffect(() => {
+    if (!isOpen) {
+      setFetchedQuota(null);
+    }
+  }, [isOpen]);
+
+  // Use fetched quota if available, otherwise fall back to prop (or 0)
+  const remainingQuota = fetchedQuota ?? propQuota ?? 0;
+
   const tierConfig = PRICING_TIERS[userTier];
-  const maxVariations = Math.min(10, tierConfig.limits.maxPerRun, remainingQuota);
+  const maxVariations = Math.min(10, tierConfig.limits.maxPerRun, Math.max(remainingQuota, 1));
 
   if (!isOpen) return null;
 
@@ -129,8 +168,13 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
 
         {stage === 'input' && (
           <>
-            {/* Quota Warning */}
-            {remainingQuota < 5 && (
+            {/* Quota Loading/Warning */}
+            {quotaLoading ? (
+              <div className="flex items-center gap-3 p-3 bg-gray-100 dark:bg-dark-900/50 border border-gray-200 dark:border-white/10 rounded-lg mb-4">
+                <Loader2 className="w-5 h-5 text-gray-400 animate-spin flex-shrink-0" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">Checking available quota...</p>
+              </div>
+            ) : remainingQuota < 5 && (
               <div className="flex items-start gap-3 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg mb-4">
                 <AlertTriangle className="w-5 h-5 text-yellow-500 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
                 <div>
@@ -193,11 +237,20 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
 
             <button
               onClick={handleGenerate}
-              disabled={count < 1 || count > maxVariations}
-              className="w-full py-3 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              disabled={quotaLoading || count < 1 || count > maxVariations || remainingQuota < 1}
+              className="w-full py-3 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 disabled:from-gray-500 disabled:to-gray-600 disabled:cursor-not-allowed text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
             >
-              <Sparkles className="w-5 h-5" />
-              Generate {count} Variation{count !== 1 ? 's' : ''}
+              {quotaLoading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  Generate {count} Variation{count !== 1 ? 's' : ''}
+                </>
+              )}
             </button>
           </>
         )}
