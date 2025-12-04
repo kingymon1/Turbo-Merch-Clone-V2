@@ -159,7 +159,8 @@ export const vectorizeImage = async (
         const formData = new FormData();
 
         // Add the image file
-        const blob = new Blob([buffer], { type: mimeType });
+        // Convert Buffer to Uint8Array for TypeScript Blob compatibility
+        const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
         formData.append('image', blob, 'image.png');
 
         // Add output format
