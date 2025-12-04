@@ -1156,9 +1156,16 @@ export const searchTrends = async (niche: string, viralityLevel: number = 50, on
 
     // ========================================
     // TEST MODE: FULL POWER - UNLEASH ALL AGENTS
+    // Respects viralityLevel for synthesis strategy
     // ========================================
     if (testMode) {
-        if (onStatusUpdate) onStatusUpdate("🔥 TEST MODE: Launching 5 agents in FULL POWER...");
+        // Determine synthesis strategy based on viralityLevel
+        const synthesisStrategy = viralityLevel <= 25 ? 'SAFE'
+            : viralityLevel <= 50 ? 'BALANCED'
+            : viralityLevel <= 75 ? 'AGGRESSIVE'
+            : 'PREDICTIVE';
+
+        if (onStatusUpdate) onStatusUpdate(`🔥 TEST MODE (${synthesisStrategy}): Launching 5 agents...`);
 
         const startTime = Date.now();
 
@@ -1168,11 +1175,11 @@ export const searchTrends = async (niche: string, viralityLevel: number = 50, on
             crossoverAgent(niche),
             unleashedGrokAgent(niche),
             maxCoverageBraveAgent(niche),
-            fetchGoogleSignals(niche, 100) // Max virality for Google too
+            fetchGoogleSignals(niche, viralityLevel) // Respect viralityLevel for Google
         ]);
 
         const agentTime = Date.now() - startTime;
-        console.log(`[TEST MODE] 5 agents completed in ${agentTime}ms`);
+        console.log(`[TEST MODE] 5 agents completed in ${agentTime}ms (Strategy: ${synthesisStrategy})`);
 
         // Combine all data
         const activeSources: string[] = [];
@@ -1197,11 +1204,43 @@ ${braveMax}
 ${googleData}
 `;
 
-        // TEST MODE SYNTHESIS - More open-ended, creative prompt
-        if (onStatusUpdate) onStatusUpdate("🔥 Synthesizing underground discoveries into design ideas...");
+        // Synthesis guidance based on virality level
+        const synthesisGuidance = synthesisStrategy === 'SAFE' ? `
+SYNTHESIS STRATEGY: SAFE MODE
+- PRIORITIZE: Trends with proven news coverage and established demand
+- PREFER: Topics already validated by mainstream media
+- WEIGHT: Google news results higher than underground discoveries
+- AVOID: Highly obscure or unverified trends
+- GOAL: Lower risk, higher confidence opportunities`
+            : synthesisStrategy === 'BALANCED' ? `
+SYNTHESIS STRATEGY: BALANCED MODE
+- PRIORITIZE: Rising trends with momentum from multiple sources
+- PREFER: Topics gaining traction across platforms
+- WEIGHT: All sources equally, cross-reference for validation
+- BLEND: Some proven demand with emerging opportunities
+- GOAL: Balance between safety and early opportunity`
+            : synthesisStrategy === 'AGGRESSIVE' ? `
+SYNTHESIS STRATEGY: AGGRESSIVE MODE
+- PRIORITIZE: Community-driven trends and discussions
+- PREFER: Niche communities with passionate fans
+- WEIGHT: Wild Explorer and Crossover data higher
+- EMBRACE: Trends still in early adoption phase
+- GOAL: Catch trends before they peak`
+            : `
+SYNTHESIS STRATEGY: PREDICTIVE MODE
+- PRIORITIZE: Underground discoveries and cultural crossovers
+- PREFER: Obscure communities, emerging aesthetics, unexpected mashups
+- WEIGHT: Wild Explorer and Grok Unleashed data highest
+- EMBRACE: Blue ocean opportunities others would miss
+- GOAL: Maximum creativity, earliest possible trend detection`;
+
+        // TEST MODE SYNTHESIS - Respects virality level + enforces detailed output
+        if (onStatusUpdate) onStatusUpdate("🔥 Synthesizing discoveries into t-shirt design opportunities...");
 
         const testModePrompt = `
-You are a CREATIVE DIRECTOR synthesizing underground cultural discoveries into t-shirt design opportunities.
+You are a CREATIVE DIRECTOR synthesizing cultural discoveries into PROFESSIONAL T-SHIRT DESIGN opportunities.
+
+CRITICAL: You are creating designs for PRINT-ON-DEMAND T-SHIRTS (Amazon Merch). Every output must be suitable for a t-shirt graphic.
 
 TODAY: ${date.fullDate}
 ORIGINAL QUERY: "${niche}"
@@ -1213,59 +1252,59 @@ AGENT DISCOVERIES (5 agents explored independently)
 ${allAgentData}
 
 ═══════════════════════════════════════════════════════════════
-YOUR MISSION: CREATE SURPRISING DESIGN OPPORTUNITIES
+${synthesisGuidance}
 ═══════════════════════════════════════════════════════════════
 
-From the agent discoveries above, identify the MOST UNEXPECTED and AUTHENTIC opportunities.
+YOUR MISSION: Create T-SHIRT DESIGN opportunities based on the synthesis strategy above.
 
-PRIORITIZE:
-1. Underground discoveries that haven't gone mainstream yet
-2. Authentic community language (exact quotes and slang)
-3. Cultural crossovers nobody would expect
-4. Niche communities with passionate fans
-5. Visual aesthetics that would make insiders say "that's ME"
-
-AVOID:
-- Generic trending topics
-- Obvious mainstream content
-- Anything that feels like training data
-- Safe, boring, expected ideas
+From the agent discoveries, identify opportunities that match the strategy.
 
 For each opportunity, extract:
-- The authentic community voice (EXACT phrases)
-- Why this is culturally significant NOW
-- What would make this a killer t-shirt design
-- The specific visual aesthetic that fits
+- The authentic community voice (EXACT phrases from the data)
+- Why this would work as a T-SHIRT DESIGN
+- The specific visual aesthetic for the GARMENT
+- How it would look as WEARABLE ART
 
-Return JSON Array with 5-8 opportunities:
+═══════════════════════════════════════════════════════════════
+CRITICAL: MINIMUM TEXT LENGTH REQUIREMENTS
+═══════════════════════════════════════════════════════════════
+These minimums are REQUIRED to generate quality Amazon listings:
+
+- "description": MINIMUM 150 characters (detailed cultural context explaining the trend)
+- "visualStyle": MINIMUM 80 characters (specific aesthetic direction for the T-SHIRT GRAPHIC)
+- "audienceProfile": MINIMUM 80 characters (detailed description of who wears this)
+- "sentiment": MINIMUM 40 characters (authentic emotional vibe description)
+- "customerPhrases": At least 3-5 EXACT quotes from the community data
+
+Return JSON Array with 4-6 opportunities:
 [
   {
-    "topic": "string - specific, surprising topic",
-    "platform": "string - where this lives",
+    "topic": "string - specific topic for t-shirt design",
+    "platform": "string - where this trend lives",
     "volume": "Predictive" | "Rising" | "Breakout" | "High",
-    "sentiment": "string - authentic emotional vibe",
-    "keywords": ["array of niche keywords"],
-    "description": "string - detailed cultural context",
-    "visualStyle": "string - specific aesthetic direction",
-    "typographyStyle": "string - font/text style",
-    "designStyle": "string - art direction",
-    "colorPalette": "string - colors that resonate",
-    "designEffects": ["array of effects"],
-    "customerPhrases": ["EXACT quotes from the community - this is CRITICAL"],
-    "purchaseSignals": ["any 'want this on a shirt' signals"],
-    "designText": "string - 2-5 words for the shirt",
-    "audienceProfile": "string - who is this person?",
-    "recommendedShirtColor": "string - black/white/navy/heather grey",
-    "shirtColorReason": "string - why this color",
-    "alternativeShirtColors": ["array"],
+    "sentiment": "string - MINIMUM 40 chars - authentic emotional vibe with detail",
+    "keywords": ["array of 8-12 niche keywords for SEO"],
+    "description": "string - MINIMUM 150 chars - detailed cultural context explaining WHY this resonates, the backstory, and emotional connection. This powers the Amazon listing.",
+    "visualStyle": "string - MINIMUM 80 chars - specific aesthetic direction for the T-SHIRT GRAPHIC including art style, composition, color approach, and mood",
+    "typographyStyle": "string - specific font/text style for the shirt design",
+    "designStyle": "string - detailed art direction for the graphic",
+    "colorPalette": "string - specific colors that resonate with this audience",
+    "designEffects": ["array of visual effects for the t-shirt graphic"],
+    "customerPhrases": ["3-5 EXACT quotes from the community - include slang and authentic voice"],
+    "purchaseSignals": ["any 'want this on a shirt' type signals found"],
+    "designText": "string - 2-5 punchy words that would appear ON the t-shirt",
+    "audienceProfile": "string - MINIMUM 80 chars - detailed description of who would wear this, their identity, interests, and why this speaks to them",
+    "recommendedShirtColor": "black" | "white" | "navy" | "heather grey",
+    "shirtColorReason": "string - why this shirt color works for the design",
+    "alternativeShirtColors": ["array of 1-2 backup colors"],
     "amazonSafe": true,
     "sources": ["which agents found this"],
-    "sourceUrl": "string - URL proving this is real",
-    "undergroundLevel": "number 1-10 - how obscure is this?"
+    "sourceUrl": "string - URL proving this is real (from agent data)",
+    "undergroundLevel": "number 1-10 based on synthesis strategy"
   }
 ]
 
-BE CREATIVE. SURPRISE US. FIND THE GEMS NOBODY ELSE WOULD FIND.
+IMPORTANT: Every field must contain substantive content. Short, generic responses will fail to generate quality listings. Write as if each field feeds directly into a customer-facing Amazon product page.
 `;
 
         const ai = getAI();
@@ -2272,15 +2311,20 @@ const createEnhancedDesignPrompt = async (research: DesignResearch, promptMode: 
         : "STYLE: Highly detailed, professional vector art. Intricate textures, complex shading, and depth.";
 
     prompt += `
-    
-    ${detailInstruction}
 
-    TECHNICAL REQUIREMENTS:
-    - Dimensions: ${COMPLIANCE_RULES.dimensions.width}x${COMPLIANCE_RULES.dimensions.height} px
-        - Background: Isolated on Pure Black(#000000)
-            - Quality: High resolution, vector style, 300 DPI
-                - Composition: Use the entire canvas, fill the space.
-    - NO MOCKUPS, NO T - SHIRT PREVIEWS.Just the raw design file.
+${detailInstruction}
+
+IMPORTANT: Create a T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt).
+This is the ARTWORK that will be PRINTED on a t-shirt - just the graphic, on a black background.
+
+TECHNICAL REQUIREMENTS:
+- Dimensions: ${COMPLIANCE_RULES.dimensions.width}x${COMPLIANCE_RULES.dimensions.height} px
+- Background: Isolated on Pure Black (#000000)
+- Quality: High resolution, vector style, 300 DPI
+- Composition: Use the entire canvas, fill the space
+- Output: ONLY the graphic design artwork - NO mockups, NO t-shirt previews, NO fabric textures
+
+AVOID: Photos of t-shirts, mockups showing shirts, fabric textures, clothing photography.
     `;
 
     return prompt;
@@ -2343,7 +2387,18 @@ const createSimplePrompt = (
             ? 'Use light colors that contrast with navy.'
             : 'Use bright/white colors that contrast with black.';
 
-    return `${style} t - shirt design(no mockup) ${styleDescription} ${textInstruction}. Make it in a ${style.toLowerCase()} style.Add a relevant image in the middle of the design. 4500x5400px use all the canvas.Make it for a ${shirtColor} shirt.${colorNote} `.trim();
+    return `Create a ${style} T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt - just the GRAPHIC that goes ON a shirt).
+
+${styleDescription} ${textInstruction}.
+
+DESIGN REQUIREMENTS:
+- This is a WEARABLE ART graphic for printing on a ${shirtColor} t-shirt
+- Make it in a ${style.toLowerCase()} style
+- Add a relevant illustrated image/graphic in the middle of the design
+- Use the entire 4500x5400px canvas
+- ${colorNote}
+- Output ONLY the graphic design artwork on a solid black background
+- NO t-shirt mockups, NO photos of shirts, NO fabric textures`.trim();
 };
 
 /**
@@ -2399,27 +2454,33 @@ const createAdvancedPrompt = async (
     }
 
     return `
-        VECTOR T - SHIRT GRAPHIC using VERTICAL STACK COMPOSITION.
+IMPORTANT: Create a T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt).
+This is the ARTWORK that will be PRINTED on a t-shirt.
 
-        ${optimizedPrompt}
+VECTOR T-SHIRT GRAPHIC using VERTICAL STACK COMPOSITION.
 
-        LAYOUT CONSTRAINTS:
-    - Use THREE - ZONE vertical stack: TOP(text) → MIDDLE(graphic) → BOTTOM(optional text)
-        - Text and illustration must be ISOLATED ELEMENTS with clear separation
-            - Use NEGATIVE SPACE between zones
+${optimizedPrompt}
 
-        ${colorStrategy}
+LAYOUT CONSTRAINTS:
+- Use THREE-ZONE vertical stack: TOP (text) → MIDDLE (graphic) → BOTTOM (optional text)
+- Text and illustration must be ISOLATED ELEMENTS with clear separation
+- Use NEGATIVE SPACE between zones
+- This is WEARABLE ART - a graphic design for printing on fabric
 
-        TECHNICAL CONSTRAINTS:
-    - Background: #000000(Pure Black) - this will be removed, design floats on shirt
-        - Format: Vertical 3: 4 Aspect Ratio
-            - Style: Flat Vector, Crisp Edges, No Semi - Transparent Pixels
-                - Text Rendering: SHARP, CRISP, ISOLATED(not merged with art)
+${colorStrategy}
 
-        NEGATIVE PROMPTS(AVOID):
-    Photorealistic, Photograph, Human Face, Skin Texture, Square Border, Frame, T - shirt Mockup,
-        Blurry Text, Dithered Edges, Noisy Text, Font Merging, Text Integrated Into Art,
-            Badge Style, Emblem Composition, Text Curving Through Images, Soft Edges On Text.
+TECHNICAL CONSTRAINTS:
+- Background: #000000 (Pure Black) - this will be removed, design floats on shirt
+- Format: Vertical 3:4 Aspect Ratio
+- Style: Flat Vector, Crisp Edges, No Semi-Transparent Pixels
+- Text Rendering: SHARP, CRISP, ISOLATED (not merged with art)
+- Output: The GRAPHIC ARTWORK only, on solid black background
+
+NEGATIVE PROMPTS (AVOID):
+Photorealistic, Photograph, Human Face, Skin Texture, Square Border, Frame,
+T-shirt Mockup, Photo of T-shirt, Fabric Texture, Clothing Photo,
+Blurry Text, Dithered Edges, Noisy Text, Font Merging, Text Integrated Into Art,
+Badge Style, Emblem Composition, Text Curving Through Images, Soft Edges On Text.
     `;
 };
 
@@ -2451,20 +2512,21 @@ export const refineDesignImage = async (
 
         // Build the refinement prompt
         const refinementPrompt = `
-            You are editing an existing t - shirt design image.Make ONLY the specific change requested.
-            Keep everything else in the image EXACTLY the same - same layout, same style, same composition.
+You are editing an existing T-SHIRT GRAPHIC DESIGN. Make ONLY the specific change requested.
+Keep everything else in the image EXACTLY the same - same layout, same style, same composition.
 
-            USER INSTRUCTION: "${instruction}"
+USER INSTRUCTION: "${instruction}"
 
-            IMPORTANT RULES:
-    - Make ONLY the change requested - nothing else
-    - Preserve the exact layout and composition
-        - Keep all text that wasn't mentioned in the same position
-            - Maintain the same art style and quality
-                - Keep the black background for transparency processing
-                    - Ensure text remains CRISP and LEGIBLE
+IMPORTANT RULES:
+- Make ONLY the change requested - nothing else
+- Preserve the exact layout and composition
+- Keep all text that wasn't mentioned in the same position
+- Maintain the same art style and quality
+- Keep the black background for transparency processing
+- Ensure text remains CRISP and LEGIBLE
+- This is a T-SHIRT GRAPHIC, not a photo or mockup
 
-            Apply the requested change and return the modified design.
+Apply the requested change and return the modified design.
         `;
 
         // Send image + instruction to Gemini for refinement
