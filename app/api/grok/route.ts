@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+/**
+ * Grok API Proxy Route
+ *
+ * Supports two modes:
+ * 1. Agent Tools API (new): Uses /v1/responses with tools array
+ * 2. Legacy Chat Completions: Uses /v1/chat/completions with search_parameters
+ *
+ * The mode is auto-detected based on request body:
+ * - If `tools` array present → Agent Tools API
+ * - If `search_parameters` present → Legacy (deprecated Dec 15, 2025)
+ */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.NEXT_PUBLIC_GROK_API_KEY;
 
@@ -10,10 +21,21 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Log model and search parameters for debugging
-    console.log(`[GROK API] Model: ${body.model}, Has search_parameters: ${!!body.search_parameters}`);
+    // Determine which API to use based on request body
+    const useAgentTools = Array.isArray(body.tools) && body.tools.length > 0;
+    const endpoint = useAgentTools
+      ? 'https://api.x.ai/v1/responses'
+      : 'https://api.x.ai/v1/chat/completions';
 
-    const response = await fetch('https://api.x.ai/v1/chat/completions', {
+    // Log request info
+    console.log(`[GROK API] Mode: ${useAgentTools ? 'Agent Tools' : 'Legacy'}`);
+    console.log(`[GROK API] Model: ${body.model}`);
+    console.log(`[GROK API] Endpoint: ${endpoint}`);
+    if (useAgentTools) {
+      console.log(`[GROK API] Tools: ${body.tools.map((t: { type: string }) => t.type).join(', ')}`);
+    }
+
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -26,6 +48,9 @@ export async function POST(request: NextRequest) {
       const errorText = await response.text();
       console.error(`[GROK API] Error ${response.status}: ${errorText}`);
       console.error(`[GROK API] Request model: ${body.model}`);
+      if (body.tools) {
+        console.error(`[GROK API] tools:`, JSON.stringify(body.tools, null, 2));
+      }
       if (body.search_parameters) {
         console.error(`[GROK API] search_parameters:`, JSON.stringify(body.search_parameters, null, 2));
       }
@@ -37,10 +62,19 @@ export async function POST(request: NextRequest) {
 
     const data = await response.json();
 
-    // Log success with sources used for cost tracking
+    // Log token usage for cost tracking
+    const usage = data.usage || {};
+    if (usage.prompt_tokens || usage.completion_tokens) {
+      const inputCost = (usage.prompt_tokens || 0) * 0.20 / 1_000_000;
+      const outputCost = (usage.completion_tokens || 0) * 0.50 / 1_000_000;
+      console.log(`[GROK API] Tokens - Input: ${usage.prompt_tokens || 0}, Output: ${usage.completion_tokens || 0}`);
+      console.log(`[GROK API] Cost: $${(inputCost + outputCost).toFixed(6)}`);
+    }
+
+    // Legacy: Log sources used (for search_parameters mode)
     const sourcesUsed = data.usage?.num_sources_used || 0;
     if (sourcesUsed > 0) {
-      console.log(`[GROK API] Success - Sources used: ${sourcesUsed} (cost: $${(sourcesUsed * 0.025).toFixed(4)})`);
+      console.log(`[GROK API] Sources used: ${sourcesUsed} (cost: $${(sourcesUsed * 0.025).toFixed(4)})`);
     }
 
     return NextResponse.json(data);

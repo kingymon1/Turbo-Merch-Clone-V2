@@ -25,8 +25,9 @@ const getAI = (): GoogleGenAI => {
 const TEXT_MODEL = AI_CONFIG.models.text;
 const IMAGE_MODEL = AI_CONFIG.models.image;
 
-// Grok model for live search - grok-4 confirmed to work with search_parameters per xAI docs
-const GROK_LIVE_SEARCH_MODEL = process.env.GROK_LIVE_SEARCH_MODEL || 'grok-4';
+// Grok model for Agent Tools API (web_search, x_search)
+// grok-4-1-fast-reasoning is optimized for agentic tool calling
+const GROK_MODEL = process.env.GROK_MODEL || 'grok-4-1-fast-reasoning';
 
 // --- HELPER: Timeout wrapper to prevent infinite hangs ---
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
@@ -375,40 +376,25 @@ Find 5+ unexpected crossovers. The weirder the better. Quote exact phrases from 
 };
 
 // TEST MODE: Unleashed Grok Agent
-// No engagement filters, maximum date range, explores EVERYTHING on X
+// Uses Agent Tools API with web_search and x_search for maximum coverage
 const unleashedGrokAgent = async (query: string): Promise<string> => {
     const apiKey = process.env.NEXT_PUBLIC_GROK_API_KEY;
     if (!apiKey) return "";
 
     const date = getCurrentDateContext();
 
-    // Maximum date range - 90 days back
-    const fromDate = new Date();
-    fromDate.setDate(fromDate.getDate() - 90);
-
-    const searchParameters = {
-        mode: "on",
-        from_date: fromDate.toISOString().split('T')[0],
-        to_date: new Date().toISOString().split('T')[0],
-        return_citations: true,
-        sources: [
-            { type: "x" }, // NO FILTERS - get everything
-            { type: "news", country: "US" },
-            { type: "web", country: "US" }
-        ]
-    };
-
-    console.log(`[GROK-UNLEASHED] No filters, 90-day range, exploring everything`);
+    console.log(`[GROK-UNLEASHED] Using Agent Tools API with web_search + x_search`);
 
     try {
         const response = await fetch('/api/grok', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                messages: [
+                model: GROK_MODEL,
+                input: [
                     {
                         role: "system",
-                        content: `You are an UNDERGROUND CULTURE EXPLORER with unrestricted access to X/Twitter.
+                        content: `You are an UNDERGROUND CULTURE EXPLORER with access to X/Twitter and web search.
 Today is ${date.fullDate}. Your mission is to find what NOBODY ELSE is finding.
 
 FORGET about mainstream trends. Search for:
@@ -419,28 +405,25 @@ FORGET about mainstream trends. Search for:
 - Subcultures that brands haven't discovered yet
 - Authentic voices, not influencers
 - International/non-English content about this topic
-- Old posts that predicted current trends
 
 Quote EVERYTHING verbatim. The exact language matters more than popularity.
-Find 10-15 unique discoveries. Go DEEP.`
+Find 10-15 unique discoveries. Go DEEP.
+
+USE YOUR SEARCH TOOLS to find real, current content.`
                     },
                     {
                         role: "user",
-                        content: `Go deep on X/Twitter for: "${query}"
+                        content: `Go deep on X/Twitter and the web for: "${query}"
 
 IGNORE popularity. IGNORE mainstream. Find the underground.
 
 Search these angles:
-1. "${query}" from accounts with <1000 followers
+1. "${query}" from smaller accounts
 2. "${query}" inside jokes
 3. "${query}" subculture
-4. "${query}" before it was cool
-5. "${query}" authentic community
-6. "${query}" niche
-7. "${query}" obscure
-8. Old viral posts about "${query}" that defined the culture
-9. International/non-English perspectives on "${query}"
-10. "${query}" merch wishlist or "want this on a shirt"
+4. "${query}" authentic community
+5. "${query}" niche discussions
+6. "${query}" merch wishlist or "want this on a shirt"
 
 For each finding:
 - Quote the EXACT post (with username if visible)
@@ -451,30 +434,36 @@ For each finding:
 GO WILD. BE CURIOUS. FIND THE GEMS.`
                     }
                 ],
-                model: GROK_LIVE_SEARCH_MODEL,
-                stream: false,
-                temperature: 1.0, // Maximum creativity
-                search_parameters: searchParameters
+                tools: [
+                    { type: "web_search" },
+                    { type: "x_search" }
+                ],
+                temperature: 1.0
             })
         });
 
         if (!response.ok) return "";
 
         const data = await response.json();
-        const citations = data.citations || [];
 
-        let output = `\n=== UNLEASHED GROK AGENT (${date.fullDate}) ===\n`;
-        output += `Mode: NO FILTERS, 90-DAY RANGE, FULL EXPLORATION\n\n`;
-        output += data.choices?.[0]?.message?.content || "";
-
-        if (citations.length > 0) {
-            output += `\n\n--- SOURCES (${citations.length}) ---\n`;
-            citations.forEach((url: string, i: number) => {
-                output += `[${i + 1}] ${url}\n`;
-            });
+        // Agent Tools API returns output differently
+        let content = "";
+        if (data.output) {
+            // New format: output array
+            content = data.output
+                .filter((item: { type: string }) => item.type === "message")
+                .map((item: { content: string }) => item.content)
+                .join("\n");
+        } else if (data.choices?.[0]?.message?.content) {
+            // Fallback to old format
+            content = data.choices[0].message.content;
         }
 
-        console.log(`[GROK-UNLEASHED] Found ${citations.length} citations`);
+        let output = `\n=== UNLEASHED GROK AGENT (${date.fullDate}) ===\n`;
+        output += `Mode: AGENT TOOLS API (web_search + x_search)\n\n`;
+        output += content;
+
+        console.log(`[GROK-UNLEASHED] Agent Tools response received`);
         return output;
     } catch (e) {
         console.error("[GROK-UNLEASHED] Failed:", e);
@@ -951,8 +940,8 @@ const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<
 
 /**
  * GROK (X/TWITTER) AGENT
- * Real-time social pulse with LIVE SEARCH enabled
- * Uses search_parameters to query live X/Twitter data, web, and news
+ * Real-time social pulse using Agent Tools API
+ * Uses web_search and x_search tools for live data
  * Focus on extracting authentic language, slang, memes, and emotional responses
  */
 const fetchGrokSignals = async (query: string, viralityLevel: number): Promise<string> => {
@@ -960,36 +949,36 @@ const fetchGrokSignals = async (query: string, viralityLevel: number): Promise<s
     if (!apiKey) return "";
 
     const date = getCurrentDateContext();
-    const dateRange = getGrokDateRange(viralityLevel);
-    const xSourceConfig = getGrokXSourceConfig(viralityLevel);
 
-    // Build search_parameters for live search
-    const searchParameters = {
-        mode: "on", // Force live search
-        from_date: dateRange.from_date,
-        to_date: dateRange.to_date,
-        return_citations: true,
-        sources: [
-            xSourceConfig,
-            { type: "news", country: "US" },
-            { type: "web", country: "US" }
-        ]
-    };
+    // Adjust search guidance based on virality level
+    let searchGuidance = "";
+    if (viralityLevel <= 25) {
+        searchGuidance = "Focus on ESTABLISHED, proven viral content with high engagement.";
+    } else if (viralityLevel <= 50) {
+        searchGuidance = "Look for RISING trends - moderately popular but growing.";
+    } else if (viralityLevel <= 75) {
+        searchGuidance = "Find EMERGING trends - newer content that's gaining traction.";
+    } else {
+        searchGuidance = "Hunt for the UNDERGROUND - small accounts, niche communities, before it goes mainstream.";
+    }
 
-    console.log(`[GROK] Live search enabled: ${dateRange.from_date} to ${dateRange.to_date}`);
-    console.log(`[GROK] X filters: likes >= ${xSourceConfig.post_favorite_count || 'none'}, views >= ${xSourceConfig.post_view_count || 'none'}`);
+    console.log(`[GROK] Using Agent Tools API (web_search + x_search)`);
+    console.log(`[GROK] Virality level: ${viralityLevel} - ${searchGuidance}`);
 
     try {
         const response = await fetch('/api/grok', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                messages: [
+                model: GROK_MODEL,
+                input: [
                     {
                         role: "system",
                         content: `You are searching LIVE X/Twitter, news, and web data. Today is ${date.fullDate}.
 
 YOUR MISSION: Find what's ACTUALLY trending and being discussed RIGHT NOW about this topic.
+
+SEARCH STRATEGY: ${searchGuidance}
 
 EXTRACT:
 1. EXACT PHRASES from real posts (copy verbatim with quotes)
@@ -999,21 +988,18 @@ EXTRACT:
 5. VISUAL PREFERENCES - what aesthetics are being shared?
 6. PURCHASE INTENT - "I would buy", "need this on a shirt", etc.
 
-CRITICAL: Only report what you find in your live search. Include dates/times when possible.
-If you find relevant content, quote it directly. Do NOT make up content.`
+CRITICAL: Use your search tools to find real, current content. Quote directly what you find.
+Do NOT make up content - only report what your searches return.`
                     },
                     {
                         role: "user",
-                        content: `Search live X/Twitter and news COMPREHENSIVELY for: "${query}"
-
-Date range: ${dateRange.from_date} to ${dateRange.to_date}
+                        content: `Search X/Twitter and the web COMPREHENSIVELY for: "${query}"
 
 SEARCH MULTIPLE ANGLES:
 1. Main topic: "${query}"
 2. Trending angle: "${query} trending"
-3. Popular angle: "${query} popular"
-4. Community: "${query} community fans"
-5. Excitement: "${query} excited ${date.month}"
+3. Community: "${query} community fans"
+4. Excitement: "${query} excited ${date.month}"
 
 FOR EACH ANGLE FIND:
 - Real posts/tweets (quote them EXACTLY with username if visible)
@@ -1030,10 +1016,11 @@ Quote EXACTLY what people are saying - the language matters.
 Return SPECIFIC findings with actual quotes, usernames, and sources.`
                     }
                 ],
-                model: GROK_LIVE_SEARCH_MODEL,
-                stream: false,
-                temperature: 0.3,
-                search_parameters: searchParameters
+                tools: [
+                    { type: "web_search" },
+                    { type: "x_search" }
+                ],
+                temperature: 0.3
             })
         });
 
@@ -1045,29 +1032,37 @@ Return SPECIFIC findings with actual quotes, usernames, and sources.`
 
         const data = await response.json();
 
-        // Track sources used for cost monitoring
-        const sourcesUsed = data.usage?.num_sources_used || 0;
-        const citations = data.citations || [];
-        console.log(`[GROK] Sources used: ${sourcesUsed} (cost: $${(sourcesUsed * 0.025).toFixed(4)})`);
-        console.log(`[GROK] Citations: ${citations.length}`);
-
-        // Format output with citations
-        let output = `
-=== GROK LIVE X/TWITTER INTELLIGENCE (${date.fullDate}) ===
-Query: "${query}"
-Date Range: ${dateRange.from_date} to ${dateRange.to_date}
-Sources Searched: ${sourcesUsed}
-
-${data.choices?.[0]?.message?.content || "No data available"}
-`;
-
-        // Add citations if available
-        if (citations.length > 0) {
-            output += `\n--- SOURCES CITED ---\n`;
-            citations.slice(0, 10).forEach((url: string, i: number) => {
-                output += `[${i + 1}] ${url}\n`;
-            });
+        // Log token usage for cost tracking
+        const usage = data.usage || {};
+        if (usage.prompt_tokens || usage.completion_tokens) {
+            const inputCost = (usage.prompt_tokens || 0) * 0.20 / 1_000_000;
+            const outputCost = (usage.completion_tokens || 0) * 0.50 / 1_000_000;
+            console.log(`[GROK] Tokens - Input: ${usage.prompt_tokens || 0}, Output: ${usage.completion_tokens || 0}`);
+            console.log(`[GROK] Cost: $${(inputCost + outputCost).toFixed(6)}`);
         }
+
+        // Agent Tools API returns output differently
+        let content = "";
+        if (data.output) {
+            // New format: output array
+            content = data.output
+                .filter((item: { type: string }) => item.type === "message")
+                .map((item: { content: string }) => item.content)
+                .join("\n");
+        } else if (data.choices?.[0]?.message?.content) {
+            // Fallback to old format
+            content = data.choices[0].message.content;
+        }
+
+        // Format output
+        let output = `
+=== GROK X/TWITTER INTELLIGENCE (${date.fullDate}) ===
+Query: "${query}"
+Model: ${GROK_MODEL}
+Strategy: ${searchGuidance}
+
+${content || "No data available"}
+`;
 
         return output;
     } catch (e) {
