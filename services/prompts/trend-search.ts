@@ -94,6 +94,35 @@ You are STRICTLY FORBIDDEN from:
 - Inventing customer quotes that aren't in the agent reports
 - Suggesting topics that don't have SPECIFIC citations from the reports below
 
+⚠️ MANDATORY EXCLUSIONS - DO NOT RETURN THESE TREND TYPES ⚠️
+These are INTERNET CULTURE / TECH-ADJACENT topics that do NOT work for t-shirt designs:
+- Tumblr aesthetic / Tumblr core / Tumblr revival
+- Vaporwave / synthwave / retrowave / outrun
+- Y2K aesthetic / Y2K revival / 2000s internet nostalgia
+- Internet nostalgia (old websites, dial-up, AIM, MySpace, etc.)
+- Meme formats / meme templates / "me when" / reaction images
+- Discord/Reddit/4chan culture or in-jokes
+- AI art discourse / AI ethics / tech industry drama
+- Crypto/NFT/Web3 culture
+- Screen-based imagery (old computers, CRT monitors, Windows 95, etc.)
+- "Aesthetic" as a trend itself (cottagecore, dark academia, etc. are often too niche)
+- Platform-specific trends (TikTok sounds, Twitter discourse, etc.)
+
+WHY: These produce designs with screens, computers, UI elements, or overly-niche references that don't translate to wearable t-shirts. We need PHYSICAL WORLD trends.
+
+PREFER trends about:
+- Sports, fitness, outdoor activities
+- Hobbies (fishing, gardening, cooking, crafts)
+- Professions and occupations
+- Animals and pets
+- Family roles (dad, mom, grandpa, etc.)
+- Music genres and artists
+- Movies, TV shows, books
+- Locations and travel
+- Food and drink culture
+- Holidays and seasonal events
+- Causes and social movements
+
 If an agent says "No data available" - that source provides ZERO trends.
 You can ONLY extract trends that have REAL citations and quotes from the live search results below.
 

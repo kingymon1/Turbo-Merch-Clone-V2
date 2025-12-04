@@ -394,44 +394,51 @@ const unleashedGrokAgent = async (query: string): Promise<string> => {
                 input: [
                     {
                         role: "system",
-                        content: `You are an UNDERGROUND CULTURE EXPLORER with access to X/Twitter and web search.
-Today is ${date.fullDate}. Your mission is to find what NOBODY ELSE is finding.
+                        content: `You are a REAL-WORLD CULTURE EXPLORER with access to X/Twitter and web search.
+Today is ${date.fullDate}. Your mission is to find trends that work for WEARABLE T-SHIRT DESIGNS.
 
-FORGET about mainstream trends. Search for:
-- Small accounts with passionate followers
-- Niche communities with inside jokes
-- Emerging slang and phrases
-- Obscure trends before they go mainstream
-- Subcultures that brands haven't discovered yet
-- Authentic voices, not influencers
-- International/non-English content about this topic
+FOCUS ON PHYSICAL WORLD TRENDS:
+- Sports, fitness, outdoor activities
+- Hobbies (fishing, hunting, gardening, cooking, crafts)
+- Professions and occupations (nurses, teachers, mechanics, etc.)
+- Animals and pets (dogs, cats, horses, etc.)
+- Family roles (dad jokes, mom life, grandparents, etc.)
+- Music, movies, TV shows, books
+- Food and drink culture
+- Holidays and seasonal events
+- Local pride and travel
 
-Quote EVERYTHING verbatim. The exact language matters more than popularity.
-Find 10-15 unique discoveries. Go DEEP.
+⚠️ SKIP THESE - they don't work for t-shirts:
+- Vaporwave, synthwave, Y2K aesthetic
+- Tumblr/Pinterest "aesthetic" culture
+- Internet nostalgia (old computers, Windows 95, etc.)
+- Meme formats or reaction images
+- Crypto/NFT/Web3 culture
+- AI discourse or tech industry drama
+
+Quote EVERYTHING verbatim. Find 10-15 discoveries about REAL activities and interests.
 
 USE YOUR SEARCH TOOLS to find real, current content.`
                     },
                     {
                         role: "user",
-                        content: `Go deep on X/Twitter and the web for: "${query}"
+                        content: `Search X/Twitter and the web for: "${query}"
 
-IGNORE popularity. IGNORE mainstream. Find the underground.
+Find REAL-WORLD content that would work for t-shirt designs.
 
 Search these angles:
-1. "${query}" from smaller accounts
-2. "${query}" inside jokes
-3. "${query}" subculture
-4. "${query}" authentic community
-5. "${query}" niche discussions
-6. "${query}" merch wishlist or "want this on a shirt"
+1. "${query}" enthusiasts and fans
+2. "${query}" humor and jokes
+3. "${query}" community phrases
+4. "${query}" proud moments
+5. "${query}" gift ideas or "need this on a shirt"
 
 For each finding:
 - Quote the EXACT post (with username if visible)
-- Why is this culturally significant?
-- What language/slang do they use?
-- What would resonate with this community on a t-shirt?
+- What phrase or saying do they use?
+- What would resonate on a t-shirt for this audience?
 
-GO WILD. BE CURIOUS. FIND THE GEMS.`
+REMEMBER: We need content for WEARABLE designs, not internet memes.`
                     }
                 ],
                 tools: [
@@ -976,44 +983,55 @@ const fetchGrokSignals = async (query: string, viralityLevel: number): Promise<s
                         role: "system",
                         content: `You are searching LIVE X/Twitter, news, and web data. Today is ${date.fullDate}.
 
-YOUR MISSION: Find what's ACTUALLY trending and being discussed RIGHT NOW about this topic.
+YOUR MISSION: Find REAL-WORLD trends that work for WEARABLE T-SHIRT DESIGNS.
 
 SEARCH STRATEGY: ${searchGuidance}
+
+FOCUS ON PHYSICAL WORLD CONTENT:
+- Sports, fitness, outdoor activities
+- Hobbies, professions, occupations
+- Animals, pets, family roles
+- Music, movies, TV, books
+- Food, drink, holidays, travel
+
+⚠️ SKIP INTERNET CULTURE:
+- Vaporwave/synthwave/Y2K aesthetic
+- Tumblr/Pinterest aesthetics
+- Internet nostalgia (old computers, etc.)
+- Meme formats, reaction images
+- Crypto/NFT/AI discourse
 
 EXTRACT:
 1. EXACT PHRASES from real posts (copy verbatim with quotes)
 2. SLANG and community-specific language
-3. CURRENT trending moments and humor from the last few days
-4. EMOTIONAL TONE - excited, ironic, frustrated, hyped?
-5. VISUAL PREFERENCES - what aesthetics are being shared?
-6. PURCHASE INTENT - "I would buy", "need this on a shirt", etc.
+3. CURRENT trending moments and humor
+4. PURCHASE INTENT - "I would buy", "need this on a shirt", etc.
 
 CRITICAL: Use your search tools to find real, current content. Quote directly what you find.
-Do NOT make up content - only report what your searches return.`
+Only report content that would work on a WEARABLE t-shirt design.`
                     },
                     {
                         role: "user",
-                        content: `Search X/Twitter and the web COMPREHENSIVELY for: "${query}"
+                        content: `Search X/Twitter and the web for: "${query}"
 
-SEARCH MULTIPLE ANGLES:
+SEARCH ANGLES:
 1. Main topic: "${query}"
-2. Trending angle: "${query} trending"
-3. Community: "${query} community fans"
-4. Excitement: "${query} excited ${date.month}"
+2. Trending: "${query} trending ${date.month}"
+3. Community: "${query} fans enthusiasts"
+4. Merchandise: "${query} shirt" or "${query} gift"
 
-FOR EACH ANGLE FIND:
+FOR EACH FINDING:
 - Real posts/tweets (quote them EXACTLY with username if visible)
-- High engagement threads people are excited about
-- Community reactions and insider language
-- Jokes, catchphrases, humor being used
+- Jokes, catchphrases, phrases people use
 - Any "I want this on a shirt" or purchase intent signals
-- Subcultures or niche communities discussing this
 
-BE AGGRESSIVE - we need 8-12 distinct findings, not just 2-3 obvious ones.
-Prioritize SURPRISING or UNIQUE content over generic popular takes.
-Quote EXACTLY what people are saying - the language matters.
+SKIP any results about:
+- Internet aesthetics (vaporwave, Y2K, etc.)
+- Meme formats or reaction images
+- Tech/crypto culture
 
-Return SPECIFIC findings with actual quotes, usernames, and sources.`
+Find 8-12 distinct findings that would work on WEARABLE t-shirt designs.
+Quote EXACTLY what people are saying - the language matters.`
                     }
                 ],
                 tools: [

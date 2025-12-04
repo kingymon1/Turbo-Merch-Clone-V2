@@ -101,6 +101,9 @@ The most successful t-shirt designs use a VERTICAL STACK composition:
 - Badge or emblem compositions (limits flexibility)
 - Text that curves around or wraps through images
 - Overlapping zones without clear separation
+- TEXT IN THE CENTER/MIDDLE of the design (always top or bottom)
+- Small, unreadable text
+- Text that competes with imagery for attention
 
 ## Color Theory for T-Shirts
 Colors carry cultural meaning and emotional weight:
@@ -159,6 +162,32 @@ Professional designs consider printing requirements:
 - Avoid thin lines (may not print well)
 - Vector-style graphics scale best
 - Consider how design works on different shirt colors
+
+## ⚠️ CRITICAL: VISUAL ELEMENTS TO NEVER INCLUDE
+These elements do NOT belong on t-shirt designs. NEVER generate them:
+
+**ABSOLUTELY FORBIDDEN:**
+- Computer screens, monitors, CRT displays, or any screen imagery
+- Smartphone/phone screens or device mockups
+- Windows 95/98/XP UI elements, error dialogs, or OS interfaces
+- Browser windows, address bars, or website screenshots
+- Social media UI (Twitter feeds, Instagram posts, etc.)
+- Keyboard/mouse/tech hardware illustrations
+- QR codes or barcodes
+- Pixelated "retro computing" graphics (unless specifically for gaming)
+- Vaporwave grids, gradients, or "aesthetic" imagery
+- Glitch effects, VHS scan lines, or corrupted image effects
+
+**WHY:** These create designs that look like internet memes, not wearable merchandise.
+T-shirts are PHYSICAL items worn in the REAL WORLD - they should feature timeless
+graphics like typography, illustrations, animals, symbols, and meaningful phrases.
+
+**ALWAYS PREFER:**
+- Clean typography as the focal point
+- Hand-drawn or vector illustrations
+- Animals, nature, objects from the physical world
+- Symbols and icons with universal meaning
+- Bold, simple compositions that read well on fabric
 
 ## Examples of Effective Approaches by Context
 These are NOT templates—they're examples of how principles can be applied:
