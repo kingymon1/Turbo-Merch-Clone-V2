@@ -181,7 +181,7 @@ Search these angles:
 2. "${query} funny quotes"
 3. "${query} trending phrases ${date.month}"
 4. "${query} gift ideas"
-5. "${query} memes ${date.year}"
+5. "${query} popular ${date.year}"
 ${interpretation >= 50 ? `6. "${query} reddit"
 7. "${query} community"
 8. "${query} niche"` : ''}

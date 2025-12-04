@@ -494,3 +494,346 @@ model StorageAddon {
   @@index([status])
   @@index([periodEnd])
 }
+
+// ============================================================================
+// MARKETPLACE INTELLIGENCE (Amazon/Etsy Data)
+// ============================================================================
+
+// Individual products scraped from marketplaces
+model MarketplaceProduct {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Source identification
+  source        String   // 'amazon' | 'etsy'
+  externalId    String   // ASIN for Amazon, listing ID for Etsy
+  url           String?
+
+  // Merch by Amazon identification
+  isMerchByAmazon   Boolean  @default(false) // True if "Amazon Merch on Demand" tag present
+  mbaDetectedAt     DateTime? // When MBA status was detected
+
+  // Product data
+  title         String
+  price         Decimal  @db.Decimal(10, 2)
+  currency      String   @default("USD")
+  reviewCount   Int      @default(0)
+  avgRating     Decimal? @db.Decimal(3, 2)
+  salesRank     Int?
+  category      String?
+  seller        String?
+  imageUrl      String?
+
+  // Niche association
+  niche         String   // Search query that found this product
+  nicheData     NicheMarketData? @relation(fields: [nicheId], references: [id])
+  nicheId       String?
+
+  // AI-extracted design analysis
+  hasText           Boolean? // Does the design have text?
+  extractedText     String?  // Text content on the design
+  designStyle       String?  // 'vintage', 'minimalist', 'streetwear', etc.
+  visualElements    Json?    // Array of detected elements
+  colorScheme       String?  // Detected color palette
+  designAnalyzedAt  DateTime? // When AI analyzed this design
+
+  // Enhanced listing analysis (for learning)
+  titleWordCount    Int?
+  titleCharCount    Int?     // Total character count of title
+  titleKeywords     Json?    // Extracted keywords from title
+  primaryKeywords   String[] // Long-tail keyword phrases (3+ words)
+  keywordRepetitions Json?   // {"keyword": count} - how many times each keyword repeats
+  designTextInTitle Boolean? // True if title suggests design has text (e.g., "funny saying")
+
+  bulletPoints      Json?    // If available
+  bullet1CharCount  Int?     // Character count of first bullet point
+  hasGiftKeyword    Boolean? // Contains "gift" in title
+  hasFunnyKeyword   Boolean? // Contains "funny" in title
+
+  // Brand strategy analysis
+  brandStyle        String?  // 'studio_name' | 'generic' | 'niche_specific' | 'keyword_brand'
+  brandName         String?  // Extracted brand name if present
+
+  // Performance signals
+  isTopSeller       Boolean  @default(false) // In top 10 for its niche
+  performanceScore  Decimal? @db.Decimal(5, 2) // Calculated score (reviews * rating / rank)
+
+  // BSR history tracking
+  bsrHistory        BsrHistory[]
+  bsrChange24h      Int?     // BSR change in last 24 hours (negative = improving)
+  bsrChange7d       Int?     // BSR change in last 7 days
+  bsrSpikeDetected  Boolean  @default(false) // True if significant BSR improvement detected
+  bsrSpikeDate      DateTime? // When spike was detected
+
+  // Freshness
+  lastScrapedAt     DateTime @default(now())
+  scrapedCount      Int      @default(1)
+
+  @@unique([source, externalId])
+  @@index([niche])
+  @@index([source])
+  @@index([designStyle])
+  @@index([isTopSeller])
+  @@index([lastScrapedAt])
+  @@index([isMerchByAmazon])
+  @@index([bsrSpikeDetected])
+}
+
+// Aggregated market data per niche (updated periodically)
+model NicheMarketData {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Niche identification
+  niche         String   @unique // Normalized search term
+  lastAnalyzed  DateTime @default(now())
+
+  // Market size
+  totalProducts     Int      @default(0)
+  amazonProducts    Int      @default(0)
+  etsyProducts      Int      @default(0)
+  mbaProducts       Int      @default(0) // Merch by Amazon products count
+
+  // Saturation
+  saturationLevel   String   @default("unknown") // 'low' | 'medium' | 'high' | 'oversaturated'
+  competitionScore  Decimal? @db.Decimal(5, 2) // 0-100 score
+
+  // Entry recommendation (ENTER/CAUTION/AVOID)
+  entryRecommendation String  @default("unknown") // 'enter' | 'caution' | 'avoid' | 'unknown'
+  entryReason         String? // Human-readable explanation for recommendation
+  entryConfidence     Decimal? @db.Decimal(5, 2) // 0-100 confidence in recommendation
+
+  // Pricing
+  avgPrice          Decimal? @db.Decimal(10, 2)
+  minPrice          Decimal? @db.Decimal(10, 2)
+  maxPrice          Decimal? @db.Decimal(10, 2)
+  optimalPricePoint Decimal? @db.Decimal(10, 2) // Most common successful price
+
+  // Performance metrics
+  avgReviewCount    Decimal? @db.Decimal(10, 2)
+  avgRating         Decimal? @db.Decimal(3, 2)
+  topSellerThreshold Int?    // Review count needed to be competitive
+
+  // BSR trend analysis
+  avgBsr            Int?     // Average BSR in this niche
+  bsrTrend          String?  // 'improving' | 'stable' | 'declining'
+  risingProductCount Int     @default(0) // Products with BSR spikes
+
+  // Patterns learned
+  winningDesignStyles   Json?  // ['vintage', 'minimalist'] - most common among top sellers
+  effectiveKeywords     Json?  // Keywords in top-performing titles
+  commonPricePoints     Json?  // [16.99, 19.99, 24.99]
+  titlePatterns         Json?  // Common title structures
+
+  // Keyword analysis
+  longTailKeywords      Json?  // 3+ word phrases that perform well
+  keywordDensity        Json?  // Average keyword usage patterns
+
+  // Opportunities
+  detectedGaps          Json?  // Identified market gaps
+  emergingAngles        Json?  // New angles not well-served
+  opportunityScore      Decimal? @db.Decimal(5, 2) // Overall opportunity rating
+
+  // Fusion opportunities
+  fusionOpportunities   NicheFusion[] @relation("PrimaryNiche")
+  fusionAsSecondary     NicheFusion[] @relation("SecondaryNiche")
+
+  // Related products
+  products          MarketplaceProduct[]
+
+  // Usage tracking
+  queryCount        Int      @default(1) // How many times users searched this niche
+  lastQueriedAt     DateTime @default(now())
+
+  @@index([niche])
+  @@index([saturationLevel])
+  @@index([opportunityScore])
+  @@index([lastAnalyzed])
+  @@index([entryRecommendation])
+}
+
+// Learned patterns from successful listings (updated by learning engine)
+model ListingPattern {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Pattern type
+  patternType   String   // 'title_structure' | 'keyword' | 'price_strategy' | 'design_style'
+  category      String   @default("apparel") // Product category this applies to
+
+  // Pattern details
+  pattern       String   // The actual pattern (e.g., "{Adjective} {Topic} {Audience} Shirt")
+  examples      Json     // Array of real examples
+  description   String?  // Human-readable description
+
+  // Effectiveness metrics
+  sampleSize    Int      @default(0) // Number of products this was learned from
+  avgPerformance Decimal? @db.Decimal(5, 2) // Average performance score of products with this pattern
+  successRate   Decimal? @db.Decimal(5, 2) // % of products with this pattern that are top sellers
+
+  // Confidence
+  confidence    Decimal  @default(0) @db.Decimal(5, 2) // 0-100 confidence in this pattern
+  isActive      Boolean  @default(true) // Still recommended
+
+  // Learning metadata
+  lastValidated DateTime @default(now()) // When we last confirmed this pattern works
+  validationCount Int    @default(1) // How many times pattern has been validated
+
+  @@unique([patternType, pattern, category])
+  @@index([patternType])
+  @@index([category])
+  @@index([confidence])
+  @@index([isActive])
+}
+
+// Design style effectiveness tracking
+model DesignStyleMetrics {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Style identification
+  styleName     String   @unique // 'vintage', 'minimalist', 'streetwear', etc.
+
+  // Performance in marketplace
+  totalProducts     Int      @default(0)
+  topSellerCount    Int      @default(0)
+  avgReviewCount    Decimal? @db.Decimal(10, 2)
+  avgRating         Decimal? @db.Decimal(3, 2)
+
+  // Niche effectiveness
+  bestPerformingNiches  Json?  // Niches where this style works best
+  worstPerformingNiches Json?  // Niches to avoid
+
+  // Price correlation
+  avgPricePoint     Decimal? @db.Decimal(10, 2)
+  priceRange        Json?    // {min, max, optimal}
+
+  // Our platform performance
+  generationCount   Int      @default(0) // How many times we generated this style
+  downloadRate      Decimal? @db.Decimal(5, 2) // % of generations downloaded
+  regenerationRate  Decimal? @db.Decimal(5, 2) // % that needed regeneration
+
+  // Trend status
+  isTrending        Boolean  @default(false)
+  trendDirection    String?  // 'rising' | 'stable' | 'declining'
+  lastTrendCheck    DateTime @default(now())
+
+  @@index([styleName])
+  @@index([isTrending])
+}
+
+// Marketplace scraping job tracking
+model MarketplaceScrapeJob {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Job details
+  jobType       String   // 'niche_scan' | 'product_update' | 'full_refresh'
+  niche         String?  // Niche being scraped (null for full refresh)
+  source        String   // 'amazon' | 'etsy' | 'both'
+
+  // Status
+  status        String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed'
+  startedAt     DateTime?
+  completedAt   DateTime?
+  errorMessage  String?
+
+  // Results
+  productsFound     Int?
+  productsUpdated   Int?
+  newProducts       Int?
+  apiCallsUsed      Int?
+  costEstimate      Decimal? @db.Decimal(10, 4) // Estimated API cost
+
+  // Scheduling
+  scheduledFor  DateTime? // When job should run
+  priority      Int       @default(5) // 1=highest, 10=lowest
+
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([niche])
+}
+
+// ============================================================================
+// BSR HISTORY TRACKING (Best Seller Rank over time)
+// ============================================================================
+
+model BsrHistory {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  // Product relation
+  productId     String
+  product       MarketplaceProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // BSR data point
+  bsr           Int      // Best Seller Rank at this time
+  recordedAt    DateTime @default(now())
+
+  // Calculated changes (from previous record)
+  previousBsr   Int?     // Previous BSR value
+  bsrChange     Int?     // Difference (negative = improving)
+  changePercent Decimal? @db.Decimal(8, 2) // Percentage change
+
+  // Spike detection
+  isSpike       Boolean  @default(false) // True if this is a significant improvement
+  spikeType     String?  // 'minor' (<25%) | 'major' (25-50%) | 'viral' (>50%)
+
+  @@index([productId])
+  @@index([recordedAt])
+  @@index([isSpike])
+}
+
+// ============================================================================
+// NICHE FUSION OPPORTUNITIES (Cross-niche combinations)
+// ============================================================================
+
+model NicheFusion {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // The two niches being combined
+  niche1        String   // Primary niche (e.g., "nurse")
+  niche2        String   // Secondary niche (e.g., "dog lover")
+  nicheData1    NicheMarketData? @relation("PrimaryNiche", fields: [niche1Id], references: [id])
+  niche1Id      String?
+  nicheData2    NicheMarketData? @relation("SecondaryNiche", fields: [niche2Id], references: [id])
+  niche2Id      String?
+
+  // Combined query
+  fusionQuery   String   // e.g., "nurse dog lover shirt"
+
+  // Performance metrics
+  productCount  Int      @default(0) // Products found with this fusion
+  avgReviews    Decimal? @db.Decimal(10, 2)
+  avgBsr        Int?
+  topProduct    Json?    // Best performing product in this fusion
+
+  // Opportunity assessment
+  opportunityScore    Decimal? @db.Decimal(5, 2) // 0-100 score
+  saturationLevel     String   @default("unknown") // 'low' | 'medium' | 'high'
+  recommendation      String   @default("unknown") // 'enter' | 'caution' | 'avoid'
+
+  // Why this fusion works (or doesn't)
+  reasoningNotes      String?  // AI-generated explanation
+  estimatedAudience   String?  // Description of target audience
+
+  // Examples found
+  exampleProducts     Json?    // Array of successful fusion products
+
+  // Validation
+  lastValidated       DateTime @default(now())
+  validationCount     Int      @default(1)
+
+  @@unique([niche1, niche2])
+  @@index([niche1])
+  @@index([niche2])
+  @@index([opportunityScore])
+  @@index([recommendation])
+}

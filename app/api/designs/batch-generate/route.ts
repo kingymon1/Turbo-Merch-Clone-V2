@@ -120,9 +120,9 @@ export async function POST(request: NextRequest) {
     if (mode === 'autopilot') {
       // AUTOPILOT MODE: Run independent research+generation in parallel
       const discoveryQueries = TREND_CONFIG.globalDiscoveryQueries || [
-        'trending t-shirt designs',
-        'viral memes to put on shirts',
-        'popular niche interests',
+        'what topics are people excited about today',
+        'trending interests and hobbies',
+        'popular communities and fandoms',
       ];
 
       // Create promises for parallel execution

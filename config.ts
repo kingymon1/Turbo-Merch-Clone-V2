@@ -70,8 +70,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Urban graphics, bold imagery, high contrast, street art influences, edgy compositions',
     colorPalette: 'Bold primary colors, black and white contrast, vibrant accents',
     placement: 'Oversized chest print, large back graphics, or all-over print',
-    tone: 'Bold, irreverent, confident, youth culture',
-    niches: ['gaming', 'memes', 'music', 'sports', 'youth trends', 'tech culture']
+    tone: 'Bold, irreverent, confident, youth culture'
   },
   minimalist: {
     name: 'Minimalist Professional',
@@ -79,8 +78,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Simple icons, clean lines, negative space, sophisticated layouts',
     colorPalette: 'Monochromatic, muted tones, professional color theory',
     placement: 'Left chest, subtle center, small pocket area',
-    tone: 'Professional, refined, sophisticated, understated',
-    niches: ['corporate', 'business', 'tech professionals', 'minimalism']
+    tone: 'Professional, refined, sophisticated, understated'
   },
   vintage: {
     name: 'Vintage/Retro',
@@ -88,8 +86,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Distressed textures, vintage badges, retro illustrations, faded aesthetics',
     colorPalette: 'Faded colors, sepia tones, vintage color palettes, aged effects',
     placement: 'Classic chest placement, vintage badge positioning',
-    tone: 'Nostalgic, timeless, authentic, heritage',
-    niches: ['retro', 'vintage', 'classic cars', 'old school', 'nostalgia']
+    tone: 'Nostalgic, timeless, authentic, heritage'
   },
   wholesome: {
     name: 'Wholesome/Family',
@@ -97,8 +94,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Soft illustrations, heartwarming imagery, approachable graphics',
     colorPalette: 'Warm pastels, friendly bright colors, approachable tones',
     placement: 'Center chest, friendly positioning',
-    tone: 'Warm, friendly, family-oriented, positive',
-    niches: ['family', 'parenting', 'mom', 'dad', 'kids', 'wholesome']
+    tone: 'Warm, friendly, family-oriented, positive'
   },
   outdoor: {
     name: 'Outdoor/Adventure',
@@ -106,8 +102,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Nature elements, mountain/forest imagery, adventure icons, outdoor scenes',
     colorPalette: 'Earth tones, forest greens, sky blues, natural colors',
     placement: 'Classic outdoor brand positioning',
-    tone: 'Adventurous, rugged, nature-connected, explorer',
-    niches: ['outdoor', 'hiking', 'camping', 'nature', 'adventure', 'wilderness']
+    tone: 'Adventurous, rugged, nature-connected, explorer'
   },
   professional: {
     name: 'Professional/Healthcare',
@@ -115,8 +110,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Professional symbols, medical icons, clean imagery, trustworthy graphics',
     colorPalette: 'Medical blues, trustworthy colors, professional palette',
     placement: 'Professional placement, work-appropriate positioning',
-    tone: 'Trustworthy, professional, respectful, competent',
-    niches: ['healthcare', 'medical', 'nurse', 'doctor', 'professional services']
+    tone: 'Trustworthy, professional, respectful, competent'
   },
   inspirational: {
     name: 'Inspirational/Faith',
@@ -124,8 +118,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Uplifting imagery, symbolic graphics, meaningful illustrations',
     colorPalette: 'Peaceful colors, inspirational tones, hopeful palette',
     placement: 'Centered, meaningful positioning',
-    tone: 'Uplifting, meaningful, hopeful, spiritual',
-    niches: ['faith', 'religion', 'spirituality', 'motivation', 'inspiration']
+    tone: 'Uplifting, meaningful, hopeful, spiritual'
   },
   bold_graphic: {
     name: 'Bold Graphic',
@@ -133,8 +126,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Strong graphics, high impact imagery, bold compositions',
     colorPalette: 'High contrast, bold colors, attention-grabbing combinations',
     placement: 'Large impact placements',
-    tone: 'Bold, confident, impactful, statement-making',
-    niches: ['activism', 'statements', 'bold messages', 'political']
+    tone: 'Bold, confident, impactful, statement-making'
   },
   artistic: {
     name: 'Artistic/Creative',
@@ -142,8 +134,7 @@ export const DESIGN_AESTHETICS = {
     visualStyle: 'Artistic illustrations, creative compositions, expressive art',
     colorPalette: 'Artistic color theory, creative palettes, expressive colors',
     placement: 'Artistic composition placement',
-    tone: 'Creative, expressive, artistic, unique',
-    niches: ['art', 'creative', 'design', 'artistic', 'aesthetic']
+    tone: 'Creative, expressive, artistic, unique'
   }
 };
 
@@ -248,25 +239,15 @@ export const VIRALITY_LEVELS: ViralityLevel[] = [
 export const TREND_CONFIG = {
   // Keep legacy viralityLevels for backward compatibility
   viralityLevels: VIRALITY_LEVELS,
-  nicheEcosystems: {
-    AESTHETIC: 'site:tumblr.com OR site:pinterest.com OR site:deviantart.com OR site:behance.net',
-    TECH: 'site:news.ycombinator.com OR site:hackaday.com OR site:producthunt.com OR site:theverge.com',
-    GAMING: 'site:kotaku.com OR site:ign.com OR site:twitch.tv OR site:discord.com',
-    OUTDOORS: 'site:pinkbike.com OR site:rei.com/blog OR site:backpackinglight.com',
-    DIY: 'site:instructables.com OR site:etsy.com/blog OR site:makezine.com',
-    MEME: 'site:knowyourmeme.com OR site:9gag.com OR site:4chan.org/g/ OR site:boredpanda.com',
-    FASHION: 'site:hypebeast.com OR site:highsnobiety.com OR site:vogue.com/fashion-shows',
-    GENERAL: 'site:reddit.com OR site:quora.com OR site:medium.com'
-  },
-  // Discovery queries should be CONCRETE and DATE-AWARE
-  // These are used when user searches "trending", "viral", "scan", etc.
-  // The system will append current month/year automatically
+  // Discovery queries - TOPIC-AGNOSTIC
+  // Let the AI discover what's actually trending across ALL categories
+  // These queries ask HOW to find trends, not WHAT topics to find
   globalDiscoveryQueries: [
-    'what is trending on social media today',
-    'viral memes and internet culture this week',
-    'trending news and events right now',
-    'what are people talking about online today',
-    'popular topics and hashtags trending now'
+    'what topics are capturing attention right now',
+    'what are people passionate about today',
+    'what unexpected things are trending this week',
+    'what communities are most excited right now',
+    'what are people talking about and sharing today'
   ],
   // Seasonal discovery - rotates based on time of year
   seasonalDiscoveryHints: [

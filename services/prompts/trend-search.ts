@@ -17,6 +17,7 @@ export interface TrendSearchPromptParams {
   braveData: string;
   grokData: string;
   rabbitHoleData: string;
+  marketplaceData: string; // NEW: Amazon/Etsy marketplace intelligence
   isDiscovery: boolean;
 }
 
@@ -59,7 +60,7 @@ STRATEGY: PREDICTIVE (Blue Ocean)
  * Build the main trend search prompt
  */
 export function buildTrendSearchPrompt(params: TrendSearchPromptParams): string {
-  const { date, niche, viralityLevel, googleData, braveData, grokData, rabbitHoleData, isDiscovery } = params;
+  const { date, niche, viralityLevel, googleData, braveData, grokData, rabbitHoleData, marketplaceData, isDiscovery } = params;
   const strategyContext = getStrategyContext(viralityLevel);
 
   const modeSection = isDiscovery
@@ -93,6 +94,46 @@ You are STRICTLY FORBIDDEN from:
 - Inventing customer quotes that aren't in the agent reports
 - Suggesting topics that don't have SPECIFIC citations from the reports below
 
+⚠️ MANDATORY EXCLUSIONS - DO NOT RETURN THESE TREND TYPES ⚠️
+
+**TRADEMARKED BRANDS (ILLEGAL TO USE):**
+- Video games: Roblox, Minecraft, Fortnite, Call of Duty, Pokemon, Mario, Zelda, etc.
+- Streaming: Netflix, Disney, Marvel, DC Comics, Star Wars, etc.
+- Sports teams: NFL, NBA, MLB teams and logos
+- Tech brands: Apple, Google, Microsoft, etc.
+- Any brand name, logo, or trademarked character
+
+**INTERNET CULTURE (DOESN'T WORK FOR T-SHIRTS):**
+- Tumblr aesthetic / Tumblr core / Tumblr revival
+- Vaporwave / synthwave / retrowave / outrun
+- Y2K aesthetic / Y2K revival / 2000s internet nostalgia
+- Internet nostalgia (old websites, dial-up, AIM, MySpace, etc.)
+- Meme formats / meme templates / "me when" / reaction images
+- Discord/Reddit/4chan culture or in-jokes
+- AI art discourse / AI ethics / tech industry drama
+- Crypto/NFT/Web3 culture
+- Screen-based imagery (old computers, CRT monitors, Windows 95, etc.)
+- "Aesthetic" as a trend itself (cottagecore, dark academia, etc. are often too niche)
+- Platform-specific trends (TikTok sounds, Twitter discourse, etc.)
+
+WHY: These produce designs with screens, computers, UI elements, or overly-niche references that don't translate to wearable t-shirts.
+
+⚠️ CRITICAL: DIVERSITY REQUIREMENT ⚠️
+Your results MUST include trends from AT LEAST 3 DIFFERENT categories below.
+Do NOT return all gaming trends, or all internet trends, or all from one category!
+
+**REQUIRED CATEGORY MIX (pick from multiple):**
+- Sports & Fitness (gym, running, specific sports)
+- Outdoor & Hobbies (fishing, hunting, gardening, camping, crafts)
+- Professions (nurses, teachers, truckers, mechanics, construction)
+- Animals & Pets (dogs, cats, horses, farm animals)
+- Family (dad jokes, mom life, grandparents, siblings)
+- Music & Entertainment (genres, artists, concerts)
+- Food & Drink (coffee, beer, BBQ, cooking)
+- Holidays & Seasons (Christmas, summer, fall vibes)
+- Gaming (IF there's real demand - but NOT the only category!)
+- Travel & Places (states, cities, beach life)
+
 If an agent says "No data available" - that source provides ZERO trends.
 You can ONLY extract trends that have REAL citations and quotes from the live search results below.
 
@@ -113,8 +154,16 @@ ${grokData || "GROK AGENT: No data available - DO NOT invent trends from this so
 --- RABBIT HOLE (Deep Exploration) ---
 ${rabbitHoleData || "RABBIT HOLE: No deep dive conducted"}
 
+${marketplaceData ? `
 ═══════════════════════════════════════════════════════════════
-YOUR TASK: SYNTHESIZE FROM AGENT DATA ONLY
+MARKETPLACE INTELLIGENCE (Amazon/Etsy)
+═══════════════════════════════════════════════════════════════
+
+${marketplaceData}
+` : ''}
+
+═══════════════════════════════════════════════════════════════
+YOUR TASK: SYNTHESIZE FROM ALL AVAILABLE DATA
 ═══════════════════════════════════════════════════════════════
 
 Cross-reference all 3 agent findings and identify the BEST opportunities.
