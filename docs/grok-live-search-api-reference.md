@@ -360,13 +360,15 @@ Return specific findings with actual examples from live posts.`
 
 | Model | Description | Live Search Support |
 |-------|-------------|---------------------|
-| `grok-4` | Latest reasoning model | Uses tool calling API (different approach) |
+| `grok-4` | Latest reasoning model | ✅ Full `search_parameters` support (confirmed in xAI docs) |
 | `grok-3` | Production model | ✅ Full `search_parameters` support |
-| `grok-2` | Previous generation | ✅ Full `search_parameters` support |
+| `grok-3-mini` | Smaller/faster variant | ✅ Full `search_parameters` support |
 
-**Recommendation:** Use `grok-3` for live search with `search_parameters`. Grok 4 has native tool use and may not support the legacy `search_parameters` approach - causes 400 errors.
+**Recommendation:** Use `grok-4` (default) for best results.
 
-**Environment Variable:** Set `GROK_LIVE_SEARCH_MODEL=grok-3` in your `.env` file.
+**Environment Variable:** Set `GROK_LIVE_SEARCH_MODEL=grok-4` in your `.env` file.
+
+**Important:** Do NOT use undocumented parameters like `max_search_results` - they cause 400 errors.
 
 ---
 

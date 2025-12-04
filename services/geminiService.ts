@@ -25,8 +25,8 @@ const getAI = (): GoogleGenAI => {
 const TEXT_MODEL = AI_CONFIG.models.text;
 const IMAGE_MODEL = AI_CONFIG.models.image;
 
-// Grok model for live search - grok-3 supports search_parameters, grok-4 may need tool calling
-const GROK_LIVE_SEARCH_MODEL = process.env.GROK_LIVE_SEARCH_MODEL || 'grok-3';
+// Grok model for live search - grok-4 confirmed to work with search_parameters per xAI docs
+const GROK_LIVE_SEARCH_MODEL = process.env.GROK_LIVE_SEARCH_MODEL || 'grok-4';
 
 // --- HELPER: Timeout wrapper to prevent infinite hangs ---
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
@@ -391,7 +391,6 @@ const unleashedGrokAgent = async (query: string): Promise<string> => {
         from_date: fromDate.toISOString().split('T')[0],
         to_date: new Date().toISOString().split('T')[0],
         return_citations: true,
-        max_search_results: 50, // Maximum results
         sources: [
             { type: "x" }, // NO FILTERS - get everything
             { type: "news", country: "US" },
@@ -970,7 +969,6 @@ const fetchGrokSignals = async (query: string, viralityLevel: number): Promise<s
         from_date: dateRange.from_date,
         to_date: dateRange.to_date,
         return_citations: true,
-        max_search_results: 20,
         sources: [
             xSourceConfig,
             { type: "news", country: "US" },
