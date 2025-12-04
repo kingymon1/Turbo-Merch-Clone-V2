@@ -977,14 +977,14 @@ export const scrapeTrendingTshirts = async (options?: {
       for (const source of sources) {
         try {
           const searchResult = source === 'amazon'
-            ? await searchAmazon(query, limitPerQuery)
-            : await searchEtsy(query, limitPerQuery);
+            ? await searchAmazon(query, { page: 1 })
+            : await searchEtsy(query, { page: 1 });
 
           if (searchResult.success && searchResult.products.length > 0) {
             results.productsFound += searchResult.products.length;
 
-            // Filter and enhance products
-            let productsToStore = searchResult.products;
+            // Filter and enhance products (limit to limitPerQuery)
+            let productsToStore = searchResult.products.slice(0, limitPerQuery);
 
             // Filter for graphic tees (not blanks/polos)
             if (filterGraphicTeesOnly) {
