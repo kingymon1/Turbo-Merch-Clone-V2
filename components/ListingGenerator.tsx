@@ -1372,6 +1372,17 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                 </button>
             )}
 
+            {/* Create Another Button - shown after design is saved */}
+            {hasAutoSaved && (
+                <button
+                    onClick={onReset}
+                    className="w-full py-2.5 mt-3 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 font-semibold rounded-lg border border-gray-200 dark:border-white/10 flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99]"
+                >
+                    <RefreshCw className="w-4 h-4" />
+                    Create Another Design
+                </button>
+            )}
+
             <p className="text-center text-xs text-gray-500 mt-2">
                  *Package includes CSV & Upscaled 4500x5400px PNG.
             </p>

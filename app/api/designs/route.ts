@@ -7,13 +7,19 @@ import { uploadImage, uploadResearchData } from '@/lib/r2-storage';
 
 /**
  * GET /api/designs
- * Fetches all user's saved designs (excluding expired/deleted)
+ * Fetches user's saved designs (excluding expired/deleted)
+ * Supports pagination with ?limit=N&offset=M query parameters
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
 
     console.log('[GET /api/designs] Clerk userId:', userId);
+
+    // Parse pagination parameters
+    const { searchParams } = new URL(request.url);
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 50); // Max 50
+    const offset = parseInt(searchParams.get('offset') || '0', 10);
 
     if (!userId) {
       return NextResponse.json(
@@ -42,23 +48,25 @@ export async function GET() {
       return NextResponse.json({ designs: [] });
     }
 
-    // Check total designs for this user (including expired/deleted)
-    const totalDesigns = await prisma.designHistory.count({
-      where: { userId: user.id },
-    });
-    console.log(`[GET /api/designs] Total designs for user ${user.id}: ${totalDesigns}`);
+    // Define the where clause for active (non-expired, non-deleted) designs
+    const whereClause = {
+      userId: user.id,
+      deletedAt: null,
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gte: new Date() } },
+      ],
+    };
 
-    // Fetch all non-deleted designs that haven't expired
-    // Limit to 50 most recent to avoid exceeding 5MB Prisma response limit
+    // Get total count of active designs for pagination
+    const totalActive = await prisma.designHistory.count({
+      where: whereClause,
+    });
+    console.log(`[GET /api/designs] Total active designs for user ${user.id}: ${totalActive}`);
+
+    // Fetch paginated designs
     const designs = await prisma.designHistory.findMany({
-      where: {
-        userId: user.id,
-        deletedAt: null,
-        OR: [
-          { expiresAt: null },
-          { expiresAt: { gte: new Date() } },
-        ],
-      },
+      where: whereClause,
       select: {
         id: true,
         createdAt: true,
@@ -75,10 +83,11 @@ export async function GET() {
       orderBy: {
         createdAt: 'desc',
       },
-      take: 50, // Limit to 50 designs (images now in R2, not base64)
+      skip: offset,
+      take: limit,
     });
 
-    console.log(`[GET /api/designs] Found ${designs.length} active designs (${totalDesigns - designs.length} expired/deleted)`);
+    console.log(`[GET /api/designs] Returning ${designs.length} designs (offset: ${offset}, limit: ${limit}, total: ${totalActive})`);
 
     // Transform to frontend format (SavedListing)
     console.log('[GET /api/designs] Starting transformation...');
@@ -155,7 +164,11 @@ export async function GET() {
     });
 
     console.log('[GET /api/designs] Transformation complete, returning response');
-    return NextResponse.json({ designs: savedListings });
+    return NextResponse.json({
+      designs: savedListings,
+      total: totalActive,
+      hasMore: offset + designs.length < totalActive,
+    });
   } catch (error: any) {
     console.error('[GET /api/designs] FATAL ERROR:', error);
     console.error('[GET /api/designs] Error stack:', error?.stack);
