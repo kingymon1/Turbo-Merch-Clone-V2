@@ -14,9 +14,23 @@ export const COMPLIANCE_RULES = {
 
     // Content policies (basic regex checks)
     bannedTerms: [
-        'nike', 'adidas', 'disney', 'marvel', 'star wars', 'harry potter',
-        'lego', 'barbie', 'funko', 'pokemon', 'nintendo', 'sega',
-        'official', 'licensed', 'copyright', 'trademark'
+        // Sports brands
+        'nike', 'adidas', 'puma', 'reebok', 'under armour',
+        // Entertainment
+        'disney', 'marvel', 'dc comics', 'star wars', 'harry potter', 'pixar', 'dreamworks',
+        'netflix', 'hbo', 'paramount', 'warner bros',
+        // Toys/Games
+        'lego', 'barbie', 'funko', 'hot wheels', 'hasbro', 'mattel',
+        // Video games
+        'pokemon', 'nintendo', 'sega', 'playstation', 'xbox', 'sony',
+        'roblox', 'minecraft', 'fortnite', 'epic games', 'call of duty', 'cod',
+        'mario', 'zelda', 'pikachu', 'league of legends', 'valorant', 'apex legends',
+        // Tech
+        'apple', 'google', 'microsoft', 'amazon', 'meta', 'facebook', 'instagram', 'tiktok',
+        // Sports leagues
+        'nfl', 'nba', 'mlb', 'nhl', 'fifa', 'ufc', 'wwe',
+        // Other
+        'official', 'licensed', 'copyright', 'trademark', 'coca cola', 'pepsi', 'mcdonalds'
     ],
 
     // Design requirements

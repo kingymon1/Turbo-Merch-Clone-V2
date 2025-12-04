@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Increase timeout for Grok Agent Tools API (searches can take time)
+// Vercel Pro allows up to 300 seconds
+export const maxDuration = 120;
+
 /**
  * Grok API Proxy Route
  *

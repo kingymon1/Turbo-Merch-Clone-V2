@@ -95,7 +95,15 @@ You are STRICTLY FORBIDDEN from:
 - Suggesting topics that don't have SPECIFIC citations from the reports below
 
 ⚠️ MANDATORY EXCLUSIONS - DO NOT RETURN THESE TREND TYPES ⚠️
-These are INTERNET CULTURE / TECH-ADJACENT topics that do NOT work for t-shirt designs:
+
+**TRADEMARKED BRANDS (ILLEGAL TO USE):**
+- Video games: Roblox, Minecraft, Fortnite, Call of Duty, Pokemon, Mario, Zelda, etc.
+- Streaming: Netflix, Disney, Marvel, DC Comics, Star Wars, etc.
+- Sports teams: NFL, NBA, MLB teams and logos
+- Tech brands: Apple, Google, Microsoft, etc.
+- Any brand name, logo, or trademarked character
+
+**INTERNET CULTURE (DOESN'T WORK FOR T-SHIRTS):**
 - Tumblr aesthetic / Tumblr core / Tumblr revival
 - Vaporwave / synthwave / retrowave / outrun
 - Y2K aesthetic / Y2K revival / 2000s internet nostalgia
@@ -107,6 +115,7 @@ These are INTERNET CULTURE / TECH-ADJACENT topics that do NOT work for t-shirt d
 - Screen-based imagery (old computers, CRT monitors, Windows 95, etc.)
 - "Aesthetic" as a trend itself (cottagecore, dark academia, etc. are often too niche)
 - Platform-specific trends (TikTok sounds, Twitter discourse, etc.)
+- Gaming culture, UGC, gamer terminology
 
 WHY: These produce designs with screens, computers, UI elements, or overly-niche references that don't translate to wearable t-shirts. We need PHYSICAL WORLD trends.
 

@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { TrendData, GeneratedListing, DesignResearch, PromptMode } from '../types';
 import { COMPLIANCE_SYSTEM_INSTRUCTION, NATURAL_LANGUAGE_INSTRUCTION, sanitizeListing } from './compliance';
-import { COMPLIANCE_RULES } from './design-system/compliance';
+import { COMPLIANCE_RULES, checkCompliance } from './design-system/compliance';
 import { AI_CONFIG, TREND_CONFIG, API_ENDPOINTS, DESIGN_AESTHETICS } from '../config';
 import { T_SHIRT_DESIGN_EDUCATION } from './prompts/design-education';
 import { buildTrendSearchPrompt } from './prompts/trend-search';
@@ -409,12 +409,13 @@ FOCUS ON PHYSICAL WORLD TRENDS:
 - Local pride and travel
 
 ⚠️ SKIP THESE - they don't work for t-shirts:
+- TRADEMARKED: Roblox, Minecraft, Fortnite, Pokemon, Disney, Marvel, Nintendo, etc.
+- Gaming/gamer culture, UGC content, esports
 - Vaporwave, synthwave, Y2K aesthetic
 - Tumblr/Pinterest "aesthetic" culture
 - Internet nostalgia (old computers, Windows 95, etc.)
 - Meme formats or reaction images
 - Crypto/NFT/Web3 culture
-- AI discourse or tech industry drama
 
 Quote EVERYTHING verbatim. Find 10-15 discoveries about REAL activities and interests.
 
@@ -1348,7 +1349,19 @@ IMPORTANT: Every field must contain substantive content. Short, generic response
 
             const trends = JSON.parse(cleanJson) as TrendData[];
             console.log(`[TEST MODE] ✓ Found ${trends.length} underground opportunities`);
-            return trends;
+
+            // Filter out trends with trademarked/banned terms
+            const filteredTrends = trends.filter(trend => {
+                const topicSafe = checkCompliance(trend.topic);
+                const descSafe = checkCompliance(trend.description || '');
+                const textSafe = checkCompliance(trend.designText || '');
+                if (!topicSafe || !descSafe || !textSafe) {
+                    console.log(`[COMPLIANCE] Filtered out trend: "${trend.topic}" (contains banned/trademarked terms)`);
+                }
+                return topicSafe && descSafe && textSafe;
+            });
+
+            return filteredTrends;
         } catch (error) {
             console.error("[TEST MODE] Synthesis failed:", error);
             throw error;
@@ -1724,7 +1737,24 @@ ${deepDiveResults[i]}
                 if (!trend.sources || trend.sources.length === 0) trend.sources = ['Google'];
             });
         }
-        return trends;
+
+        // Filter out trends with trademarked/banned terms
+        const filteredTrends = trends.filter(trend => {
+            const topicSafe = checkCompliance(trend.topic);
+            const descSafe = checkCompliance(trend.description || '');
+            const textSafe = checkCompliance(trend.designText || '');
+            if (!topicSafe || !descSafe || !textSafe) {
+                console.log(`[COMPLIANCE] Filtered out trend: "${trend.topic}" (contains banned/trademarked terms)`);
+            }
+            return topicSafe && descSafe && textSafe;
+        });
+
+        if (filteredTrends.length === 0 && trends.length > 0) {
+            console.warn('[COMPLIANCE] All trends were filtered out due to trademark/banned terms');
+            throw new Error('All found trends contained trademarked or banned content. Please try a different search.');
+        }
+
+        return filteredTrends;
 
     } catch (error) {
         console.error("Error searching trends:", error);
