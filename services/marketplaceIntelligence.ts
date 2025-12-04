@@ -31,6 +31,16 @@ export interface MarketplaceProduct {
   category?: string;
   seller?: string;
   imageUrl?: string;
+  // Merch by Amazon detection
+  isMerchByAmazon?: boolean;
+  // Enhanced keyword analysis
+  titleCharCount?: number;
+  primaryKeywords?: string[]; // Long-tail keywords (3+ words)
+  keywordRepetitions?: Record<string, number>; // How many times each keyword repeats
+  designTextInTitle?: boolean; // Does title suggest design has text?
+  brandStyle?: 'studio_name' | 'generic' | 'niche_specific' | 'keyword_brand';
+  brandName?: string;
+  bullet1CharCount?: number;
   // AI-extracted design analysis (added during processing)
   designAnalysis?: {
     hasText: boolean;
@@ -920,11 +930,15 @@ export const scrapeTrendingTshirts = async (options?: {
   sources?: ('amazon' | 'etsy')[];
   limitPerQuery?: number;
   onProgress?: (message: string) => void;
+  filterGraphicTeesOnly?: boolean; // Filter out blanks, polos, etc.
+  filterMbaOnly?: boolean; // Only store Merch by Amazon products
 }): Promise<{
   success: boolean;
   queriesProcessed: number;
   productsFound: number;
+  productsFiltered: number;
   productsStored: number;
+  mbaProductsFound: number;
   errors: string[];
 }> => {
   const {
@@ -932,13 +946,17 @@ export const scrapeTrendingTshirts = async (options?: {
     sources = ['amazon', 'etsy'],
     limitPerQuery = 30,
     onProgress,
+    filterGraphicTeesOnly = true,
+    filterMbaOnly = false,
   } = options || {};
 
   const results = {
     success: false,
     queriesProcessed: 0,
     productsFound: 0,
+    productsFiltered: 0,
     productsStored: 0,
+    mbaProductsFound: 0,
     errors: [] as string[],
   };
 
@@ -948,6 +966,7 @@ export const scrapeTrendingTshirts = async (options?: {
   }
 
   console.log(`[TRENDING] Starting scrape of ${queries.length} queries from ${sources.join(', ')}`);
+  console.log(`[TRENDING] Filters: graphicTeesOnly=${filterGraphicTeesOnly}, mbaOnly=${filterMbaOnly}`);
 
   for (const query of queries) {
     try {
@@ -964,8 +983,32 @@ export const scrapeTrendingTshirts = async (options?: {
           if (searchResult.success && searchResult.products.length > 0) {
             results.productsFound += searchResult.products.length;
 
-            // Store products for learning (async, don't wait)
-            for (const product of searchResult.products) {
+            // Filter and enhance products
+            let productsToStore = searchResult.products;
+
+            // Filter for graphic tees (not blanks/polos)
+            if (filterGraphicTeesOnly) {
+              const beforeFilter = productsToStore.length;
+              productsToStore = productsToStore.filter(p => isGraphicTee(p.title));
+              results.productsFiltered += beforeFilter - productsToStore.length;
+            }
+
+            // Enhance all products with analysis
+            productsToStore = productsToStore.map(p => enhanceProductWithAnalysis(p));
+
+            // Count MBA products
+            const mbaProducts = productsToStore.filter(p => p.isMerchByAmazon);
+            results.mbaProductsFound += mbaProducts.length;
+
+            // Optionally filter for MBA only
+            if (filterMbaOnly) {
+              const beforeMbaFilter = productsToStore.length;
+              productsToStore = mbaProducts;
+              results.productsFiltered += beforeMbaFilter - productsToStore.length;
+            }
+
+            // Store filtered and enhanced products
+            for (const product of productsToStore) {
               try {
                 await storeMarketplaceProduct({
                   source,
@@ -980,6 +1023,14 @@ export const scrapeTrendingTshirts = async (options?: {
                   seller: product.seller,
                   imageUrl: product.imageUrl,
                   niche: query,
+                  // Enhanced fields
+                  isMerchByAmazon: product.isMerchByAmazon,
+                  titleCharCount: product.titleCharCount,
+                  primaryKeywords: product.primaryKeywords,
+                  keywordRepetitions: product.keywordRepetitions,
+                  designTextInTitle: product.designTextInTitle,
+                  brandStyle: product.brandStyle,
+                  brandName: product.brandName,
                 });
                 results.productsStored++;
               } catch (storeError) {
@@ -1009,6 +1060,7 @@ export const scrapeTrendingTshirts = async (options?: {
   results.success = results.productsStored > 0;
 
   console.log(`[TRENDING] Complete: ${results.queriesProcessed} queries, ${results.productsStored} products stored`);
+  console.log(`[TRENDING] MBA products found: ${results.mbaProductsFound}, filtered out: ${results.productsFiltered}`);
   if (results.errors.length > 0) {
     console.log(`[TRENDING] Errors: ${results.errors.length}`);
   }
@@ -1059,6 +1111,255 @@ export const getSeasonalQueries = (): string[] => {
 };
 
 // ============================================================================
+// ENHANCED PRODUCT ANALYSIS
+// Detect MBA products, analyze keywords, filter for graphic tees
+// ============================================================================
+
+/**
+ * Terms that indicate a product is NOT a graphic tee (should be filtered out)
+ */
+const NON_GRAPHIC_TEE_TERMS = [
+  'blank', 'plain', 'polo', 'henley', 'v-neck basic', 'undershirt',
+  'compression', 'athletic fit basic', 'work shirt', 'uniform',
+  'pack of', 'multipack', '3-pack', '5-pack', '6-pack',
+];
+
+/**
+ * Terms that indicate design text is present on the shirt
+ */
+const DESIGN_TEXT_INDICATORS = [
+  'funny', 'saying', 'quote', 'slogan', 'text', 'words',
+  'humor', 'sarcastic', 'novelty', 'joke', 'pun',
+];
+
+/**
+ * Check if a product is likely a graphic tee (not blank/polo/etc)
+ */
+export const isGraphicTee = (title: string): boolean => {
+  const lowerTitle = title.toLowerCase();
+
+  // Check for non-graphic tee indicators
+  for (const term of NON_GRAPHIC_TEE_TERMS) {
+    if (lowerTitle.includes(term)) {
+      return false;
+    }
+  }
+
+  // Look for positive graphic tee indicators
+  const graphicIndicators = [
+    'graphic', 'funny', 'vintage', 'retro', 'design', 'print',
+    'novelty', 'cool', 'awesome', 'gift', 'birthday',
+  ];
+
+  for (const indicator of graphicIndicators) {
+    if (lowerTitle.includes(indicator)) {
+      return true;
+    }
+  }
+
+  // Default to true if no strong signals either way
+  // (most t-shirt searches return graphic tees)
+  return true;
+};
+
+/**
+ * Detect if product is likely from Merch by Amazon
+ * Checks for common MBA indicators in listing data
+ */
+export const detectMerchByAmazon = (product: {
+  seller?: string;
+  category?: string;
+  title?: string;
+  url?: string;
+}): boolean => {
+  const mbaIndicators = [
+    'amazon merch on demand',
+    'merch by amazon',
+    'amazon.com services llc',
+    'brand: solid colors',
+    'brand: heather colors',
+  ];
+
+  const checkText = [
+    product.seller?.toLowerCase() || '',
+    product.category?.toLowerCase() || '',
+    product.title?.toLowerCase() || '',
+  ].join(' ');
+
+  for (const indicator of mbaIndicators) {
+    if (checkText.includes(indicator)) {
+      return true;
+    }
+  }
+
+  // Additional heuristics for MBA products:
+  // - Specific brand patterns used by MBA sellers
+  // - URL patterns (if available)
+  if (product.url?.includes('/dp/') && product.seller?.toLowerCase().includes('solid colors')) {
+    return true;
+  }
+
+  return false;
+};
+
+/**
+ * Extract long-tail keyword phrases (3+ words) from title
+ */
+export const extractLongTailKeywords = (title: string): string[] => {
+  const words = title.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 1);
+
+  const stopWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'for', 'with', 'to', 'of', 'in', 'on',
+    'is', 'are', 'was', 'be', 'this', 'that', 'it', 'as', 'at', 'by', 'from',
+    'shirt', 'tshirt', 't-shirt', 'tee', 'top', 'apparel', 'clothing',
+  ]);
+
+  const phrases: string[] = [];
+
+  // Extract 3-word phrases
+  for (let i = 0; i <= words.length - 3; i++) {
+    const phrase = words.slice(i, i + 3);
+    const hasStopWordStart = stopWords.has(phrase[0]);
+    const hasStopWordEnd = stopWords.has(phrase[2]);
+
+    if (!hasStopWordStart && !hasStopWordEnd) {
+      phrases.push(phrase.join(' '));
+    }
+  }
+
+  // Extract 4-word phrases
+  for (let i = 0; i <= words.length - 4; i++) {
+    const phrase = words.slice(i, i + 4);
+    const hasStopWordStart = stopWords.has(phrase[0]);
+    const hasStopWordEnd = stopWords.has(phrase[3]);
+
+    if (!hasStopWordStart && !hasStopWordEnd) {
+      phrases.push(phrase.join(' '));
+    }
+  }
+
+  return [...new Set(phrases)]; // Remove duplicates
+};
+
+/**
+ * Count keyword repetitions in title
+ */
+export const countKeywordRepetitions = (title: string): Record<string, number> => {
+  const words = title.toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 2);
+
+  const stopWords = new Set([
+    'the', 'a', 'an', 'and', 'or', 'but', 'for', 'with', 'to', 'of', 'in', 'on',
+    'shirt', 'tshirt', 'tee',
+  ]);
+
+  const counts: Record<string, number> = {};
+
+  for (const word of words) {
+    if (!stopWords.has(word)) {
+      counts[word] = (counts[word] || 0) + 1;
+    }
+  }
+
+  // Only return words that appear more than once
+  return Object.fromEntries(
+    Object.entries(counts).filter(([_, count]) => count > 1)
+  );
+};
+
+/**
+ * Detect if title suggests the design has text
+ */
+export const hasDesignTextIndicator = (title: string): boolean => {
+  const lowerTitle = title.toLowerCase();
+  return DESIGN_TEXT_INDICATORS.some(term => lowerTitle.includes(term));
+};
+
+/**
+ * Analyze brand style from title/seller
+ */
+export const analyzeBrandStyle = (title: string, seller?: string): {
+  style: 'studio_name' | 'generic' | 'niche_specific' | 'keyword_brand';
+  brandName?: string;
+} => {
+  const lowerTitle = title.toLowerCase();
+  const lowerSeller = seller?.toLowerCase() || '';
+
+  // Look for studio/brand name patterns (usually at start or end of title)
+  const words = title.split(/\s+/);
+  const firstWord = words[0] || '';
+  const lastWord = words[words.length - 1] || '';
+
+  // Generic brand indicators
+  if (lowerSeller.includes('solid colors') || lowerSeller.includes('heather')) {
+    return { style: 'generic' };
+  }
+
+  // Niche-specific brand (contains niche keyword in brand)
+  const nicheKeywords = ['nurse', 'teacher', 'fishing', 'hunting', 'dad', 'mom', 'dog', 'cat'];
+  for (const keyword of nicheKeywords) {
+    if (lowerSeller.includes(keyword)) {
+      return { style: 'niche_specific', brandName: seller };
+    }
+  }
+
+  // Keyword brand (brand name is just keywords)
+  const keywordBrandPattern = /^(funny|cool|awesome|best|great)\s/i;
+  if (keywordBrandPattern.test(firstWord)) {
+    return { style: 'keyword_brand' };
+  }
+
+  // Studio name (appears to be an actual brand)
+  if (seller && seller.length < 30 && !lowerSeller.includes('amazon')) {
+    return { style: 'studio_name', brandName: seller };
+  }
+
+  return { style: 'generic' };
+};
+
+/**
+ * Enhance a product with additional analysis
+ */
+export const enhanceProductWithAnalysis = (product: MarketplaceProduct): MarketplaceProduct => {
+  const enhanced = { ...product };
+
+  // Title analysis
+  enhanced.titleCharCount = product.title.length;
+  enhanced.primaryKeywords = extractLongTailKeywords(product.title);
+  enhanced.keywordRepetitions = countKeywordRepetitions(product.title);
+  enhanced.designTextInTitle = hasDesignTextIndicator(product.title);
+
+  // Brand analysis
+  const brandAnalysis = analyzeBrandStyle(product.title, product.seller);
+  enhanced.brandStyle = brandAnalysis.style;
+  enhanced.brandName = brandAnalysis.brandName;
+
+  // MBA detection
+  enhanced.isMerchByAmazon = detectMerchByAmazon(product);
+
+  return enhanced;
+};
+
+/**
+ * Filter products to only include graphic tees
+ */
+export const filterGraphicTees = (products: MarketplaceProduct[]): MarketplaceProduct[] => {
+  return products.filter(p => isGraphicTee(p.title));
+};
+
+/**
+ * Filter products to only include Merch by Amazon items
+ */
+export const filterMerchByAmazon = (products: MarketplaceProduct[]): MarketplaceProduct[] => {
+  return products.filter(p => p.isMerchByAmazon === true);
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -1074,4 +1375,14 @@ export default {
   scrapeTrendingTshirts,
   getSeasonalQueries,
   TRENDING_SCRAPE_QUERIES,
+  // Enhanced analysis
+  isGraphicTee,
+  detectMerchByAmazon,
+  extractLongTailKeywords,
+  countKeywordRepetitions,
+  hasDesignTextIndicator,
+  analyzeBrandStyle,
+  enhanceProductWithAnalysis,
+  filterGraphicTees,
+  filterMerchByAmazon,
 };

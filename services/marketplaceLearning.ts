@@ -118,6 +118,14 @@ export const storeMarketplaceProduct = async (product: {
   seller?: string;
   imageUrl?: string;
   niche: string;
+  // Enhanced fields
+  isMerchByAmazon?: boolean;
+  titleCharCount?: number;
+  primaryKeywords?: string[];
+  keywordRepetitions?: Record<string, number>;
+  designTextInTitle?: boolean;
+  brandStyle?: string;
+  brandName?: string;
 }): Promise<void> => {
   try {
     const db = getPrisma();
@@ -125,7 +133,18 @@ export const storeMarketplaceProduct = async (product: {
     // Analyze title for patterns
     const titleAnalysis = analyzeTitlePatterns(product.title);
 
-    await db.marketplaceProduct.upsert({
+    // Check for existing product (for BSR tracking)
+    const existingProduct = await db.marketplaceProduct.findUnique({
+      where: {
+        source_externalId: {
+          source: product.source,
+          externalId: product.externalId,
+        },
+      },
+      select: { id: true, salesRank: true },
+    });
+
+    const upsertedProduct = await db.marketplaceProduct.upsert({
       where: {
         source_externalId: {
           source: product.source,
@@ -145,10 +164,20 @@ export const storeMarketplaceProduct = async (product: {
         seller: product.seller,
         imageUrl: product.imageUrl,
         niche: product.niche.toLowerCase(),
+        // Basic title analysis
         titleWordCount: titleAnalysis.wordCount,
         titleKeywords: titleAnalysis.keywords,
         hasGiftKeyword: titleAnalysis.hasGift,
         hasFunnyKeyword: titleAnalysis.hasFunny,
+        // Enhanced fields
+        isMerchByAmazon: product.isMerchByAmazon || false,
+        mbaDetectedAt: product.isMerchByAmazon ? new Date() : null,
+        titleCharCount: product.titleCharCount || product.title.length,
+        primaryKeywords: product.primaryKeywords || [],
+        keywordRepetitions: product.keywordRepetitions || {},
+        designTextInTitle: product.designTextInTitle,
+        brandStyle: product.brandStyle,
+        brandName: product.brandName,
         lastScrapedAt: new Date(),
       },
       update: {
@@ -165,12 +194,95 @@ export const storeMarketplaceProduct = async (product: {
         titleKeywords: titleAnalysis.keywords,
         hasGiftKeyword: titleAnalysis.hasGift,
         hasFunnyKeyword: titleAnalysis.hasFunny,
+        // Enhanced fields (update if provided)
+        ...(product.isMerchByAmazon !== undefined && {
+          isMerchByAmazon: product.isMerchByAmazon,
+          mbaDetectedAt: product.isMerchByAmazon ? new Date() : null,
+        }),
+        ...(product.titleCharCount !== undefined && { titleCharCount: product.titleCharCount }),
+        ...(product.primaryKeywords !== undefined && { primaryKeywords: product.primaryKeywords }),
+        ...(product.keywordRepetitions !== undefined && { keywordRepetitions: product.keywordRepetitions }),
+        ...(product.designTextInTitle !== undefined && { designTextInTitle: product.designTextInTitle }),
+        ...(product.brandStyle !== undefined && { brandStyle: product.brandStyle }),
+        ...(product.brandName !== undefined && { brandName: product.brandName }),
         lastScrapedAt: new Date(),
         scrapedCount: { increment: 1 },
       },
     });
+
+    // Track BSR history if product has salesRank
+    if (product.salesRank && product.source === 'amazon') {
+      await trackBsrHistory(
+        db,
+        upsertedProduct.id,
+        product.salesRank,
+        existingProduct?.salesRank || null
+      );
+    }
   } catch (error) {
     console.error('[LEARNING] Failed to store product:', error);
+  }
+};
+
+/**
+ * Track BSR history and detect spikes
+ */
+const trackBsrHistory = async (
+  db: PrismaClient,
+  productId: string,
+  currentBsr: number,
+  previousBsr: number | null
+): Promise<void> => {
+  try {
+    let bsrChange: number | null = null;
+    let changePercent: number | null = null;
+    let isSpike = false;
+    let spikeType: string | null = null;
+
+    if (previousBsr !== null && previousBsr > 0) {
+      bsrChange = currentBsr - previousBsr; // Negative = improving
+      changePercent = ((previousBsr - currentBsr) / previousBsr) * 100;
+
+      // Detect spikes (significant improvement)
+      if (changePercent > 50) {
+        isSpike = true;
+        spikeType = 'viral';
+      } else if (changePercent > 25) {
+        isSpike = true;
+        spikeType = 'major';
+      } else if (changePercent > 10) {
+        isSpike = true;
+        spikeType = 'minor';
+      }
+    }
+
+    // Create BSR history record
+    await db.bsrHistory.create({
+      data: {
+        productId,
+        bsr: currentBsr,
+        previousBsr,
+        bsrChange,
+        changePercent,
+        isSpike,
+        spikeType,
+      },
+    });
+
+    // Update product with spike info if detected
+    if (isSpike) {
+      await db.marketplaceProduct.update({
+        where: { id: productId },
+        data: {
+          bsrSpikeDetected: true,
+          bsrSpikeDate: new Date(),
+          bsrChange24h: bsrChange,
+        },
+      });
+    }
+  } catch (error) {
+    // Don't fail main operation for BSR tracking
+    console.log('[LEARNING] BSR tracking error:', error);
   }
 };
 
@@ -193,12 +305,20 @@ export const updateNicheMarketData = async (niche: string): Promise<void> => {
     const prices = products.map(p => Number(p.price)).filter(p => p > 0);
     const reviews = products.map(p => p.reviewCount).filter(r => r > 0);
     const ratings = products.map(p => Number(p.avgRating)).filter(r => r > 0);
+    const bsrs = products.map(p => p.salesRank).filter((r): r is number => r !== null && r > 0);
 
     const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
     const minPrice = prices.length > 0 ? Math.min(...prices) : 0;
     const maxPrice = prices.length > 0 ? Math.max(...prices) : 0;
     const avgReviewCount = reviews.length > 0 ? reviews.reduce((a, b) => a + b, 0) / reviews.length : 0;
     const avgRating = ratings.length > 0 ? ratings.reduce((a, b) => a + b, 0) / ratings.length : 0;
+    const avgBsr = bsrs.length > 0 ? Math.round(bsrs.reduce((a, b) => a + b, 0) / bsrs.length) : null;
+
+    // Count MBA products
+    const mbaProducts = products.filter(p => p.isMerchByAmazon === true).length;
+
+    // Count products with BSR spikes
+    const risingProductCount = products.filter(p => p.bsrSpikeDetected === true).length;
 
     // Determine saturation
     let saturationLevel = 'unknown';
@@ -206,6 +326,14 @@ export const updateNicheMarketData = async (niche: string): Promise<void> => {
     else if (products.length > 200) saturationLevel = 'high';
     else if (products.length > 50) saturationLevel = 'medium';
     else if (products.length > 0) saturationLevel = 'low';
+
+    // Calculate entry recommendation
+    const { recommendation, reason, confidence } = calculateEntryRecommendation(
+      products,
+      saturationLevel,
+      avgReviewCount,
+      risingProductCount
+    );
 
     // Extract effective keywords from top performers
     const topProducts = products
@@ -216,6 +344,9 @@ export const updateNicheMarketData = async (niche: string): Promise<void> => {
     const effectiveKeywords = extractEffectiveKeywords(topProducts);
     const commonPricePoints = findCommonPricePoints(prices);
     const winningDesignStyles = extractDesignStyles(topProducts);
+
+    // Extract long-tail keywords from all products
+    const longTailKeywords = extractLongTailKeywordsFromProducts(products);
 
     // Detect gaps and opportunities
     const gaps = detectMarketGaps(products, normalizedNiche);
@@ -228,15 +359,26 @@ export const updateNicheMarketData = async (niche: string): Promise<void> => {
         totalProducts: products.length,
         amazonProducts: products.filter(p => p.source === 'amazon').length,
         etsyProducts: products.filter(p => p.source === 'etsy').length,
+        mbaProducts,
         saturationLevel,
+        // Entry recommendation
+        entryRecommendation: recommendation,
+        entryReason: reason,
+        entryConfidence: confidence,
+        // Pricing
         avgPrice,
         minPrice,
         maxPrice,
         avgReviewCount,
         avgRating,
+        // BSR tracking
+        avgBsr,
+        risingProductCount,
+        // Patterns
         effectiveKeywords,
         commonPricePoints,
         winningDesignStyles,
+        longTailKeywords,
         detectedGaps: gaps,
         opportunityScore,
         lastAnalyzed: new Date(),
@@ -245,15 +387,26 @@ export const updateNicheMarketData = async (niche: string): Promise<void> => {
         totalProducts: products.length,
         amazonProducts: products.filter(p => p.source === 'amazon').length,
         etsyProducts: products.filter(p => p.source === 'etsy').length,
+        mbaProducts,
         saturationLevel,
+        // Entry recommendation
+        entryRecommendation: recommendation,
+        entryReason: reason,
+        entryConfidence: confidence,
+        // Pricing
         avgPrice,
         minPrice,
         maxPrice,
         avgReviewCount,
         avgRating,
+        // BSR tracking
+        avgBsr,
+        risingProductCount,
+        // Patterns
         effectiveKeywords,
         commonPricePoints,
         winningDesignStyles,
+        longTailKeywords,
         detectedGaps: gaps,
         opportunityScore,
         lastAnalyzed: new Date(),
@@ -264,6 +417,100 @@ export const updateNicheMarketData = async (niche: string): Promise<void> => {
   } catch (error) {
     console.error('[LEARNING] Failed to update niche data:', error);
   }
+};
+
+/**
+ * Calculate entry recommendation (ENTER/CAUTION/AVOID)
+ */
+const calculateEntryRecommendation = (
+  products: Array<{ reviewCount: number; bsrSpikeDetected: boolean | null }>,
+  saturation: string,
+  avgReviewCount: number,
+  risingProductCount: number
+): { recommendation: string; reason: string; confidence: number } => {
+  let score = 50; // Base score
+  const reasons: string[] = [];
+
+  // Saturation factor
+  switch (saturation) {
+    case 'low':
+      score += 25;
+      reasons.push('Low competition');
+      break;
+    case 'medium':
+      score += 10;
+      reasons.push('Moderate competition');
+      break;
+    case 'high':
+      score -= 15;
+      reasons.push('High competition');
+      break;
+    case 'oversaturated':
+      score -= 30;
+      reasons.push('Oversaturated market');
+      break;
+  }
+
+  // Competition strength (review counts)
+  if (avgReviewCount < 20) {
+    score += 20;
+    reasons.push('Weak competitors (low reviews)');
+  } else if (avgReviewCount > 100) {
+    score -= 20;
+    reasons.push('Strong entrenched competitors');
+  }
+
+  // Rising products (indicates trending niche)
+  if (risingProductCount > 5) {
+    score += 15;
+    reasons.push('Multiple rising products (trending)');
+  } else if (risingProductCount > 0) {
+    score += 5;
+    reasons.push('Some products gaining traction');
+  }
+
+  // Determine recommendation
+  let recommendation: string;
+  if (score >= 70) {
+    recommendation = 'enter';
+  } else if (score >= 40) {
+    recommendation = 'caution';
+  } else {
+    recommendation = 'avoid';
+  }
+
+  // Calculate confidence (higher with more data)
+  const confidence = Math.min(100, Math.max(0, products.length * 2));
+
+  return {
+    recommendation,
+    reason: reasons.join('. '),
+    confidence,
+  };
+};
+
+/**
+ * Extract long-tail keywords from product primary keywords
+ */
+const extractLongTailKeywordsFromProducts = (
+  products: Array<{ primaryKeywords: string[] }>
+): string[] => {
+  const keywordCounts = new Map<string, number>();
+
+  for (const product of products) {
+    if (product.primaryKeywords && Array.isArray(product.primaryKeywords)) {
+      for (const keyword of product.primaryKeywords) {
+        keywordCounts.set(keyword, (keywordCounts.get(keyword) || 0) + 1);
+      }
+    }
+  }
+
+  // Return keywords that appear in multiple products
+  return Array.from(keywordCounts.entries())
+    .filter(([_, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([keyword]) => keyword);
 };
 
 // ============================================================================
@@ -787,6 +1034,211 @@ const calculateOpportunityScore = (products: Array<{ reviewCount: number }>, sat
 };
 
 // ============================================================================
+// NICHE FUSION DETECTION
+// ============================================================================
+
+/**
+ * Detect and store cross-niche fusion opportunities
+ * Finds combinations of niches that work well together
+ */
+export const detectNicheFusions = async (): Promise<void> => {
+  try {
+    const db = getPrisma();
+
+    // Get all niches with enough data
+    const niches = await db.nicheMarketData.findMany({
+      where: { totalProducts: { gte: 20 } },
+      select: { id: true, niche: true, opportunityScore: true },
+    });
+
+    console.log(`[FUSION] Analyzing ${niches.length} niches for fusion opportunities`);
+
+    // Common fusion patterns to look for
+    const fusionPatterns = [
+      // Profession + Hobby
+      { base: ['nurse', 'teacher', 'trucker', 'mechanic'], modifier: ['dog', 'cat', 'fishing', 'coffee'] },
+      // Family + Hobby
+      { base: ['dad', 'mom', 'grandpa', 'grandma'], modifier: ['fishing', 'hunting', 'gardening', 'golf'] },
+      // Family + Animal
+      { base: ['dad', 'mom'], modifier: ['dog', 'cat', 'horse'] },
+    ];
+
+    for (const pattern of fusionPatterns) {
+      for (const baseNiche of pattern.base) {
+        for (const modifierNiche of pattern.modifier) {
+          // Check if we have data for both niches
+          const baseData = niches.find(n => n.niche.includes(baseNiche));
+          const modifierData = niches.find(n => n.niche.includes(modifierNiche));
+
+          if (!baseData || !modifierData) continue;
+
+          // Look for products that contain both keywords
+          const fusionQuery = `${baseNiche} ${modifierNiche}`;
+          const fusionProducts = await db.marketplaceProduct.findMany({
+            where: {
+              OR: [
+                { title: { contains: baseNiche, mode: 'insensitive' } },
+                { niche: { contains: baseNiche, mode: 'insensitive' } },
+              ],
+              AND: [
+                {
+                  OR: [
+                    { title: { contains: modifierNiche, mode: 'insensitive' } },
+                    { niche: { contains: modifierNiche, mode: 'insensitive' } },
+                  ],
+                },
+              ],
+            },
+            take: 50,
+          });
+
+          if (fusionProducts.length >= 3) {
+            const avgReviews = fusionProducts.reduce((a, b) => a + b.reviewCount, 0) / fusionProducts.length;
+            const bsrs = fusionProducts
+              .map(p => p.salesRank)
+              .filter((r): r is number => r !== null);
+            const avgBsr = bsrs.length > 0 ? Math.round(bsrs.reduce((a, b) => a + b, 0) / bsrs.length) : null;
+
+            // Calculate opportunity score for fusion
+            const opportunityScore = calculateFusionOpportunity(fusionProducts.length, avgReviews, avgBsr);
+
+            // Determine recommendation
+            let recommendation = 'caution';
+            let saturationLevel = 'medium';
+
+            if (fusionProducts.length < 10 && avgReviews < 50) {
+              recommendation = 'enter';
+              saturationLevel = 'low';
+            } else if (fusionProducts.length > 50 || avgReviews > 200) {
+              recommendation = 'avoid';
+              saturationLevel = 'high';
+            }
+
+            // Get top product as example
+            const topProduct = fusionProducts.sort((a, b) => b.reviewCount - a.reviewCount)[0];
+
+            await db.nicheFusion.upsert({
+              where: {
+                niche1_niche2: {
+                  niche1: baseNiche,
+                  niche2: modifierNiche,
+                },
+              },
+              create: {
+                niche1: baseNiche,
+                niche2: modifierNiche,
+                niche1Id: baseData.id,
+                niche2Id: modifierData.id,
+                fusionQuery,
+                productCount: fusionProducts.length,
+                avgReviews,
+                avgBsr,
+                opportunityScore,
+                saturationLevel,
+                recommendation,
+                topProduct: topProduct ? {
+                  title: topProduct.title,
+                  reviews: topProduct.reviewCount,
+                  price: Number(topProduct.price),
+                } : null,
+                estimatedAudience: `${baseNiche} professionals who are also ${modifierNiche} enthusiasts`,
+                lastValidated: new Date(),
+              },
+              update: {
+                productCount: fusionProducts.length,
+                avgReviews,
+                avgBsr,
+                opportunityScore,
+                saturationLevel,
+                recommendation,
+                topProduct: topProduct ? {
+                  title: topProduct.title,
+                  reviews: topProduct.reviewCount,
+                  price: Number(topProduct.price),
+                } : null,
+                lastValidated: new Date(),
+                validationCount: { increment: 1 },
+              },
+            });
+          }
+        }
+      }
+    }
+
+    console.log('[FUSION] Fusion detection complete');
+  } catch (error) {
+    console.error('[FUSION] Fusion detection failed:', error);
+  }
+};
+
+/**
+ * Calculate opportunity score for a niche fusion
+ */
+const calculateFusionOpportunity = (
+  productCount: number,
+  avgReviews: number,
+  avgBsr: number | null
+): number => {
+  let score = 50;
+
+  // Low product count = opportunity
+  if (productCount < 10) score += 25;
+  else if (productCount < 25) score += 10;
+  else if (productCount > 50) score -= 15;
+
+  // Low review count = weak competition
+  if (avgReviews < 20) score += 20;
+  else if (avgReviews < 50) score += 10;
+  else if (avgReviews > 200) score -= 20;
+
+  // Good BSR = validated demand
+  if (avgBsr !== null) {
+    if (avgBsr < 100000) score += 15;
+    else if (avgBsr < 500000) score += 5;
+  }
+
+  return Math.max(0, Math.min(100, score));
+};
+
+/**
+ * Get fusion opportunities for a specific niche
+ */
+export const getFusionOpportunities = async (niche: string): Promise<Array<{
+  fusionWith: string;
+  query: string;
+  opportunity: number;
+  recommendation: string;
+  productCount: number;
+}>> => {
+  try {
+    const db = getPrisma();
+
+    const fusions = await db.nicheFusion.findMany({
+      where: {
+        OR: [
+          { niche1: { contains: niche, mode: 'insensitive' } },
+          { niche2: { contains: niche, mode: 'insensitive' } },
+        ],
+        recommendation: { not: 'avoid' },
+      },
+      orderBy: { opportunityScore: 'desc' },
+      take: 10,
+    });
+
+    return fusions.map(f => ({
+      fusionWith: f.niche1.includes(niche.toLowerCase()) ? f.niche2 : f.niche1,
+      query: f.fusionQuery,
+      opportunity: Number(f.opportunityScore) || 0,
+      recommendation: f.recommendation,
+      productCount: f.productCount,
+    }));
+  } catch (error) {
+    console.error('[FUSION] Failed to get fusion opportunities:', error);
+    return [];
+  }
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -797,4 +1249,6 @@ export default {
   runLearningEngine,
   getLearnedPatterns,
   buildLearnedPatternsContext,
+  detectNicheFusions,
+  getFusionOpportunities,
 };

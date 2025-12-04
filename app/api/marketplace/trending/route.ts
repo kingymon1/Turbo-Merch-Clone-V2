@@ -5,7 +5,7 @@ import {
   TRENDING_SCRAPE_QUERIES,
   isApiConfigured,
 } from '@/services/marketplaceIntelligence';
-import { runLearningEngine, isDatabaseConfigured } from '@/services/marketplaceLearning';
+import { runLearningEngine, isDatabaseConfigured, detectNicheFusions } from '@/services/marketplaceLearning';
 
 // Long timeout for full scrape
 export const maxDuration = 300;
@@ -21,6 +21,9 @@ export const maxDuration = 300;
  * - sources?: ('amazon' | 'etsy')[] - Which marketplaces (default: both)
  * - limitPerQuery?: number - Max products per query per source (default: 30)
  * - runLearning?: boolean - Run learning engine after scrape (default: true)
+ * - filterGraphicTeesOnly?: boolean - Filter out blanks/polos (default: true)
+ * - filterMbaOnly?: boolean - Only store Merch by Amazon products (default: false)
+ * - detectFusions?: boolean - Run cross-niche fusion detection (default: true)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -46,6 +49,9 @@ export async function POST(request: NextRequest) {
       sources = ['amazon', 'etsy'],
       limitPerQuery = 30,
       runLearning = true,
+      filterGraphicTeesOnly = true,
+      filterMbaOnly = false,
+      detectFusions = true,
     } = body;
 
     // Build query list
@@ -56,23 +62,35 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[TRENDING API] Starting scrape of ${queries.length} queries`);
+    console.log(`[TRENDING API] Filters: graphicTeesOnly=${filterGraphicTeesOnly}, mbaOnly=${filterMbaOnly}`);
     const startTime = Date.now();
 
-    // Run the scrape
+    // Run the scrape with enhanced filtering
     const scrapeResults = await scrapeTrendingTshirts({
       queries,
       sources,
       limitPerQuery,
+      filterGraphicTeesOnly,
+      filterMbaOnly,
     });
 
     const scrapeDuration = Date.now() - startTime;
 
     // Optionally run learning engine
     let learningRan = false;
+    let fusionsDetected = false;
+
     if (runLearning && scrapeResults.productsStored >= 50) {
       console.log('[TRENDING API] Running learning engine...');
       await runLearningEngine();
       learningRan = true;
+
+      // Run fusion detection after learning
+      if (detectFusions) {
+        console.log('[TRENDING API] Detecting niche fusions...');
+        await detectNicheFusions();
+        fusionsDetected = true;
+      }
     }
 
     const totalDuration = Date.now() - startTime;
@@ -82,13 +100,20 @@ export async function POST(request: NextRequest) {
       scrape: {
         queriesProcessed: scrapeResults.queriesProcessed,
         productsFound: scrapeResults.productsFound,
+        productsFiltered: scrapeResults.productsFiltered,
         productsStored: scrapeResults.productsStored,
+        mbaProductsFound: scrapeResults.mbaProductsFound,
         errors: scrapeResults.errors.slice(0, 10), // Limit error output
         totalErrors: scrapeResults.errors.length,
         durationMs: scrapeDuration,
       },
+      filters: {
+        graphicTeesOnly: filterGraphicTeesOnly,
+        mbaOnly: filterMbaOnly,
+      },
       learning: {
         ran: learningRan,
+        fusionsDetected,
         reason: learningRan
           ? 'Learning engine updated patterns'
           : scrapeResults.productsStored < 50
