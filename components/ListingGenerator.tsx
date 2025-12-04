@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TrendData, GeneratedListing, ProcessingStage, MerchPackage, PromptMode, ImageVersion, AppView } from '../types';
 import { generateListing, generateDesignImageEnhanced } from '../services/geminiService';
 import { Loader2, CheckCircle, Edit3, ShieldCheck, AlertTriangle, FileText, Package, Image as ImageIcon, Download, Save, Lock, RefreshCw, Sparkles, Wand2, Copy } from 'lucide-react';
@@ -189,11 +189,19 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   // Track the saved design ID so regeneration updates instead of creates
   const [savedDesignId, setSavedDesignId] = useState<string | undefined>((initialData as any)?.id);
 
-  // Reset hasAutoSaved when initialData changes
+  // Track the last saved image URL to detect when a new save is needed
+  // This fixes the race condition where regeneration during save causes images to be lost
+  const lastSavedImageUrlRef = useRef<string | null>(initialData?.imageUrl || null);
+  const pendingSaveRef = useRef<boolean>(false);
+
+  // Reset save state when initialData changes
   useEffect(() => {
     // Only set to true if this is a saved design (has id), not pre-generated data
-    setHasAutoSaved(!!(initialData && (initialData as any).id));
-    console.log('[ListingGenerator] initialData changed, hasAutoSaved set to:', !!(initialData && (initialData as any).id), 'hasId:', !!(initialData as any)?.id);
+    const isSavedDesign = !!(initialData && (initialData as any).id);
+    setHasAutoSaved(isSavedDesign);
+    // Also update the ref to track which URL is "saved" (if viewing a saved design)
+    lastSavedImageUrlRef.current = isSavedDesign ? (initialData?.imageUrl || null) : null;
+    console.log('[ListingGenerator] initialData changed, hasAutoSaved set to:', isSavedDesign, 'lastSavedUrl:', lastSavedImageUrlRef.current?.slice(0, 50));
   }, [initialData]);
 
   useEffect(() => {
@@ -228,19 +236,31 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   }, [selectedTrend, initialData, autoRun]);
 
   useEffect(() => {
+      // Check if we need to save: image exists, not already saved, and not currently saving
+      const needsSave = imageUrl && imageUrl !== lastSavedImageUrlRef.current;
+
       console.log('[ListingGenerator] Auto-save check:', {
           status,
           hasListing: !!listing,
           hasImageUrl: !!imageUrl,
           hasAutoSaved,
           isSaving,
-          isAnonymous
+          isAnonymous,
+          needsSave,
+          lastSavedUrl: lastSavedImageUrlRef.current?.slice(0, 50) + '...',
+          currentUrl: imageUrl?.slice(0, 50) + '...'
       });
 
-      if (status === ProcessingStage.COMPLETE && listing && imageUrl && !hasAutoSaved && !isSaving && !isAnonymous) {
+      if (status === ProcessingStage.COMPLETE && listing && imageUrl && !isSaving && !isAnonymous && needsSave) {
           console.log('[ListingGenerator] Starting auto-save...', { savedDesignId, isUpdate: !!savedDesignId });
+
+          // Mark that we're about to save this specific image
+          const imageUrlToSave = imageUrl;
+          const imageHistoryToSave = [...imageHistory];
+
           const autoSave = async () => {
               setIsSaving(true);
+              pendingSaveRef.current = true;
               await new Promise(resolve => setTimeout(resolve, 1200));
 
               // Calculate time to first action (auto-save)
@@ -249,8 +269,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               const saveData = {
                   trend: selectedTrend,
                   listing,
-                  imageUrl,
-                  imageHistory,
+                  imageUrl: imageUrlToSave,
+                  imageHistory: imageHistoryToSave,
                   promptMode,
                   generatedAt,
                   // @ts-ignore - extended data for analytics
@@ -266,7 +286,7 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               console.log('[ListingGenerator] Calling onSave with data:', {
                   trend: selectedTrend.topic,
                   hasListing: !!listing,
-                  hasImageUrl: !!imageUrl,
+                  hasImageUrl: !!imageUrlToSave,
                   isUpdate: !!savedDesignId,
                   savedDesignId
               });
@@ -275,12 +295,19 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               const result = await onSave(saveData);
 
               // Store the design ID for future updates (if this was a new save)
+              let newDesignId = savedDesignId;
               if (result && typeof result === 'object' && 'id' in result) {
+                  newDesignId = result.id;
                   setSavedDesignId(result.id);
               }
 
+              // Mark this URL as saved
+              lastSavedImageUrlRef.current = imageUrlToSave;
+              console.log('[ListingGenerator] Save complete. Saved URL:', imageUrlToSave.slice(0, 50) + '...');
+
               setIsSaving(false);
               setHasAutoSaved(true);
+              pendingSaveRef.current = false;
           };
           autoSave();
       }
@@ -389,7 +416,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               return updated;
           });
 
-          // Reset auto-save so the new image gets saved
+          // The new image will be auto-saved via URL comparison in the useEffect
+          // (compares imageUrl against lastSavedImageUrlRef)
           setHasAutoSaved(false);
       } catch (e) {
           console.error('Regeneration failed:', e);
