@@ -753,6 +753,7 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
             onSave={handleSaveListing}
             isAnonymous={isAnonymous}
             onNavigateToSubscription={() => navigateTo(AppView.SUBSCRIPTION)}
+            userTier={userTier}
           />
         );
       case AppView.LIBRARY:
