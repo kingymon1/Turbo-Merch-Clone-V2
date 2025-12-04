@@ -397,27 +397,25 @@ const unleashedGrokAgent = async (query: string): Promise<string> => {
                         content: `You are a REAL-WORLD CULTURE EXPLORER with access to X/Twitter and web search.
 Today is ${date.fullDate}. Your mission is to find trends that work for WEARABLE T-SHIRT DESIGNS.
 
-FOCUS ON PHYSICAL WORLD TRENDS:
-- Sports, fitness, outdoor activities
-- Hobbies (fishing, hunting, gardening, cooking, crafts)
-- Professions and occupations (nurses, teachers, mechanics, etc.)
-- Animals and pets (dogs, cats, horses, etc.)
-- Family roles (dad jokes, mom life, grandparents, etc.)
-- Music, movies, TV shows, books
-- Food and drink culture
-- Holidays and seasonal events
-- Local pride and travel
+FIND DIVERSE TRENDS across these categories (not all from one!):
+- Sports & Fitness (gym, running, sports fans)
+- Outdoor & Hobbies (fishing, hunting, gardening, camping)
+- Professions (nurses, teachers, truckers, mechanics)
+- Animals & Pets (dogs, cats, horses)
+- Family (dad jokes, mom life, grandparents)
+- Music & Entertainment (genres, concerts)
+- Food & Drink (coffee, beer, BBQ)
+- Gaming (OK if not trademarked!)
+- Holidays & Seasons
 
-⚠️ SKIP THESE - they don't work for t-shirts:
+⚠️ SKIP THESE:
 - TRADEMARKED: Roblox, Minecraft, Fortnite, Pokemon, Disney, Marvel, Nintendo, etc.
-- Gaming/gamer culture, UGC content, esports
 - Vaporwave, synthwave, Y2K aesthetic
-- Tumblr/Pinterest "aesthetic" culture
 - Internet nostalgia (old computers, Windows 95, etc.)
 - Meme formats or reaction images
 - Crypto/NFT/Web3 culture
 
-Quote EVERYTHING verbatim. Find 10-15 discoveries about REAL activities and interests.
+Quote EVERYTHING verbatim. Find 10-15 DIVERSE discoveries (mix of categories!).
 
 USE YOUR SEARCH TOOLS to find real, current content.`
                     },
@@ -984,32 +982,27 @@ const fetchGrokSignals = async (query: string, viralityLevel: number): Promise<s
                         role: "system",
                         content: `You are searching LIVE X/Twitter, news, and web data. Today is ${date.fullDate}.
 
-YOUR MISSION: Find REAL-WORLD trends that work for WEARABLE T-SHIRT DESIGNS.
+YOUR MISSION: Find DIVERSE REAL-WORLD trends for WEARABLE T-SHIRT DESIGNS.
 
 SEARCH STRATEGY: ${searchGuidance}
 
-FOCUS ON PHYSICAL WORLD CONTENT:
-- Sports, fitness, outdoor activities
-- Hobbies, professions, occupations
-- Animals, pets, family roles
-- Music, movies, TV, books
-- Food, drink, holidays, travel
+FIND DIVERSE CONTENT across multiple categories:
+- Sports & Fitness | Outdoor & Hobbies | Professions
+- Animals & Pets | Family | Music & Entertainment
+- Food & Drink | Gaming (non-trademarked) | Holidays
 
-⚠️ SKIP INTERNET CULTURE:
-- Vaporwave/synthwave/Y2K aesthetic
-- Tumblr/Pinterest aesthetics
+⚠️ SKIP:
+- TRADEMARKED: Roblox, Minecraft, Fortnite, Pokemon, Disney, etc.
+- Internet aesthetics (vaporwave, Y2K, Tumblr)
 - Internet nostalgia (old computers, etc.)
 - Meme formats, reaction images
-- Crypto/NFT/AI discourse
 
 EXTRACT:
-1. EXACT PHRASES from real posts (copy verbatim with quotes)
+1. EXACT PHRASES from real posts (copy verbatim)
 2. SLANG and community-specific language
-3. CURRENT trending moments and humor
-4. PURCHASE INTENT - "I would buy", "need this on a shirt", etc.
+3. PURCHASE INTENT - "need this on a shirt", etc.
 
-CRITICAL: Use your search tools to find real, current content. Quote directly what you find.
-Only report content that would work on a WEARABLE t-shirt design.`
+CRITICAL: Find DIVERSE content from DIFFERENT categories, not all gaming or all internet.`
                     },
                     {
                         role: "user",

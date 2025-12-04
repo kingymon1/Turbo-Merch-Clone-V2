@@ -115,22 +115,24 @@ You are STRICTLY FORBIDDEN from:
 - Screen-based imagery (old computers, CRT monitors, Windows 95, etc.)
 - "Aesthetic" as a trend itself (cottagecore, dark academia, etc. are often too niche)
 - Platform-specific trends (TikTok sounds, Twitter discourse, etc.)
-- Gaming culture, UGC, gamer terminology
 
-WHY: These produce designs with screens, computers, UI elements, or overly-niche references that don't translate to wearable t-shirts. We need PHYSICAL WORLD trends.
+WHY: These produce designs with screens, computers, UI elements, or overly-niche references that don't translate to wearable t-shirts.
 
-PREFER trends about:
-- Sports, fitness, outdoor activities
-- Hobbies (fishing, gardening, cooking, crafts)
-- Professions and occupations
-- Animals and pets
-- Family roles (dad, mom, grandpa, etc.)
-- Music genres and artists
-- Movies, TV shows, books
-- Locations and travel
-- Food and drink culture
-- Holidays and seasonal events
-- Causes and social movements
+⚠️ CRITICAL: DIVERSITY REQUIREMENT ⚠️
+Your results MUST include trends from AT LEAST 3 DIFFERENT categories below.
+Do NOT return all gaming trends, or all internet trends, or all from one category!
+
+**REQUIRED CATEGORY MIX (pick from multiple):**
+- Sports & Fitness (gym, running, specific sports)
+- Outdoor & Hobbies (fishing, hunting, gardening, camping, crafts)
+- Professions (nurses, teachers, truckers, mechanics, construction)
+- Animals & Pets (dogs, cats, horses, farm animals)
+- Family (dad jokes, mom life, grandparents, siblings)
+- Music & Entertainment (genres, artists, concerts)
+- Food & Drink (coffee, beer, BBQ, cooking)
+- Holidays & Seasons (Christmas, summer, fall vibes)
+- Gaming (IF there's real demand - but NOT the only category!)
+- Travel & Places (states, cities, beach life)
 
 If an agent says "No data available" - that source provides ZERO trends.
 You can ONLY extract trends that have REAL citations and quotes from the live search results below.
