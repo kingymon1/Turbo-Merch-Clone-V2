@@ -1116,6 +1116,11 @@ export const detectNicheFusions = async (): Promise<void> => {
 
             // Get top product as example
             const topProduct = fusionProducts.sort((a, b) => b.reviewCount - a.reviewCount)[0];
+            const topProductData = topProduct ? {
+              title: topProduct.title,
+              reviews: topProduct.reviewCount,
+              price: Number(topProduct.price),
+            } : undefined;
 
             await db.nicheFusion.upsert({
               where: {
@@ -1136,11 +1141,7 @@ export const detectNicheFusions = async (): Promise<void> => {
                 opportunityScore,
                 saturationLevel,
                 recommendation,
-                topProduct: topProduct ? {
-                  title: topProduct.title,
-                  reviews: topProduct.reviewCount,
-                  price: Number(topProduct.price),
-                } : null,
+                ...(topProductData && { topProduct: topProductData }),
                 estimatedAudience: `${baseNiche} professionals who are also ${modifierNiche} enthusiasts`,
                 lastValidated: new Date(),
               },
@@ -1151,11 +1152,7 @@ export const detectNicheFusions = async (): Promise<void> => {
                 opportunityScore,
                 saturationLevel,
                 recommendation,
-                topProduct: topProduct ? {
-                  title: topProduct.title,
-                  reviews: topProduct.reviewCount,
-                  price: Number(topProduct.price),
-                } : null,
+                ...(topProductData && { topProduct: topProductData }),
                 lastValidated: new Date(),
                 validationCount: { increment: 1 },
               },
