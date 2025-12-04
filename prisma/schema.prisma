@@ -494,3 +494,224 @@ model StorageAddon {
   @@index([status])
   @@index([periodEnd])
 }
+
+// ============================================================================
+// MARKETPLACE INTELLIGENCE (Amazon/Etsy Data)
+// ============================================================================
+
+// Individual products scraped from marketplaces
+model MarketplaceProduct {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Source identification
+  source        String   // 'amazon' | 'etsy'
+  externalId    String   // ASIN for Amazon, listing ID for Etsy
+  url           String?
+
+  // Product data
+  title         String
+  price         Decimal  @db.Decimal(10, 2)
+  currency      String   @default("USD")
+  reviewCount   Int      @default(0)
+  avgRating     Decimal? @db.Decimal(3, 2)
+  salesRank     Int?
+  category      String?
+  seller        String?
+  imageUrl      String?
+
+  // Niche association
+  niche         String   // Search query that found this product
+  nicheData     NicheMarketData? @relation(fields: [nicheId], references: [id])
+  nicheId       String?
+
+  // AI-extracted design analysis
+  hasText           Boolean? // Does the design have text?
+  extractedText     String?  // Text content on the design
+  designStyle       String?  // 'vintage', 'minimalist', 'streetwear', etc.
+  visualElements    Json?    // Array of detected elements
+  colorScheme       String?  // Detected color palette
+  designAnalyzedAt  DateTime? // When AI analyzed this design
+
+  // Listing analysis (for learning)
+  titleWordCount    Int?
+  titleKeywords     Json?    // Extracted keywords from title
+  bulletPoints      Json?    // If available
+  hasGiftKeyword    Boolean? // Contains "gift" in title
+  hasFunnyKeyword   Boolean? // Contains "funny" in title
+
+  // Performance signals
+  isTopSeller       Boolean  @default(false) // In top 10 for its niche
+  performanceScore  Decimal? @db.Decimal(5, 2) // Calculated score (reviews * rating / rank)
+
+  // Freshness
+  lastScrapedAt     DateTime @default(now())
+  scrapedCount      Int      @default(1)
+
+  @@unique([source, externalId])
+  @@index([niche])
+  @@index([source])
+  @@index([designStyle])
+  @@index([isTopSeller])
+  @@index([lastScrapedAt])
+}
+
+// Aggregated market data per niche (updated periodically)
+model NicheMarketData {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Niche identification
+  niche         String   @unique // Normalized search term
+  lastAnalyzed  DateTime @default(now())
+
+  // Market size
+  totalProducts     Int      @default(0)
+  amazonProducts    Int      @default(0)
+  etsyProducts      Int      @default(0)
+
+  // Saturation
+  saturationLevel   String   @default("unknown") // 'low' | 'medium' | 'high' | 'oversaturated'
+  competitionScore  Decimal? @db.Decimal(5, 2) // 0-100 score
+
+  // Pricing
+  avgPrice          Decimal? @db.Decimal(10, 2)
+  minPrice          Decimal? @db.Decimal(10, 2)
+  maxPrice          Decimal? @db.Decimal(10, 2)
+  optimalPricePoint Decimal? @db.Decimal(10, 2) // Most common successful price
+
+  // Performance metrics
+  avgReviewCount    Decimal? @db.Decimal(10, 2)
+  avgRating         Decimal? @db.Decimal(3, 2)
+  topSellerThreshold Int?    // Review count needed to be competitive
+
+  // Patterns learned
+  winningDesignStyles   Json?  // ['vintage', 'minimalist'] - most common among top sellers
+  effectiveKeywords     Json?  // Keywords in top-performing titles
+  commonPricePoints     Json?  // [16.99, 19.99, 24.99]
+  titlePatterns         Json?  // Common title structures
+
+  // Opportunities
+  detectedGaps          Json?  // Identified market gaps
+  emergingAngles        Json?  // New angles not well-served
+  opportunityScore      Decimal? @db.Decimal(5, 2) // Overall opportunity rating
+
+  // Related products
+  products          MarketplaceProduct[]
+
+  // Usage tracking
+  queryCount        Int      @default(1) // How many times users searched this niche
+  lastQueriedAt     DateTime @default(now())
+
+  @@index([niche])
+  @@index([saturationLevel])
+  @@index([opportunityScore])
+  @@index([lastAnalyzed])
+}
+
+// Learned patterns from successful listings (updated by learning engine)
+model ListingPattern {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Pattern type
+  patternType   String   // 'title_structure' | 'keyword' | 'price_strategy' | 'design_style'
+  category      String   @default("apparel") // Product category this applies to
+
+  // Pattern details
+  pattern       String   // The actual pattern (e.g., "{Adjective} {Topic} {Audience} Shirt")
+  examples      Json     // Array of real examples
+  description   String?  // Human-readable description
+
+  // Effectiveness metrics
+  sampleSize    Int      @default(0) // Number of products this was learned from
+  avgPerformance Decimal? @db.Decimal(5, 2) // Average performance score of products with this pattern
+  successRate   Decimal? @db.Decimal(5, 2) // % of products with this pattern that are top sellers
+
+  // Confidence
+  confidence    Decimal  @default(0) @db.Decimal(5, 2) // 0-100 confidence in this pattern
+  isActive      Boolean  @default(true) // Still recommended
+
+  // Learning metadata
+  lastValidated DateTime @default(now()) // When we last confirmed this pattern works
+  validationCount Int    @default(1) // How many times pattern has been validated
+
+  @@unique([patternType, pattern, category])
+  @@index([patternType])
+  @@index([category])
+  @@index([confidence])
+  @@index([isActive])
+}
+
+// Design style effectiveness tracking
+model DesignStyleMetrics {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Style identification
+  styleName     String   @unique // 'vintage', 'minimalist', 'streetwear', etc.
+
+  // Performance in marketplace
+  totalProducts     Int      @default(0)
+  topSellerCount    Int      @default(0)
+  avgReviewCount    Decimal? @db.Decimal(10, 2)
+  avgRating         Decimal? @db.Decimal(3, 2)
+
+  // Niche effectiveness
+  bestPerformingNiches  Json?  // Niches where this style works best
+  worstPerformingNiches Json?  // Niches to avoid
+
+  // Price correlation
+  avgPricePoint     Decimal? @db.Decimal(10, 2)
+  priceRange        Json?    // {min, max, optimal}
+
+  // Our platform performance
+  generationCount   Int      @default(0) // How many times we generated this style
+  downloadRate      Decimal? @db.Decimal(5, 2) // % of generations downloaded
+  regenerationRate  Decimal? @db.Decimal(5, 2) // % that needed regeneration
+
+  // Trend status
+  isTrending        Boolean  @default(false)
+  trendDirection    String?  // 'rising' | 'stable' | 'declining'
+  lastTrendCheck    DateTime @default(now())
+
+  @@index([styleName])
+  @@index([isTrending])
+}
+
+// Marketplace scraping job tracking
+model MarketplaceScrapeJob {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Job details
+  jobType       String   // 'niche_scan' | 'product_update' | 'full_refresh'
+  niche         String?  // Niche being scraped (null for full refresh)
+  source        String   // 'amazon' | 'etsy' | 'both'
+
+  // Status
+  status        String   @default("pending") // 'pending' | 'running' | 'completed' | 'failed'
+  startedAt     DateTime?
+  completedAt   DateTime?
+  errorMessage  String?
+
+  // Results
+  productsFound     Int?
+  productsUpdated   Int?
+  newProducts       Int?
+  apiCallsUsed      Int?
+  costEstimate      Decimal? @db.Decimal(10, 4) // Estimated API cost
+
+  // Scheduling
+  scheduledFor  DateTime? // When job should run
+  priority      Int       @default(5) // 1=highest, 10=lowest
+
+  @@index([status])
+  @@index([scheduledFor])
+  @@index([niche])
+}

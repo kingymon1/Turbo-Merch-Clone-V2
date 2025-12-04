@@ -9,6 +9,13 @@
  * continues to function without marketplace data.
  */
 
+import {
+  storeMarketplaceProduct,
+  updateNicheMarketData,
+  buildLearnedPatternsContext,
+  isDatabaseConfigured,
+} from './marketplaceLearning';
+
 // Types
 export interface MarketplaceProduct {
   id: string;
@@ -597,7 +604,20 @@ export const buildMarketplaceContext = async (
   const config = getMarketplaceConfig(viralityLevel);
   const intelligence = await buildNicheIntelligence(query);
 
-  // If no data available, return minimal context
+  // Try to get learned patterns (gracefully fails if DB not available)
+  let learnedPatternsContext = '';
+  try {
+    if (await isDatabaseConfigured()) {
+      learnedPatternsContext = await buildLearnedPatternsContext(query);
+    }
+  } catch (error) {
+    console.log('[MARKETPLACE] Learned patterns unavailable:', error);
+  }
+
+  // Store scraped data for learning (async, don't block)
+  storeScrapedDataAsync(query, intelligence);
+
+  // If no data available, return minimal context (but still include learned patterns if available)
   if (intelligence.dataSource === 'unavailable') {
     return `
 ═══════════════════════════════════════════════════════════════
@@ -612,6 +632,7 @@ PROCEED WITHOUT MARKETPLACE DATA:
 - Make design decisions based on cultural signals
 - Consider this a higher-risk opportunity (less validation)
 ═══════════════════════════════════════════════════════════════
+${learnedPatternsContext}
 `;
   }
 
@@ -667,7 +688,72 @@ OPPORTUNITY TYPES TO CONSIDER: ${config.opportunityTypes.join(', ')}
 USE THIS DATA AS INSTRUCTED FOR ${config.modeName} MODE.
 Data freshness: ${intelligence.lastUpdated.toISOString()}
 ═══════════════════════════════════════════════════════════════
+${learnedPatternsContext}
 `;
+};
+
+// ============================================================================
+// LEARNING ENGINE INTEGRATION
+// ============================================================================
+
+/**
+ * Store scraped data asynchronously for learning (doesn't block main flow)
+ */
+const storeScrapedDataAsync = (query: string, intelligence: NicheIntelligence): void => {
+  // Run in background - don't await
+  (async () => {
+    try {
+      if (!(await isDatabaseConfigured())) {
+        return;
+      }
+
+      // Store top products for pattern learning
+      for (const product of intelligence.topSellers.slice(0, 10)) {
+        try {
+          await storeMarketplaceProduct({
+            externalId: product.id,
+            source: product.source,
+            title: product.title,
+            price: product.price,
+            currency: product.currency,
+            url: product.url,
+            asin: product.asin,
+            reviewCount: product.reviewCount,
+            avgRating: product.avgRating,
+            salesRank: product.salesRank,
+            category: product.category,
+            seller: product.seller,
+            imageUrl: product.imageUrl,
+            niche: query,
+          });
+        } catch (productError) {
+          // Silently continue - individual product storage failure shouldn't stop others
+          console.log(`[MARKETPLACE] Could not store product: ${productError}`);
+        }
+      }
+
+      // Update niche market data
+      try {
+        await updateNicheMarketData({
+          niche: query,
+          totalProducts: intelligence.totalProducts,
+          avgPrice: intelligence.avgPrice,
+          priceMin: intelligence.priceRange.min,
+          priceMax: intelligence.priceRange.max,
+          saturationLevel: intelligence.saturationLevel,
+          topKeywords: intelligence.effectiveKeywords,
+          commonPricePoints: intelligence.commonPricePoints,
+        });
+      } catch (nicheError) {
+        console.log(`[MARKETPLACE] Could not update niche data: ${nicheError}`);
+      }
+
+      console.log(`[MARKETPLACE] Stored data for "${query}" for future learning`);
+    } catch (error) {
+      // Silently fail - learning storage should never break main functionality
+      console.log('[MARKETPLACE] Background data storage failed:', error);
+    }
+  })();
 };
 
 // ============================================================================
