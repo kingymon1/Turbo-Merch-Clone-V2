@@ -17,6 +17,7 @@ export interface TrendSearchPromptParams {
   braveData: string;
   grokData: string;
   rabbitHoleData: string;
+  marketplaceData: string; // NEW: Amazon/Etsy marketplace intelligence
   isDiscovery: boolean;
 }
 
@@ -59,7 +60,7 @@ STRATEGY: PREDICTIVE (Blue Ocean)
  * Build the main trend search prompt
  */
 export function buildTrendSearchPrompt(params: TrendSearchPromptParams): string {
-  const { date, niche, viralityLevel, googleData, braveData, grokData, rabbitHoleData, isDiscovery } = params;
+  const { date, niche, viralityLevel, googleData, braveData, grokData, rabbitHoleData, marketplaceData, isDiscovery } = params;
   const strategyContext = getStrategyContext(viralityLevel);
 
   const modeSection = isDiscovery
@@ -113,8 +114,16 @@ ${grokData || "GROK AGENT: No data available - DO NOT invent trends from this so
 --- RABBIT HOLE (Deep Exploration) ---
 ${rabbitHoleData || "RABBIT HOLE: No deep dive conducted"}
 
+${marketplaceData ? `
 ═══════════════════════════════════════════════════════════════
-YOUR TASK: SYNTHESIZE FROM AGENT DATA ONLY
+MARKETPLACE INTELLIGENCE (Amazon/Etsy)
+═══════════════════════════════════════════════════════════════
+
+${marketplaceData}
+` : ''}
+
+═══════════════════════════════════════════════════════════════
+YOUR TASK: SYNTHESIZE FROM ALL AVAILABLE DATA
 ═══════════════════════════════════════════════════════════════
 
 Cross-reference all 3 agent findings and identify the BEST opportunities.

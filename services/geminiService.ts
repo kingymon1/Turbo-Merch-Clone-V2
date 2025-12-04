@@ -6,6 +6,7 @@ import { AI_CONFIG, TREND_CONFIG, API_ENDPOINTS, DESIGN_AESTHETICS } from '../co
 import { T_SHIRT_DESIGN_EDUCATION } from './prompts/design-education';
 import { buildTrendSearchPrompt } from './prompts/trend-search';
 import { ARCHETYPES, getArchetypeForTrend } from './design-system/archetypes';
+import { buildMarketplaceContext, isApiConfigured as isMarketplaceConfigured } from './marketplaceIntelligence';
 
 // Lazy initialization of API client
 // SECURITY: Prefer server-side GEMINI_API_KEY over client-exposed NEXT_PUBLIC_API_KEY
@@ -1396,6 +1397,27 @@ IMPORTANT: Every field must contain substantive content. Short, generic response
         throw new Error('Search agents failed - unable to fetch live trend data. Check your Brave and Grok API keys.');
     }
 
+    // Fetch marketplace intelligence (optional - doesn't block if unavailable)
+    let marketplaceData = '';
+    const marketplaceEnabled = process.env.NEXT_PUBLIC_MARKETPLACE_ENABLED === 'true';
+
+    if (marketplaceEnabled && isMarketplaceConfigured()) {
+        try {
+            if (onStatusUpdate) onStatusUpdate("Gathering marketplace intelligence...");
+            console.log(`[RESEARCH] Fetching marketplace data for "${niche}" (virality: ${viralityLevel})`);
+            marketplaceData = await buildMarketplaceContext(niche, viralityLevel);
+            if (marketplaceData && marketplaceData.length > 100) {
+                activeSources.push('Marketplace');
+                console.log(`[RESEARCH] Marketplace: ${marketplaceData.length} chars ✓`);
+            }
+        } catch (error) {
+            console.log(`[RESEARCH] Marketplace: SKIPPED (${error instanceof Error ? error.message : 'unavailable'})`);
+            // Don't fail - marketplace data is optional enhancement
+        }
+    } else {
+        console.log(`[RESEARCH] Marketplace: SKIPPED (${!marketplaceEnabled ? 'disabled' : 'not configured'})`);
+    }
+
     // Warn if some agents failed
     if (failedSources.length > 0) {
         console.warn(`[RESEARCH] ⚠️ Some agents failed: ${failedSources.join(', ')}`);
@@ -1456,7 +1478,7 @@ ${deepDiveResults[i]}
     // ========================================
     if (onStatusUpdate) onStatusUpdate("The Meeting: Synthesizing all agent findings...");
 
-    // Build prompt using extracted template with ALL 3 agents' data
+    // Build prompt using extracted template with ALL agents' data + marketplace intelligence
     const prompt = buildTrendSearchPrompt({
         date,
         niche,
@@ -1465,6 +1487,7 @@ ${deepDiveResults[i]}
         braveData,
         grokData,
         rabbitHoleData,
+        marketplaceData,
         isDiscovery,
     });
 
