@@ -16,6 +16,7 @@ import { SUBSCRIPTION_CONFIG, STORAGE_CONFIG } from './config';
 // Code-split heavy components for better performance
 const TrendScanner = lazy(() => import('./components/TrendScanner'));
 const TrendLab = lazy(() => import('./components/TrendLab'));
+const ImageVectorizer = lazy(() => import('./components/ImageVectorizer'));
 const ListingGenerator = lazy(() => import('./components/ListingGenerator'));
 const PricingPlans = lazy(() => import('./components/PricingPlans'));
 const Library = lazy(() => import('./components/Library'));
@@ -734,6 +735,8 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
           setPreGenData(undefined);
           navigateTo(AppView.LISTING_GENERATOR);
         }} />;
+      case AppView.IMAGE_VECTORIZER:
+        return <ImageVectorizer onNavigateToSubscription={() => navigateTo(AppView.SUBSCRIPTION)} />;
       case AppView.LISTING_GENERATOR:
         if (!selectedTrend && !preGenData) {
           return (
