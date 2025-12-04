@@ -177,6 +177,17 @@ const ImageVectorizer: React.FC<ImageVectorizerProps> = ({ onNavigateToSubscript
       }
 
       const data = await response.json();
+
+      // Auto-download the result immediately
+      const link = document.createElement('a');
+      link.href = data.imageUrl;
+      const originalName = uploadedFileName?.replace(/\.[^.]+$/, '') || 'vectorized';
+      link.download = `${originalName}_vectorized.${outputFormat}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      // Set result state to show success view
       setResultImage(data.imageUrl);
       setResultFormat(outputFormat);
 
@@ -452,68 +463,29 @@ const ImageVectorizer: React.FC<ImageVectorizerProps> = ({ onNavigateToSubscript
 
           {/* Result Section */}
           {resultImage && (
-            <div className="p-6">
-              <div className="flex items-center gap-2 mb-6">
-                <div className="p-2 bg-green-500/10 rounded-full">
-                  <Check className="w-5 h-5 text-green-500" />
-                </div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                  Vectorization Complete
-                </h3>
+            <div className="p-8 text-center">
+              <div className="w-16 h-16 mx-auto mb-4 bg-green-500/10 rounded-full flex items-center justify-center">
+                <Check className="w-8 h-8 text-green-500" />
               </div>
-
-              {/* Before/After Comparison */}
-              <div className="grid md:grid-cols-2 gap-6 mb-6">
-                {/* Original */}
-                <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Original</p>
-                  <div className="aspect-square bg-gray-100 dark:bg-dark-700 rounded-xl overflow-hidden">
-                    <img
-                      src={uploadedImage!}
-                      alt="Original"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                </div>
-
-                {/* Vectorized */}
-                <div>
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">
-                    Vectorized ({resultFormat?.toUpperCase()})
-                  </p>
-                  <div className="aspect-square bg-gray-100 dark:bg-dark-700 rounded-xl overflow-hidden relative">
-                    {/* Checkerboard pattern for transparency */}
-                    {(resultFormat === 'png' || resultFormat === 'svg') && (
-                      <div
-                        className="absolute inset-0"
-                        style={{
-                          backgroundImage: 'linear-gradient(45deg, #e0e0e0 25%, transparent 25%), linear-gradient(-45deg, #e0e0e0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e0e0e0 75%), linear-gradient(-45deg, transparent 75%, #e0e0e0 75%)',
-                          backgroundSize: '20px 20px',
-                          backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px'
-                        }}
-                      />
-                    )}
-                    <img
-                      src={resultImage}
-                      alt="Vectorized"
-                      className="w-full h-full object-contain relative z-10"
-                    />
-                  </div>
-                </div>
-              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                Vectorization Complete!
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">
+                Your {resultFormat?.toUpperCase()} file has been downloaded.
+              </p>
 
               {/* Action Buttons */}
-              <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
                 <button
                   onClick={handleDownload}
-                  className="flex-1 py-3 px-6 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2"
+                  className="flex-1 py-3 px-6 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
                 >
                   <Download className="w-5 h-5" />
-                  Download {resultFormat?.toUpperCase()}
+                  Download Again
                 </button>
                 <button
                   onClick={handleReset}
-                  className="flex-1 py-3 px-6 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+                  className="flex-1 py-3 px-6 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-brand-500/25 flex items-center justify-center gap-2"
                 >
                   <RefreshCw className="w-5 h-5" />
                   Vectorize Another
