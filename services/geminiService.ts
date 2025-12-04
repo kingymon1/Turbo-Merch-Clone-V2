@@ -117,6 +117,7 @@ const getGrokXSourceConfig = (viralityLevel: number): { type: string; post_favor
 
 // --- HELPER: Generate diverse search query angles ---
 // Instead of one generic query, search multiple specific angles to discover more trends
+// NOTE: These angles are TOPIC-AGNOSTIC - they help find trending content about ANY subject
 const generateSearchAngles = (query: string, viralityLevel: number, testMode: boolean = false): string[] => {
     const baseQuery = query.trim();
     const date = getCurrentDateContext();
@@ -134,12 +135,12 @@ const generateSearchAngles = (query: string, viralityLevel: number, testMode: bo
             `${baseQuery} subculture`,
             `${baseQuery} fandom`,
             `${baseQuery} insider slang`,
-            `${baseQuery} discord server`,
+            `${baseQuery} enthusiasts`,
             // Social platforms deep dive
             `${baseQuery} reddit thread`,
             `${baseQuery} tiktok trend ${date.year}`,
-            `${baseQuery} twitter viral`,
-            `${baseQuery} tumblr aesthetic`,
+            `${baseQuery} twitter trending`,
+            `${baseQuery} pinterest popular`,
             // Cultural crossovers
             `${baseQuery} crossover`,
             `${baseQuery} mashup`,
@@ -150,17 +151,18 @@ const generateSearchAngles = (query: string, viralityLevel: number, testMode: bo
             `${baseQuery} "would buy"`,
             // Trending and mainstream (last - after underground)
             `${baseQuery} trending ${date.month} ${date.year}`,
-            `${baseQuery} viral meme`,
+            `${baseQuery} everyone talking about`,
         ];
     }
 
     // Core search angles that work for most topics
+    // TOPIC-AGNOSTIC: Focus on engagement signals, not content format
     const angles: string[] = [
         baseQuery, // Original query
         `${baseQuery} trending ${date.year}`,
-        `${baseQuery} viral`,
-        `${baseQuery} meme`,
+        `${baseQuery} popular`,
         `${baseQuery} community`,
+        `${baseQuery} fans excited`,
     ];
 
     // Add platform-specific angles for higher virality (catches niche content)
@@ -410,7 +412,7 @@ FORGET about mainstream trends. Search for:
 - Small accounts with passionate followers
 - Niche communities with inside jokes
 - Emerging slang and phrases
-- Obscure memes before they go viral
+- Obscure trends before they go mainstream
 - Subcultures that brands haven't discovered yet
 - Authentic voices, not influencers
 - International/non-English content about this topic
@@ -638,7 +640,7 @@ ${anglesList}
 FOR EACH ANGLE, LOOK FOR:
 1. CURRENT NEWS - What's happening RIGHT NOW related to this topic?
 2. REDDIT & FORUM DISCUSSIONS - What are enthusiasts saying?
-3. TIKTOK/SOCIAL TRENDS - Any viral moments or memes?
+3. TIKTOK/SOCIAL TRENDS - What's capturing people's attention and excitement?
 4. NICHE COMMUNITIES - Subcultures, fandoms, insider groups
 5. EMERGING ANGLES - Unexpected connections or crossovers
 6. PURCHASE SIGNALS - "I would buy this" moments, merch demand
@@ -990,7 +992,7 @@ YOUR MISSION: Find what's ACTUALLY trending and being discussed RIGHT NOW about 
 EXTRACT:
 1. EXACT PHRASES from real posts (copy verbatim with quotes)
 2. SLANG and community-specific language
-3. CURRENT viral moments and memes from the last few days
+3. CURRENT trending moments and humor from the last few days
 4. EMOTIONAL TONE - excited, ironic, frustrated, hyped?
 5. VISUAL PREFERENCES - what aesthetics are being shared?
 6. PURCHASE INTENT - "I would buy", "need this on a shirt", etc.
@@ -1006,16 +1008,16 @@ Date range: ${dateRange.from_date} to ${dateRange.to_date}
 
 SEARCH MULTIPLE ANGLES:
 1. Main topic: "${query}"
-2. Viral angle: "${query} viral"
-3. Meme angle: "${query} meme"
+2. Trending angle: "${query} trending"
+3. Popular angle: "${query} popular"
 4. Community: "${query} community fans"
-5. Trending: "trending ${query} ${date.month}"
+5. Excitement: "${query} excited ${date.month}"
 
 FOR EACH ANGLE FIND:
 - Real posts/tweets (quote them EXACTLY with username if visible)
-- Viral threads with high engagement
+- High engagement threads people are excited about
 - Community reactions and insider language
-- Memes, jokes, catchphrases being used
+- Jokes, catchphrases, humor being used
 - Any "I want this on a shirt" or purchase intent signals
 - Subcultures or niche communities discussing this
 
@@ -1823,7 +1825,7 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
     const designTextContext = trend.designText || trend.topic?.split(' ').slice(0, 3).join(' ').toUpperCase() || '';
 
     const prompt = `
-    You are an expert Amazon Merch copywriter who deeply understands internet culture and knows how to write listings that convert.
+    You are an expert Amazon Merch copywriter who deeply understands trending culture and knows how to write listings that convert.
 
     TREND RESEARCH CONTEXT:
     Topic: ${trend.topic}
