@@ -730,18 +730,9 @@ const storeScrapedDataAsync = (query: string, intelligence: NicheIntelligence): 
         }
       }
 
-      // Update niche market data
+      // Update niche market data (recalculates from stored products)
       try {
-        await updateNicheMarketData({
-          niche: query,
-          totalProducts: intelligence.totalProducts,
-          avgPrice: intelligence.avgPrice,
-          priceMin: intelligence.priceRange.min,
-          priceMax: intelligence.priceRange.max,
-          saturationLevel: intelligence.saturationLevel,
-          topKeywords: intelligence.effectiveKeywords,
-          commonPricePoints: intelligence.commonPricePoints,
-        });
+        await updateNicheMarketData(query);
       } catch (nicheError) {
         console.log(`[MARKETPLACE] Could not update niche data: ${nicheError}`);
       }
