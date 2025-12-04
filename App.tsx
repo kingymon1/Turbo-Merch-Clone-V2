@@ -50,6 +50,9 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
   const [preGenData, setPreGenData] = useState<MerchPackage | undefined>(undefined);
   const [savedListings, setSavedListings] = useState<SavedListing[]>([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(true);
+  const [libraryHasMore, setLibraryHasMore] = useState(false);
+  const [libraryTotal, setLibraryTotal] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [userTier, setUserTier] = useState<string>(SUBSCRIPTION_CONFIG.defaultTier);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [usageRefreshKey, setUsageRefreshKey] = useState(0);
@@ -241,14 +244,18 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
     }
   };
 
+  const INITIAL_LIBRARY_LOAD = 9; // Load 9 designs initially for fast display
+
   const fetchSavedDesigns = async () => {
     setIsLibraryLoading(true);
     try {
-      const response = await fetch('/api/designs');
+      const response = await fetch(`/api/designs?limit=${INITIAL_LIBRARY_LOAD}`);
       if (response.ok) {
         const data = await response.json();
-        console.log(`[Library] Fetched ${data.designs?.length || 0} designs from database`);
+        console.log(`[Library] Fetched ${data.designs?.length || 0} of ${data.total || 0} designs from database`);
         setSavedListings(data.designs || []);
+        setLibraryHasMore(data.hasMore || false);
+        setLibraryTotal(data.total || 0);
       } else {
         console.error('[Library] Failed to fetch designs:', response.status, response.statusText);
       }
@@ -256,6 +263,25 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
       console.error('[Library] Error fetching saved designs:', error);
     } finally {
       setIsLibraryLoading(false);
+    }
+  };
+
+  const loadMoreDesigns = async () => {
+    if (isLoadingMore || !libraryHasMore) return;
+
+    setIsLoadingMore(true);
+    try {
+      const response = await fetch(`/api/designs?limit=${INITIAL_LIBRARY_LOAD}&offset=${savedListings.length}`);
+      if (response.ok) {
+        const data = await response.json();
+        console.log(`[Library] Loaded ${data.designs?.length || 0} more designs`);
+        setSavedListings(prev => [...prev, ...(data.designs || [])]);
+        setLibraryHasMore(data.hasMore || false);
+      }
+    } catch (error) {
+      console.error('[Library] Error loading more designs:', error);
+    } finally {
+      setIsLoadingMore(false);
     }
   };
 
@@ -757,7 +783,7 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
           />
         );
       case AppView.LIBRARY:
-        return <Library savedListings={savedListings} onDelete={handleDeleteListing} onView={handleViewListing} userTier={userTier} onRefresh={fetchSavedDesigns} isLoading={isLibraryLoading} />;;
+        return <Library savedListings={savedListings} onDelete={handleDeleteListing} onView={handleViewListing} userTier={userTier} onRefresh={fetchSavedDesigns} isLoading={isLibraryLoading} hasMore={libraryHasMore} onLoadMore={loadMoreDesigns} isLoadingMore={isLoadingMore} total={libraryTotal} />;
       case AppView.IDEAS_VAULT:
         return <IdeasVault onSelectIdea={handleSelectIdea} />;
       case AppView.SUBSCRIPTION:

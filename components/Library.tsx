@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { SavedListing, TrendData, GeneratedListing } from '../types';
-import { Clock, Trash2, Download, ExternalLink, AlertCircle, FolderHeart, FileDown, CheckSquare, Square, Copy, Sparkles, Lock } from 'lucide-react';
+import { Clock, Trash2, Download, ExternalLink, AlertCircle, FolderHeart, FileDown, CheckSquare, Square, Copy, Sparkles, Lock, Loader2 } from 'lucide-react';
 import JSZip from 'jszip';
 import VariationsModal from './VariationsModal';
 import { TierName } from '../lib/pricing';
@@ -19,9 +19,13 @@ interface LibraryProps {
   remainingQuota?: number;
   onRefresh?: () => void;
   isLoading?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  isLoadingMore?: boolean;
+  total?: number;
 }
 
-const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, userTier = 'free', remainingQuota: propQuota, onRefresh, isLoading = false }) => {
+const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, userTier = 'free', remainingQuota: propQuota, onRefresh, isLoading = false, hasMore = false, onLoadMore, isLoadingMore = false, total = 0 }) => {
   const [now, setNow] = useState(Date.now());
   const [exporting, setExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -703,6 +707,31 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
           );
         })}
       </div>
+
+      {/* Load More Button */}
+      {hasMore && onLoadMore && (
+        <div className="mt-8 flex flex-col items-center gap-2">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Showing {savedListings.length} of {total} designs
+          </p>
+          <button
+            onClick={onLoadMore}
+            disabled={isLoadingMore}
+            className="px-6 py-3 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-900 dark:text-white font-semibold rounded-lg border border-gray-200 dark:border-white/10 transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isLoadingMore ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                Load More
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Variations Modal */}
       {variationsDesign && (
