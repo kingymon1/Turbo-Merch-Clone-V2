@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { TrendData, GeneratedListing, ProcessingStage, MerchPackage, PromptMode, ImageVersion, AppView } from '../types';
 import { generateListing, generateDesignImageEnhanced } from '../services/geminiService';
 import { Loader2, CheckCircle, Edit3, ShieldCheck, AlertTriangle, FileText, Package, Image as ImageIcon, Download, Save, Lock, RefreshCw, Sparkles, Wand2, Copy } from 'lucide-react';
@@ -63,6 +63,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   const [showDownloadModal, setShowDownloadModal] = useState(false);
   const [downloadMode, setDownloadMode] = useState<DownloadMode>('standard');
   const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
+  // Track which images are selected for download (indices into imageHistory)
+  const [selectedDownloadImages, setSelectedDownloadImages] = useState<Set<number>>(new Set([0]));
 
   // Vectorizer feature check (with defensive fallback)
   const vectorizerEnabled = FEATURES?.enableVectorizer ?? false;
@@ -189,11 +191,19 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   // Track the saved design ID so regeneration updates instead of creates
   const [savedDesignId, setSavedDesignId] = useState<string | undefined>((initialData as any)?.id);
 
-  // Reset hasAutoSaved when initialData changes
+  // Track the last saved image URL to detect when a new save is needed
+  // This fixes the race condition where regeneration during save causes images to be lost
+  const lastSavedImageUrlRef = useRef<string | null>(initialData?.imageUrl || null);
+  const pendingSaveRef = useRef<boolean>(false);
+
+  // Reset save state when initialData changes
   useEffect(() => {
     // Only set to true if this is a saved design (has id), not pre-generated data
-    setHasAutoSaved(!!(initialData && (initialData as any).id));
-    console.log('[ListingGenerator] initialData changed, hasAutoSaved set to:', !!(initialData && (initialData as any).id), 'hasId:', !!(initialData as any)?.id);
+    const isSavedDesign = !!(initialData && (initialData as any).id);
+    setHasAutoSaved(isSavedDesign);
+    // Also update the ref to track which URL is "saved" (if viewing a saved design)
+    lastSavedImageUrlRef.current = isSavedDesign ? (initialData?.imageUrl || null) : null;
+    console.log('[ListingGenerator] initialData changed, hasAutoSaved set to:', isSavedDesign, 'lastSavedUrl:', lastSavedImageUrlRef.current?.slice(0, 50));
   }, [initialData]);
 
   useEffect(() => {
@@ -228,19 +238,31 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   }, [selectedTrend, initialData, autoRun]);
 
   useEffect(() => {
+      // Check if we need to save: image exists, not already saved, and not currently saving
+      const needsSave = imageUrl && imageUrl !== lastSavedImageUrlRef.current;
+
       console.log('[ListingGenerator] Auto-save check:', {
           status,
           hasListing: !!listing,
           hasImageUrl: !!imageUrl,
           hasAutoSaved,
           isSaving,
-          isAnonymous
+          isAnonymous,
+          needsSave,
+          lastSavedUrl: lastSavedImageUrlRef.current?.slice(0, 50) + '...',
+          currentUrl: imageUrl?.slice(0, 50) + '...'
       });
 
-      if (status === ProcessingStage.COMPLETE && listing && imageUrl && !hasAutoSaved && !isSaving && !isAnonymous) {
+      if (status === ProcessingStage.COMPLETE && listing && imageUrl && !isSaving && !isAnonymous && needsSave) {
           console.log('[ListingGenerator] Starting auto-save...', { savedDesignId, isUpdate: !!savedDesignId });
+
+          // Mark that we're about to save this specific image
+          const imageUrlToSave = imageUrl;
+          const imageHistoryToSave = [...imageHistory];
+
           const autoSave = async () => {
               setIsSaving(true);
+              pendingSaveRef.current = true;
               await new Promise(resolve => setTimeout(resolve, 1200));
 
               // Calculate time to first action (auto-save)
@@ -249,8 +271,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               const saveData = {
                   trend: selectedTrend,
                   listing,
-                  imageUrl,
-                  imageHistory,
+                  imageUrl: imageUrlToSave,
+                  imageHistory: imageHistoryToSave,
                   promptMode,
                   generatedAt,
                   // @ts-ignore - extended data for analytics
@@ -266,7 +288,7 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               console.log('[ListingGenerator] Calling onSave with data:', {
                   trend: selectedTrend.topic,
                   hasListing: !!listing,
-                  hasImageUrl: !!imageUrl,
+                  hasImageUrl: !!imageUrlToSave,
                   isUpdate: !!savedDesignId,
                   savedDesignId
               });
@@ -275,12 +297,19 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               const result = await onSave(saveData);
 
               // Store the design ID for future updates (if this was a new save)
+              let newDesignId = savedDesignId;
               if (result && typeof result === 'object' && 'id' in result) {
+                  newDesignId = result.id;
                   setSavedDesignId(result.id);
               }
 
+              // Mark this URL as saved
+              lastSavedImageUrlRef.current = imageUrlToSave;
+              console.log('[ListingGenerator] Save complete. Saved URL:', imageUrlToSave.slice(0, 50) + '...');
+
               setIsSaving(false);
               setHasAutoSaved(true);
+              pendingSaveRef.current = false;
           };
           autoSave();
       }
@@ -389,7 +418,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               return updated;
           });
 
-          // Reset auto-save so the new image gets saved
+          // The new image will be auto-saved via URL comparison in the useEffect
+          // (compares imageUrl against lastSavedImageUrlRef)
           setHasAutoSaved(false);
       } catch (e) {
           console.error('Regeneration failed:', e);
@@ -667,12 +697,43 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
     }
   };
 
-  // Handle download button click - show modal if vectorizer enabled
+  // Handle download button click - show modal for image selection (and quality if vectorizer enabled)
   const handleDownloadClick = () => {
-    if (vectorizerEnabled) {
+    // If there are multiple images, always show modal for selection
+    // Otherwise, show modal only if vectorizer is enabled for quality selection
+    if (imageHistory.length > 1 || vectorizerEnabled) {
+      // Select all images by default
+      setSelectedDownloadImages(new Set(imageHistory.map((_, i) => i)));
       setShowDownloadModal(true);
     } else {
       downloadPackage('standard');
+    }
+  };
+
+  // Toggle image selection for download
+  const toggleDownloadImage = (index: number) => {
+    setSelectedDownloadImages(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        // Don't allow deselecting if it's the only one selected
+        if (next.size > 1) {
+          next.delete(index);
+        }
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  // Select/deselect all images for download
+  const toggleSelectAllDownloadImages = () => {
+    if (selectedDownloadImages.size === imageHistory.length) {
+      // If all selected, select only the current one
+      setSelectedDownloadImages(new Set([selectedImageIndex]));
+    } else {
+      // Select all
+      setSelectedDownloadImages(new Set(imageHistory.map((_, i) => i)));
     }
   };
 
@@ -727,8 +788,18 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   const downloadPackage = async (mode: DownloadMode = 'standard') => {
       if (!listing || !imageUrl) return;
 
+      // Get the images to download - either from selected set or fall back to current image
+      const imagesToDownload = imageHistory.length > 1
+        ? imageHistory.filter((_, index) => selectedDownloadImages.has(index))
+        : [{ imageUrl, promptMode, generatedAt: Date.now(), regenerationIndex: 0 }];
+
+      if (imagesToDownload.length === 0) {
+        alert("Please select at least one image to download.");
+        return;
+      }
+
       setIsZipping(true);
-      setDownloadProgress(mode === 'hd' ? 'Vectorizing image...' : 'Processing...');
+      setDownloadProgress(mode === 'hd' ? 'Vectorizing images...' : 'Processing...');
 
       // Calculate time to download for analytics
       const timeToDownload = Math.floor((Date.now() - generatedAt) / 1000);
@@ -750,22 +821,33 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
         const csvContent = `${headers.join(',')}\n${row}`;
         zip.file(`${brandSafe}_listing.csv`, csvContent);
 
-        let imageToProcess = imageUrl;
+        // Process each selected image
+        for (let i = 0; i < imagesToDownload.length; i++) {
+          const version = imagesToDownload[i];
+          const originalIndex = imageHistory.findIndex(v => v.imageUrl === version.imageUrl && v.generatedAt === version.generatedAt);
+          const versionLabel = originalIndex === 0 ? 'original' : `v${originalIndex}`;
 
-        // If HD mode and user has access, vectorize first
-        if (mode === 'hd' && canUseHDDownload) {
-          try {
-            setDownloadProgress('Vectorizing for HD quality...');
-            imageToProcess = await vectorizeImageForDownload(imageUrl);
-          } catch (vecError) {
-            console.warn('Vectorization failed, using original:', vecError);
-            // Fall back to original image
+          setDownloadProgress(`Processing image ${i + 1} of ${imagesToDownload.length}...`);
+
+          let imageToProcess = version.imageUrl;
+
+          // If HD mode and user has access, vectorize first
+          if (mode === 'hd' && canUseHDDownload) {
+            try {
+              setDownloadProgress(`Vectorizing image ${i + 1} of ${imagesToDownload.length}...`);
+              imageToProcess = await vectorizeImageForDownload(version.imageUrl);
+            } catch (vecError) {
+              console.warn('Vectorization failed, using original:', vecError);
+              // Fall back to original image
+            }
           }
-        }
 
-        setDownloadProgress('Processing image...');
-        const highResBlob = await upscaleImageToPrintReady(imageToProcess);
-        zip.file(`${brandSafe}${mode === 'hd' ? '_HD' : ''}_4500x5400_transparent.png`, highResBlob);
+          const highResBlob = await upscaleImageToPrintReady(imageToProcess);
+          const fileName = imagesToDownload.length === 1
+            ? `${brandSafe}${mode === 'hd' ? '_HD' : ''}_4500x5400_transparent.png`
+            : `${brandSafe}_${versionLabel}${mode === 'hd' ? '_HD' : ''}_4500x5400_transparent.png`;
+          zip.file(fileName, highResBlob);
+        }
 
         setDownloadProgress('Creating package...');
         const content = await zip.generateAsync({type: "blob"});
@@ -787,7 +869,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                     regenerationCount,
                     timeToDownload,
                     wasRegenerated: regenerationCount > 0,
-                    shirtColor: selectedTrend.recommendedShirtColor
+                    shirtColor: selectedTrend.recommendedShirtColor,
+                    imageCount: imagesToDownload.length
                 })
             }).catch(() => {}); // Ignore analytics errors
         } catch {} // Ignore analytics errors
@@ -797,7 +880,8 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
             promptMode,
             regenerationCount,
             timeToDownload,
-            wasRegenerated: regenerationCount > 0
+            wasRegenerated: regenerationCount > 0,
+            imageCount: imagesToDownload.length
         });
 
       } catch (error) {
@@ -1316,85 +1400,145 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
           />
 
           {/* Modal */}
-          <div className="relative bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 shadow-2xl w-full max-w-md p-6 animate-fade-in">
+          <div className="relative bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 shadow-2xl w-full max-w-lg p-6 animate-fade-in max-h-[90vh] overflow-y-auto">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
               Download Package
             </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
-              Choose your download quality
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {imageHistory.length > 1 ? 'Select images and choose quality' : 'Choose your download quality'}
             </p>
 
-            <div className="space-y-3">
-              {/* Standard Quality Option */}
-              <button
-                onClick={() => setDownloadMode('standard')}
-                className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
-                  downloadMode === 'standard'
-                    ? 'border-brand-500 bg-brand-500/10'
-                    : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    downloadMode === 'standard'
-                      ? 'border-brand-500 bg-brand-500'
-                      : 'border-gray-300 dark:border-gray-600'
-                  }`}>
-                    {downloadMode === 'standard' && (
-                      <div className="w-2 h-2 bg-white rounded-full" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold text-gray-900 dark:text-white">Standard Quality</div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">Original resolution, fast download</div>
-                  </div>
+            {/* Image Selection - only show if there are multiple images */}
+            {imageHistory.length > 1 && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Select Images ({selectedDownloadImages.size} of {imageHistory.length})
+                  </span>
+                  <button
+                    onClick={toggleSelectAllDownloadImages}
+                    className="text-xs text-brand-600 dark:text-brand-400 hover:underline"
+                  >
+                    {selectedDownloadImages.size === imageHistory.length ? 'Select Current Only' : 'Select All'}
+                  </button>
                 </div>
-              </button>
+                <div className="grid grid-cols-4 gap-2 p-3 bg-gray-50 dark:bg-dark-900/50 rounded-lg border border-gray-200 dark:border-white/5">
+                  {imageHistory.map((version, index) => (
+                    <div
+                      key={`download-select-${version.generatedAt}-${index}`}
+                      onClick={() => toggleDownloadImage(index)}
+                      className={`relative cursor-pointer rounded-lg overflow-hidden transition-all ${
+                        selectedDownloadImages.has(index)
+                          ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-offset-dark-800'
+                          : 'opacity-50 hover:opacity-75'
+                      }`}
+                    >
+                      <img
+                        src={version.imageUrl}
+                        alt={`Version ${index + 1}`}
+                        className="w-full aspect-[5/6] object-cover bg-black"
+                      />
+                      <div className="absolute top-1 right-1">
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          selectedDownloadImages.has(index)
+                            ? 'border-brand-500 bg-brand-500'
+                            : 'border-white/50 bg-black/30'
+                        }`}>
+                          {selectedDownloadImages.has(index) && (
+                            <CheckCircle className="w-3 h-3 text-white" />
+                          )}
+                        </div>
+                      </div>
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-[9px] text-center py-0.5">
+                        <span className="text-white">
+                          {index === 0 ? 'Original' : `v${index}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-              {/* HD Vector Quality Option */}
-              <button
-                onClick={() => canUseHDDownload && setDownloadMode('hd')}
-                disabled={!canUseHDDownload}
-                className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
-                  !canUseHDDownload
-                    ? 'border-gray-200 dark:border-white/5 opacity-60 cursor-not-allowed'
-                    : downloadMode === 'hd'
-                      ? 'border-brand-500 bg-brand-500/10'
-                      : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                    downloadMode === 'hd' && canUseHDDownload
-                      ? 'border-brand-500 bg-brand-500'
-                      : 'border-gray-300 dark:border-gray-600'
-                  }`}>
-                    {downloadMode === 'hd' && canUseHDDownload && (
-                      <div className="w-2 h-2 bg-white rounded-full" />
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-900 dark:text-white">HD Vector PNG</span>
-                      <Sparkles className="w-4 h-4 text-amber-500" />
-                    </div>
-                    <div className="text-sm text-gray-500 dark:text-gray-400">
-                      Vectorized, 4x resolution, print-ready
-                    </div>
-                  </div>
-                  {!canUseHDDownload && (
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
-                      <Lock className="w-3 h-3" />
-                      <span>Paid</span>
-                    </div>
-                  )}
+            {/* Quality Selection */}
+            {vectorizerEnabled && (
+              <>
+                <div className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Download Quality
                 </div>
-              </button>
-            </div>
+                <div className="space-y-2 mb-4">
+                  {/* Standard Quality Option */}
+                  <button
+                    onClick={() => setDownloadMode('standard')}
+                    className={`w-full p-3 rounded-xl border-2 transition-all text-left ${
+                      downloadMode === 'standard'
+                        ? 'border-brand-500 bg-brand-500/10'
+                        : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        downloadMode === 'standard'
+                          ? 'border-brand-500 bg-brand-500'
+                          : 'border-gray-300 dark:border-gray-600'
+                      }`}>
+                        {downloadMode === 'standard' && (
+                          <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-sm text-gray-900 dark:text-white">Standard Quality</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">Original resolution, fast download</div>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* HD Vector Quality Option */}
+                  <button
+                    onClick={() => canUseHDDownload && setDownloadMode('hd')}
+                    disabled={!canUseHDDownload}
+                    className={`w-full p-3 rounded-xl border-2 transition-all text-left relative ${
+                      !canUseHDDownload
+                        ? 'border-gray-200 dark:border-white/5 opacity-60 cursor-not-allowed'
+                        : downloadMode === 'hd'
+                          ? 'border-brand-500 bg-brand-500/10'
+                          : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                        downloadMode === 'hd' && canUseHDDownload
+                          ? 'border-brand-500 bg-brand-500'
+                          : 'border-gray-300 dark:border-gray-600'
+                      }`}>
+                        {downloadMode === 'hd' && canUseHDDownload && (
+                          <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-sm text-gray-900 dark:text-white">HD Vector PNG</span>
+                          <Sparkles className="w-3 h-3 text-amber-500" />
+                        </div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Vectorized, 4x resolution, print-ready
+                        </div>
+                      </div>
+                      {!canUseHDDownload && (
+                        <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-2 py-0.5 rounded">
+                          <Lock className="w-3 h-3" />
+                          <span>Paid</span>
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Upgrade prompt for free users */}
             {!canUseHDDownload && vectorizerEnabled && (
-              <div className="mt-4 p-3 bg-gradient-to-r from-brand-500/10 to-cyan-500/10 border border-brand-500/20 rounded-lg">
+              <div className="mb-4 p-3 bg-gradient-to-r from-brand-500/10 to-cyan-500/10 border border-brand-500/20 rounded-lg">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   <span className="font-medium text-gray-900 dark:text-white">Upgrade to unlock HD downloads</span>
                   {' '}— Get vectorized, print-ready images with crisper edges.
@@ -1414,7 +1558,7 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
             )}
 
             {/* Actions */}
-            <div className="flex gap-3 mt-6">
+            <div className="flex gap-3 mt-4">
               <button
                 onClick={() => setShowDownloadModal(false)}
                 className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-900 dark:text-white font-medium rounded-lg border border-gray-200 dark:border-white/10 transition-colors"
@@ -1426,7 +1570,9 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                 className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg shadow-lg shadow-brand-500/20 transition-colors flex items-center justify-center gap-2"
               >
                 <Download className="w-4 h-4" />
-                Download
+                {imageHistory.length > 1 && selectedDownloadImages.size > 1
+                  ? `Download ${selectedDownloadImages.size} Images`
+                  : 'Download'}
               </button>
             </div>
           </div>
