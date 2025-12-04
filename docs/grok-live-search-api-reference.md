@@ -358,12 +358,15 @@ Return specific findings with actual examples from live posts.`
 
 ## Available Models
 
-| Model | Description |
-|-------|-------------|
-| `grok-4` | Latest model (shown in docs) |
-| `grok-3` | Previous version (currently in our code) |
+| Model | Description | Live Search Support |
+|-------|-------------|---------------------|
+| `grok-4` | Latest reasoning model | Uses tool calling API (different approach) |
+| `grok-3` | Production model | ✅ Full `search_parameters` support |
+| `grok-2` | Previous generation | ✅ Full `search_parameters` support |
 
-**Recommendation:** Verify API key access level and test both models.
+**Recommendation:** Use `grok-3` for live search with `search_parameters`. Grok 4 has native tool use and may not support the legacy `search_parameters` approach - causes 400 errors.
+
+**Environment Variable:** Set `GROK_LIVE_SEARCH_MODEL=grok-3` in your `.env` file.
 
 ---
 

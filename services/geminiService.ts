@@ -25,6 +25,9 @@ const getAI = (): GoogleGenAI => {
 const TEXT_MODEL = AI_CONFIG.models.text;
 const IMAGE_MODEL = AI_CONFIG.models.image;
 
+// Grok model for live search - grok-3 supports search_parameters, grok-4 may need tool calling
+const GROK_LIVE_SEARCH_MODEL = process.env.GROK_LIVE_SEARCH_MODEL || 'grok-3';
+
 // --- HELPER: Timeout wrapper to prevent infinite hangs ---
 const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, errorMessage: string): Promise<T> => {
     return Promise.race([
@@ -449,7 +452,7 @@ For each finding:
 GO WILD. BE CURIOUS. FIND THE GEMS.`
                     }
                 ],
-                model: "grok-4",
+                model: GROK_LIVE_SEARCH_MODEL,
                 stream: false,
                 temperature: 1.0, // Maximum creativity
                 search_parameters: searchParameters
@@ -1029,7 +1032,7 @@ Quote EXACTLY what people are saying - the language matters.
 Return SPECIFIC findings with actual quotes, usernames, and sources.`
                     }
                 ],
-                model: "grok-4",
+                model: GROK_LIVE_SEARCH_MODEL,
                 stream: false,
                 temperature: 0.3,
                 search_parameters: searchParameters
