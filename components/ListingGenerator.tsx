@@ -437,17 +437,28 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
             }
 
             try {
-                // 1. Scaling
+                // 1. Scaling - fit image to canvas without cropping
                 ctx.imageSmoothingEnabled = true;
                 ctx.imageSmoothingQuality = 'high';
 
-                const zoomFactor = 1.05;
-                const scaledWidth = canvas.width * zoomFactor;
-                const scaledHeight = canvas.height * zoomFactor;
+                // Calculate scale to FIT the entire image within canvas (no cropping)
+                const scaleX = canvas.width / img.width;
+                const scaleY = canvas.height / img.height;
+                const scale = Math.min(scaleX, scaleY); // Use smaller scale to ensure entire image fits
+
+                const scaledWidth = img.width * scale;
+                const scaledHeight = img.height * scale;
+
+                // Center the image on the canvas
                 const offsetX = (canvas.width - scaledWidth) / 2;
                 const offsetY = (canvas.height - scaledHeight) / 2;
 
+                // Fill background with transparent first
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
                 ctx.drawImage(img, offsetX, offsetY, scaledWidth, scaledHeight);
+
+                console.log(`[Download] Image scaling: ${img.width}x${img.height} → ${Math.round(scaledWidth)}x${Math.round(scaledHeight)} (scale: ${scale.toFixed(2)})`);
 
                 // 2. Processing (Optimized Single Pass)
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -455,13 +466,42 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                 const width = canvas.width;
                 const height = canvas.height;
                 const output = new Uint8ClampedArray(data.length);
-                
-                // Detect background color
-                const cornerR = data[0];
-                const cornerG = data[1];
-                const cornerB = data[2];
-                const isWhiteBg = cornerR > 200 && cornerG > 200 && cornerB > 200;
+
+                // Detect background color by sampling multiple edge points
+                // Sample corners and edge midpoints for robust detection
+                const samplePoints = [
+                    0,                                          // Top-left corner
+                    (width - 1) * 4,                           // Top-right corner
+                    ((height - 1) * width) * 4,                // Bottom-left corner
+                    ((height - 1) * width + (width - 1)) * 4,  // Bottom-right corner
+                    (Math.floor(width / 2)) * 4,               // Top-center
+                    ((height - 1) * width + Math.floor(width / 2)) * 4,  // Bottom-center
+                    (Math.floor(height / 2) * width) * 4,      // Left-center
+                    (Math.floor(height / 2) * width + (width - 1)) * 4,  // Right-center
+                ];
+
+                let whiteCount = 0;
+                let blackCount = 0;
+
+                for (const idx of samplePoints) {
+                    const r = data[idx];
+                    const g = data[idx + 1];
+                    const b = data[idx + 2];
+
+                    // Check if this sample point is white-ish or black-ish
+                    if (r > 200 && g > 200 && b > 200) {
+                        whiteCount++;
+                    } else if (r < 50 && g < 50 && b < 50) {
+                        blackCount++;
+                    }
+                }
+
+                // Only consider it a white background if MAJORITY of samples are white
+                // Default to black background (which is what our prompts specify)
+                const isWhiteBg = whiteCount > blackCount && whiteCount >= 5;
                 const BG_THRESHOLD = 40;
+
+                console.log(`[Download] Background detection: ${whiteCount} white samples, ${blackCount} black samples → ${isWhiteBg ? 'WHITE' : 'BLACK'} background`);
 
                 let minX = width, minY = height, maxX = 0, maxY = 0;
                 const mix = 0.2;
