@@ -861,6 +861,204 @@ const formatGaps = (gaps: string[], emergingAngles: string[]): string => {
 };
 
 // ============================================================================
+// TRENDING T-SHIRT DISCOVERY
+// Scrape best sellers and trending designs to learn what works
+// ============================================================================
+
+/**
+ * Pre-defined queries to discover trending t-shirt designs
+ * These target high-performing, diverse niches on Amazon/Etsy
+ */
+export const TRENDING_SCRAPE_QUERIES = [
+  // Best sellers / general
+  'graphic tshirt best seller',
+  'funny t shirt best seller',
+
+  // Professions (proven high-volume niches)
+  'nurse shirt funny',
+  'teacher shirt funny',
+  'trucker shirt',
+  'mechanic shirt funny',
+  'electrician shirt',
+
+  // Hobbies (evergreen demand)
+  'fishing shirt funny',
+  'hunting shirt',
+  'gardening shirt',
+  'camping shirt',
+  'golf shirt funny',
+
+  // Family (gift market)
+  'dad shirt funny',
+  'mom shirt funny',
+  'grandpa shirt',
+  'grandma shirt',
+
+  // Animals
+  'dog lover shirt',
+  'cat mom shirt',
+  'horse girl shirt',
+
+  // Food & Drink
+  'coffee shirt funny',
+  'beer shirt',
+  'bbq shirt',
+
+  // Seasonal (adjust based on current month)
+  'christmas shirt funny',
+  'halloween shirt',
+];
+
+/**
+ * Scrape trending t-shirts across multiple niches
+ *
+ * This function is designed to be called periodically (e.g., daily)
+ * to keep the learning engine updated with current market data.
+ */
+export const scrapeTrendingTshirts = async (options?: {
+  queries?: string[];
+  sources?: ('amazon' | 'etsy')[];
+  limitPerQuery?: number;
+  onProgress?: (message: string) => void;
+}): Promise<{
+  success: boolean;
+  queriesProcessed: number;
+  productsFound: number;
+  productsStored: number;
+  errors: string[];
+}> => {
+  const {
+    queries = TRENDING_SCRAPE_QUERIES,
+    sources = ['amazon', 'etsy'],
+    limitPerQuery = 30,
+    onProgress,
+  } = options || {};
+
+  const results = {
+    success: false,
+    queriesProcessed: 0,
+    productsFound: 0,
+    productsStored: 0,
+    errors: [] as string[],
+  };
+
+  if (!isApiConfigured()) {
+    results.errors.push('Decodo API not configured');
+    return results;
+  }
+
+  console.log(`[TRENDING] Starting scrape of ${queries.length} queries from ${sources.join(', ')}`);
+
+  for (const query of queries) {
+    try {
+      onProgress?.(`Scraping: ${query}`);
+      console.log(`[TRENDING] Scraping: "${query}"`);
+
+      // Scrape each source
+      for (const source of sources) {
+        try {
+          const searchResult = source === 'amazon'
+            ? await searchAmazon(query, limitPerQuery)
+            : await searchEtsy(query, limitPerQuery);
+
+          if (searchResult.success && searchResult.products.length > 0) {
+            results.productsFound += searchResult.products.length;
+
+            // Store products for learning (async, don't wait)
+            for (const product of searchResult.products) {
+              try {
+                await storeMarketplaceProduct({
+                  source,
+                  externalId: product.asin || product.id,
+                  title: product.title,
+                  price: product.price,
+                  url: product.url,
+                  reviewCount: product.reviewCount,
+                  avgRating: product.avgRating,
+                  salesRank: product.salesRank,
+                  category: product.category,
+                  seller: product.seller,
+                  imageUrl: product.imageUrl,
+                  niche: query,
+                });
+                results.productsStored++;
+              } catch (storeError) {
+                // Don't fail the whole operation for one product
+                console.error(`[TRENDING] Failed to store product: ${storeError}`);
+              }
+            }
+          }
+        } catch (sourceError) {
+          results.errors.push(`${source}/${query}: ${sourceError instanceof Error ? sourceError.message : 'Unknown error'}`);
+        }
+      }
+
+      results.queriesProcessed++;
+
+      // Update niche data after scraping
+      await updateNicheMarketData(query);
+
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+    } catch (queryError) {
+      results.errors.push(`${query}: ${queryError instanceof Error ? queryError.message : 'Unknown error'}`);
+    }
+  }
+
+  results.success = results.productsStored > 0;
+
+  console.log(`[TRENDING] Complete: ${results.queriesProcessed} queries, ${results.productsStored} products stored`);
+  if (results.errors.length > 0) {
+    console.log(`[TRENDING] Errors: ${results.errors.length}`);
+  }
+
+  return results;
+};
+
+/**
+ * Get suggested queries based on current date/season
+ */
+export const getSeasonalQueries = (): string[] => {
+  const now = new Date();
+  const month = now.getMonth(); // 0-11
+
+  const seasonal: string[] = [];
+
+  // Christmas season (Nov-Dec)
+  if (month === 10 || month === 11) {
+    seasonal.push('christmas shirt funny', 'ugly christmas sweater', 'holiday shirt');
+  }
+
+  // Halloween (Sep-Oct)
+  if (month === 8 || month === 9) {
+    seasonal.push('halloween shirt', 'spooky shirt', 'witch shirt');
+  }
+
+  // Summer (Jun-Aug)
+  if (month >= 5 && month <= 7) {
+    seasonal.push('summer shirt', 'beach shirt', '4th of july shirt', 'vacation shirt');
+  }
+
+  // Spring (Mar-May)
+  if (month >= 2 && month <= 4) {
+    seasonal.push('mothers day shirt', 'easter shirt', 'spring shirt');
+  }
+
+  // Father's Day (June)
+  if (month === 5) {
+    seasonal.push('fathers day shirt', 'dad gift shirt');
+  }
+
+  // Back to school (Aug)
+  if (month === 7) {
+    seasonal.push('back to school shirt', 'teacher first day shirt');
+  }
+
+  return seasonal;
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -873,4 +1071,7 @@ export default {
   buildMarketplaceContext,
   getMarketplaceConfig,
   isApiConfigured,
+  scrapeTrendingTshirts,
+  getSeasonalQueries,
+  TRENDING_SCRAPE_QUERIES,
 };
