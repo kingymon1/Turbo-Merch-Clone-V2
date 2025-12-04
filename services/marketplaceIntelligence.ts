@@ -95,7 +95,7 @@ const API_TIMEOUT_MS = 30000; // 30 seconds
 /**
  * Check if Decodo API is configured and available
  */
-const isApiConfigured = (): boolean => {
+export const isApiConfigured = (): boolean => {
   const username = process.env.DECODO_USERNAME;
   const password = process.env.DECODO_PASSWORD;
   return !!(username && password);
