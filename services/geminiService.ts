@@ -1820,6 +1820,7 @@ export const generateListingVariation = async (
 
 export const generateListing = async (trend: TrendData): Promise<GeneratedListing> => {
     const customerPhrasesContext = trend.customerPhrases ? trend.customerPhrases.join(", ") : "Use general slang";
+    const designTextContext = trend.designText || trend.topic?.split(' ').slice(0, 3).join(' ').toUpperCase() || '';
 
     const prompt = `
     You are an expert Amazon Merch copywriter who deeply understands internet culture and knows how to write listings that convert.
@@ -1835,81 +1836,82 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
     Authentic Audience Language: ${customerPhrasesContext}
     Keywords Found in Research: ${trend.keywords?.join(', ') || 'Not specified'}
 
+    ═══════════════════════════════════════════════════════════════
+    CRITICAL: TEXT ON THE SHIRT DESIGN
+    ═══════════════════════════════════════════════════════════════
+    Design Text (what appears ON the shirt): "${designTextContext}"
+
+    This text IS the product. It MUST be prominently featured in the listing.
+
     YOUR CREATIVE MISSION:
     Write a listing that speaks directly to people who are INTO this trend. Don't write generically "about" the topic -
     write like you're part of the community. Use their language, reference their culture, capture the vibe.
 
     ${NATURAL_LANGUAGE_INSTRUCTION}
 
-    CREATIVE APPROACH:
+    ═══════════════════════════════════════════════════════════════
+    LISTING STRUCTURE REQUIREMENTS
+    ═══════════════════════════════════════════════════════════════
 
-    1. **TITLE STRATEGY** (50-60 chars):
-       - Think: What would make someone who's obsessed with this topic STOP scrolling?
-       - Use the authentic phrases from the research, but compress them into searchable form
-       - Focus on the aesthetic/vibe words that this community actually uses
-       - Example structure: "[Specific Subject] [Cultural Reference] [Aesthetic Style]"
-       - NOT generic: "Funny Cat Lover Design"
-       - YES creative: "Chaotic Cat Mom Energy Distressed Vintage"
+    1. **TITLE** (50-60 chars) - THE DESIGN TEXT LEADS:
+       ⚠️ MANDATORY: The design text "${designTextContext}" MUST appear in the title
+       - START with or prominently feature the exact text that's ON the shirt
+       - This is what customers are searching for - the phrase they saw and loved
+       - Structure: "[DESIGN TEXT] [Descriptive Keywords] [Style]"
+       - Example: If design text is "GOBLIN MODE" → "Goblin Mode Funny Meme Graphic Distressed Vintage"
+       - Example: If design text is "CAT MOM" → "Cat Mom Life Cute Pet Lover Retro Style"
+       - The design text is the HOOK - put it first or very prominently
 
     2. **BRAND NAME** (3+ words):
        - Create a micro-brand that sounds like it emerged FROM this community
-       - Think indie labels, underground studios, fan collectives
        - Match the energy: wholesome trends = wholesome brands, edgy trends = edgy brands
-       - Examples by vibe:
-         * Gaming/Tech: "Pixel Ghost Labs", "Terminal Velocity Supply"
-         * Wholesome: "Cozy Corner Collective", "Gentle Chaos Co"
-         * Edgy/Alt: "Void Aesthetic Press", "Feral Energy Studios"
-         * Outdoor: "Summit Line Collective", "Trail Grit Supply"
+       - Examples: "Pixel Ghost Labs", "Cozy Corner Collective", "Feral Energy Studios"
 
     3. **BULLET 1** (200-256 chars - USE THE SPACE):
-       - This is where you capture the IDENTITY and FEELING
-       - Who wears this? What does wearing it SAY about them?
-       - Reference the cultural context from the research
-       - Use the authentic phrases the audience actually uses
-       - Build a mini-narrative about wearing this
-       - Example: "For those who understand that touching grass is overrated and goblin mode is a lifestyle, not a phase. This chaotic neutral energy graphic speaks to the chronically online, the midnight snackers, the 'just one more episode' crowd who embrace their feral side with zero apologies."
+       ⚠️ MANDATORY: Include the design text "${designTextContext}" naturally in this bullet
+       - Capture the IDENTITY: Who wears this? What does it SAY about them?
+       - Weave the design text phrase into the narrative
+       - Pack with SEO keywords - this should be as keyword-rich as the description
+       - Example: "Embrace your inner 'Goblin Mode' energy with this graphic that speaks to the chronically online, the midnight snackers, and the 'just one more episode' crowd. Perfect gift for introverts, gamers, and anyone who's given up on touching grass."
+       - Include: audience descriptors, gift occasions, related interests
 
     4. **BULLET 2** (200-256 chars - USE THE SPACE):
-       - This is where you describe the AESTHETIC and VISUAL STYLE
-       - Reference the visual style from the research (use what the research specified, not defaults)
-       - Use art/design terminology that the audience understands
-       - Connect the visual choices to the cultural meaning
-       - IMPORTANT: Match the style to what the RESEARCH found - don't default to any particular aesthetic
-       - Example: "Distressed vintage typography meets hand-drawn illustration style reminiscent of classic Americana. Bold halftone textures and high-contrast composition create that perfectly worn, authentic vibe."
+       - Describe the AESTHETIC and VISUAL STYLE with SEO-rich language
+       - Pack with searchable terms: style names, design descriptors, quality words
+       - Example: "Bold distressed vintage typography meets modern streetwear aesthetic. Hand-drawn illustration style with halftone textures, retro color palette, and high-contrast composition. Premium quality graphic tee design that stands out."
+       - Include: art style terms, print quality, design elements, aesthetic descriptors
 
-    5. **DESCRIPTION** (Detailed expansion):
-       - Expand on bullets with more context and keywords
-       - Tell the full story - why this design exists, who it's for
-       - Include more search terms naturally woven into narrative
-       - Go deeper into the culture and meaning
+    5. **DESCRIPTION** (Detailed, SEO-rich expansion):
+       - Expand bullets with EVEN MORE keywords and search terms
+       - Tell the full story with natural keyword integration
+       - Include: who it's for, occasions, gift ideas, style descriptors
+       - This is your SEO powerhouse - use all relevant terms
 
     6. **KEYWORDS** (20-30 terms):
-       - Use the researched keywords as a base
-       - Add related terms the audience would search for
-       - Include aesthetic descriptors, cultural references, and style terms
-       - Mix broad and specific (e.g., both "gamer" and "soulslike veteran")
+       - MUST include the design text words
+       - Add audience terms, occasion terms, style terms
+       - Mix broad ("funny shirt") and specific ("goblin mode meme")
 
     7. **DESIGN TEXT** (2-5 words MAX):
-       - This is what actually appears ON the design
-       - Use the most punchy, quotable phrase from the research
-       - Or create a new phrase that captures the essence
-       - Make it memeable, shareable, iconic
-       - Examples: "Goblin Mode", "Touch Grass Challenge Failed", "Chronically Chill"
+       - Return the same design text: "${designTextContext}"
+       - Or improve it slightly while keeping the core phrase
 
     8. **IMAGE PROMPT** (Detailed art direction):
-       - Combine the visual style research with the topic
-       - Be specific about composition, art style, effects
-       - Reference the typography style from research
-       - Give enough detail for accurate generation
+       - Include the exact text to appear on the design
+       - Specify composition, art style, effects
+       - Reference typography style from research
 
-    CRITICAL REMINDERS:
-    - ABSORB the trend research - let it guide your voice and word choices
-    - AVOID template language - each listing should feel unique to its trend
-    - USE the authentic phrases from the research (${customerPhrasesContext})
-    - MATCH the sentiment and platform culture (${trend.sentiment} vibe from ${trend.platform})
-    - BE SPECIFIC not generic - "this is for gamers" vs "this is for Soulslike veterans who platinum'd Elden Ring"
+    ═══════════════════════════════════════════════════════════════
+    CRITICAL REMINDERS
+    ═══════════════════════════════════════════════════════════════
 
-    Now create a listing that would make someone deep in this community think "they GET it."
+    ✓ Design text "${designTextContext}" MUST appear in: Title, Bullet 1, Keywords
+    ✓ Bullets should be as SEO-rich as the description - pack them with searchable terms
+    ✓ Use authentic phrases from research: ${customerPhrasesContext}
+    ✓ Match the sentiment: ${trend.sentiment} vibe from ${trend.platform}
+    ✓ Be specific: "Soulslike veteran" not just "gamer"
+
+    The design text IS the product - make sure anyone searching for that phrase finds this listing.
   `;
 
     const ai = getAI();
