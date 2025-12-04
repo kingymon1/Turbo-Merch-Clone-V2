@@ -330,7 +330,27 @@ export const FEATURES = {
   enableAutoPilot: true,
   enableImageProcessing: true,
   enableBraveSearch: true,
-  enableGrokIntegration: true
+  enableGrokIntegration: true,
+  // Vectorizer.AI HD downloads - reads from env var, defaults to false
+  enableVectorizer: process.env.NEXT_PUBLIC_VECTORIZER_ENABLED === 'true'
+};
+
+// Vectorizer.AI Configuration
+export const VECTORIZER_CONFIG = {
+  // Feature is enabled via NEXT_PUBLIC_VECTORIZER_ENABLED env var
+  enabled: process.env.NEXT_PUBLIC_VECTORIZER_ENABLED === 'true',
+  // Input limits (from Vectorizer.AI docs)
+  maxInputPixels: 3000000, // 3 megapixels
+  maxInputFileSizeMB: 30,
+  // Output is 4x input size
+  outputMultiplier: 4,
+  // Target output size for merch (4500x5400 @ 300 DPI)
+  targetOutputWidth: 4500,
+  targetOutputHeight: 5400,
+  // Tiers that have access to HD downloads (free trial excluded)
+  allowedTiers: ['starter', 'pro', 'agency', 'enterprise'] as const,
+  // API timeout in ms (Vectorizer.AI recommends 180s minimum)
+  timeoutMs: 180000
 };
 
 export default {
@@ -341,5 +361,6 @@ export default {
   STORAGE_CONFIG,
   API_ENDPOINTS,
   UI_CONFIG,
-  FEATURES
+  FEATURES,
+  VECTORIZER_CONFIG
 };

@@ -7,8 +7,12 @@ import { Loader2, CheckCircle, Edit3, ShieldCheck, AlertTriangle, FileText, Pack
 import ConfirmationModal from './ConfirmationModal';
 import ImageRefinementChat from './ImageRefinementChat';
 import VariationsModal from './VariationsModal';
+import { FEATURES } from '../config';
 // @ts-ignore
 import JSZip from 'jszip';
+
+// Download quality mode
+type DownloadMode = 'standard' | 'hd';
 
 interface ListingGeneratorProps {
   selectedTrend: TrendData;
@@ -54,6 +58,15 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
 
   // Variations modal state
   const [showVariationsModal, setShowVariationsModal] = useState(false);
+
+  // Download mode state for HD vectorization
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadMode, setDownloadMode] = useState<DownloadMode>('standard');
+  const [downloadProgress, setDownloadProgress] = useState<string | null>(null);
+
+  // Vectorizer feature check (with defensive fallback)
+  const vectorizerEnabled = FEATURES?.enableVectorizer ?? false;
+  const canUseHDDownload = vectorizerEnabled && userTier !== 'free' && userTier !== 'Free';
 
   // Dynamic progress bar state
   const [progress, setProgress] = useState(0);
@@ -401,7 +414,13 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   const upscaleImageToPrintReady = async (base64Source: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.src = base64Source;
+
+        // Use proxy for R2 images to bypass CORS
+        const imageSource = base64Source.includes('.r2.') || base64Source.includes('r2.dev')
+          ? `/api/proxy-image?url=${encodeURIComponent(base64Source)}`
+          : base64Source;
+
+        img.src = imageSource;
         img.crossOrigin = "Anonymous";
         
         img.onload = () => {
@@ -583,21 +602,76 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
       setSelectedImageIndex(imageHistory.length);
   };
 
+  // Vectorize an image for HD download (uses caching via designId)
+  const vectorizeImageForDownload = async (imgUrl: string): Promise<string> => {
+    try {
+      const response = await fetch('/api/vectorize/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          designId: savedDesignId,  // For caching lookup
+          imageUrl: imgUrl
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Vectorization failed');
+      }
+
+      const result = await response.json();
+      return result.imageUrl; // Returns base64 data URL or cached URL
+    } catch (error) {
+      console.error('Vectorization error:', error);
+      throw error;
+    }
+  };
+
+  // Handle download button click - show modal if vectorizer enabled
+  const handleDownloadClick = () => {
+    if (vectorizerEnabled) {
+      setShowDownloadModal(true);
+    } else {
+      downloadPackage('standard');
+    }
+  };
+
+  // Start download with selected mode
+  const startDownload = () => {
+    setShowDownloadModal(false);
+    downloadPackage(downloadMode);
+  };
+
   // Download a specific image from history
-  const downloadSingleImage = async (version: ImageVersion, index: number) => {
+  const downloadSingleImage = async (version: ImageVersion, index: number, mode: DownloadMode = 'standard') => {
       if (!listing) return;
 
       setIsZipping(true);
+      setDownloadProgress(mode === 'hd' ? 'Vectorizing image...' : 'Processing...');
       try {
           const brandSafe = (listing.brand || 'design').replace(/[\s\W]+/g, '_');
           const versionSuffix = index === 0 ? 'original' : `v${index}`;
 
-          const highResBlob = await upscaleImageToPrintReady(version.imageUrl);
+          let imageToProcess = version.imageUrl;
+
+          // If HD mode and user has access, vectorize first
+          if (mode === 'hd' && canUseHDDownload) {
+            try {
+              setDownloadProgress('Vectorizing for HD quality...');
+              imageToProcess = await vectorizeImageForDownload(version.imageUrl);
+            } catch (vecError) {
+              console.warn('Vectorization failed, using original:', vecError);
+              // Fall back to original image
+            }
+          }
+
+          setDownloadProgress('Processing image...');
+          const highResBlob = await upscaleImageToPrintReady(imageToProcess);
 
           // Create download link for single image
           const link = document.createElement("a");
           link.href = URL.createObjectURL(highResBlob);
-          link.download = `${brandSafe}_${versionSuffix}_4500x5400.png`;
+          link.download = `${brandSafe}_${versionSuffix}${mode === 'hd' ? '_HD' : ''}_4500x5400.png`;
           document.body.appendChild(link);
           link.click();
           document.body.removeChild(link);
@@ -606,13 +680,15 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
           alert("Could not download image.");
       } finally {
           setIsZipping(false);
+          setDownloadProgress(null);
       }
   };
 
-  const downloadPackage = async () => {
+  const downloadPackage = async (mode: DownloadMode = 'standard') => {
       if (!listing || !imageUrl) return;
 
       setIsZipping(true);
+      setDownloadProgress(mode === 'hd' ? 'Vectorizing image...' : 'Processing...');
 
       // Calculate time to download for analytics
       const timeToDownload = Math.floor((Date.now() - generatedAt) / 1000);
@@ -634,13 +710,28 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
         const csvContent = `${headers.join(',')}\n${row}`;
         zip.file(`${brandSafe}_listing.csv`, csvContent);
 
-        const highResBlob = await upscaleImageToPrintReady(imageUrl);
-        zip.file(`${brandSafe}_4500x5400_transparent.png`, highResBlob);
+        let imageToProcess = imageUrl;
 
+        // If HD mode and user has access, vectorize first
+        if (mode === 'hd' && canUseHDDownload) {
+          try {
+            setDownloadProgress('Vectorizing for HD quality...');
+            imageToProcess = await vectorizeImageForDownload(imageUrl);
+          } catch (vecError) {
+            console.warn('Vectorization failed, using original:', vecError);
+            // Fall back to original image
+          }
+        }
+
+        setDownloadProgress('Processing image...');
+        const highResBlob = await upscaleImageToPrintReady(imageToProcess);
+        zip.file(`${brandSafe}${mode === 'hd' ? '_HD' : ''}_4500x5400_transparent.png`, highResBlob);
+
+        setDownloadProgress('Creating package...');
         const content = await zip.generateAsync({type: "blob"});
         const link = document.createElement("a");
         link.href = URL.createObjectURL(content);
-        link.download = `${brandSafe}_merch_package.zip`;
+        link.download = `${brandSafe}_merch_package${mode === 'hd' ? '_HD' : ''}.zip`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -674,6 +765,7 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
           alert("Could not create zip package.");
       } finally {
           setIsZipping(false);
+          setDownloadProgress(null);
       }
   };
 
@@ -1127,14 +1219,14 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                     </button>
                 ) : (
                     <button
-                        onClick={downloadPackage}
+                        onClick={handleDownloadClick}
                         disabled={isZipping}
                         className="col-span-2 bg-gradient-to-r from-brand-600 to-blue-600 hover:from-brand-500 hover:to-blue-500 disabled:from-gray-700 disabled:to-gray-700 text-white font-bold py-3 rounded-lg shadow-xl shadow-brand-900/40 flex items-center justify-center gap-2 transition-all hover:scale-[1.02] active:scale-95 ring-1 ring-white/10"
                     >
                         {isZipping ? (
                             <>
                                 <Loader2 className="w-5 h-5 animate-spin" />
-                                PROCESSING...
+                                {downloadProgress || 'PROCESSING...'}
                             </>
                         ) : (
                             <>
@@ -1172,6 +1264,133 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
               userTier={userTier as any}
               remainingQuota={remainingQuota}
           />
+      )}
+
+      {/* Download Mode Modal */}
+      {showDownloadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDownloadModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 shadow-2xl w-full max-w-md p-6 animate-fade-in">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Download Package
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Choose your download quality
+            </p>
+
+            <div className="space-y-3">
+              {/* Standard Quality Option */}
+              <button
+                onClick={() => setDownloadMode('standard')}
+                className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                  downloadMode === 'standard'
+                    ? 'border-brand-500 bg-brand-500/10'
+                    : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    downloadMode === 'standard'
+                      ? 'border-brand-500 bg-brand-500'
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}>
+                    {downloadMode === 'standard' && (
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 dark:text-white">Standard Quality</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Original resolution, fast download</div>
+                  </div>
+                </div>
+              </button>
+
+              {/* HD Vector Quality Option */}
+              <button
+                onClick={() => canUseHDDownload && setDownloadMode('hd')}
+                disabled={!canUseHDDownload}
+                className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
+                  !canUseHDDownload
+                    ? 'border-gray-200 dark:border-white/5 opacity-60 cursor-not-allowed'
+                    : downloadMode === 'hd'
+                      ? 'border-brand-500 bg-brand-500/10'
+                      : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    downloadMode === 'hd' && canUseHDDownload
+                      ? 'border-brand-500 bg-brand-500'
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}>
+                    {downloadMode === 'hd' && canUseHDDownload && (
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-900 dark:text-white">HD Vector PNG</span>
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Vectorized, 4x resolution, print-ready
+                    </div>
+                  </div>
+                  {!canUseHDDownload && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
+                      <Lock className="w-3 h-3" />
+                      <span>Paid</span>
+                    </div>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* Upgrade prompt for free users */}
+            {!canUseHDDownload && vectorizerEnabled && (
+              <div className="mt-4 p-3 bg-gradient-to-r from-brand-500/10 to-cyan-500/10 border border-brand-500/20 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <span className="font-medium text-gray-900 dark:text-white">Upgrade to unlock HD downloads</span>
+                  {' '}— Get vectorized, print-ready images with crisper edges.
+                </p>
+                {onNavigateToSubscription && (
+                  <button
+                    onClick={() => {
+                      setShowDownloadModal(false);
+                      onNavigateToSubscription();
+                    }}
+                    className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                  >
+                    View Plans →
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowDownloadModal(false)}
+                className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-900 dark:text-white font-medium rounded-lg border border-gray-200 dark:border-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={startDownload}
+                className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg shadow-lg shadow-brand-500/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Overage Confirmation Modal for Regeneration */}

@@ -2,10 +2,14 @@
 
 import React, { useEffect, useState } from 'react';
 import { SavedListing, TrendData, GeneratedListing } from '../types';
-import { Clock, Trash2, Download, ExternalLink, AlertCircle, FolderHeart, FileDown, CheckSquare, Square, Copy } from 'lucide-react';
+import { Clock, Trash2, Download, ExternalLink, AlertCircle, FolderHeart, FileDown, CheckSquare, Square, Copy, Sparkles, Lock } from 'lucide-react';
 import JSZip from 'jszip';
 import VariationsModal from './VariationsModal';
 import { TierName } from '../lib/pricing';
+import { FEATURES } from '../config';
+
+// Download quality mode
+type DownloadMode = 'standard' | 'hd';
 
 interface LibraryProps {
   savedListings: SavedListing[];
@@ -22,6 +26,15 @@ const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, user
   const [exporting, setExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [downloadingZip, setDownloadingZip] = useState(false);
+
+  // Download mode state
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [downloadMode, setDownloadMode] = useState<DownloadMode>('standard');
+  const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; status: string } | null>(null);
+
+  // Vectorizer feature check (with defensive fallback to ensure downloads work)
+  const vectorizerEnabled = FEATURES?.enableVectorizer ?? false;
+  const canUseHDDownload = vectorizerEnabled && userTier !== 'free' && userTier !== 'Free';
 
   // Variations modal state
   const [variationsDesign, setVariationsDesign] = useState<SavedListing | null>(null);
@@ -189,18 +202,72 @@ const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, user
     });
   };
 
-  const handleDownloadZip = async () => {
+  // Vectorize an image for HD download
+  const vectorizeImageForDownload = async (designId: string, imageUrl: string): Promise<string> => {
+    try {
+      const response = await fetch('/api/vectorize/download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ designId, imageUrl })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Vectorization failed');
+      }
+
+      const result = await response.json();
+      return result.imageUrl; // Returns base64 data URL or cached URL
+    } catch (error) {
+      console.error('Vectorization error:', error);
+      throw error;
+    }
+  };
+
+  // Open download modal (when vectorizer is enabled) or download directly
+  const handleDownloadClick = () => {
+    if (selectedIds.size === 0) {
+      alert('Please select at least one design to download.');
+      return;
+    }
+
+    if (vectorizerEnabled) {
+      setShowDownloadModal(true);
+    } else {
+      handleDownloadZip('standard');
+    }
+  };
+
+  // Start the download with selected mode
+  const startDownload = () => {
+    setShowDownloadModal(false);
+    handleDownloadZip(downloadMode);
+  };
+
+  const handleDownloadZip = async (mode: DownloadMode = 'standard') => {
     if (selectedIds.size === 0) {
       alert('Please select at least one design to download.');
       return;
     }
 
     setDownloadingZip(true);
+    setDownloadProgress(null);
+
     try {
       const zip = new JSZip();
       const selectedListings = savedListings.filter(item => selectedIds.has(item.id));
+      const total = selectedListings.length;
 
-      for (const item of selectedListings) {
+      for (let i = 0; i < selectedListings.length; i++) {
+        const item = selectedListings[i];
+
+        // Update progress
+        setDownloadProgress({
+          current: i + 1,
+          total,
+          status: mode === 'hd' ? `Vectorizing ${i + 1}/${total}...` : `Processing ${i + 1}/${total}...`
+        });
+
         // Fetch full design data from API (includes listingData from R2)
         let fullDesign = item;
         try {
@@ -251,8 +318,34 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
         // Process and add image with transparency
         if (fullDesign.imageUrl) {
           try {
-            console.log(`Processing image for ${fullDesign.id}:`, fullDesign.imageUrl.substring(0, 50));
-            const transparentBlob = await processImageWithTransparency(fullDesign.imageUrl);
+            let imageToProcess = fullDesign.imageUrl;
+
+            // If HD mode, vectorize first
+            if (mode === 'hd' && canUseHDDownload) {
+              console.log(`HD Mode: Vectorizing image for ${fullDesign.id}`);
+              setDownloadProgress({
+                current: i + 1,
+                total,
+                status: `Vectorizing ${fullDesign.listing?.brand || 'design'}...`
+              });
+
+              try {
+                imageToProcess = await vectorizeImageForDownload(fullDesign.id, fullDesign.imageUrl);
+                console.log(`Vectorization complete for ${fullDesign.id}`);
+              } catch (vecError) {
+                console.warn(`Vectorization failed for ${fullDesign.id}, using original:`, vecError);
+                // Fall back to original image
+              }
+            }
+
+            console.log(`Processing image for ${fullDesign.id}:`, imageToProcess.substring(0, 50));
+            setDownloadProgress({
+              current: i + 1,
+              total,
+              status: `Removing background ${i + 1}/${total}...`
+            });
+
+            const transparentBlob = await processImageWithTransparency(imageToProcess);
             console.log(`Image processed successfully, size: ${transparentBlob.size} bytes`);
             folder.file('design.png', transparentBlob);
           } catch (error) {
@@ -265,12 +358,14 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
         }
       }
 
+      setDownloadProgress({ current: total, total, status: 'Creating ZIP...' });
+
       // Generate and download ZIP
       const content = await zip.generateAsync({ type: "blob" });
       const url = window.URL.createObjectURL(content);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `turbo-merch-designs-${Date.now()}.zip`;
+      a.download = `turbo-merch-designs${mode === 'hd' ? '-HD' : ''}-${Date.now()}.zip`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -283,6 +378,7 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
       alert(error.message || 'Failed to download designs. Please try again.');
     } finally {
       setDownloadingZip(false);
+      setDownloadProgress(null);
     }
   };
 
@@ -430,13 +526,17 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
                     {selectedIds.size === savedListings.length ? 'Deselect All' : 'Select All'}
                   </button>
                   <button
-                    onClick={handleDownloadZip}
+                    onClick={handleDownloadClick}
                     disabled={selectedIds.size === 0 || downloadingZip}
                     className="px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:bg-gray-400 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-bold rounded-lg transition-colors shadow-lg shadow-brand-500/20 flex items-center gap-2 whitespace-nowrap min-w-[160px]"
                     title="Download selected designs as ZIP"
                   >
                     <Download className="w-4 h-4" />
-                    {downloadingZip ? 'Preparing...' : selectedIds.size > 0 ? `Download (${selectedIds.size})` : 'Download ZIP'}
+                    {downloadingZip
+                      ? (downloadProgress ? downloadProgress.status : 'Preparing...')
+                      : selectedIds.size > 0
+                        ? `Download (${selectedIds.size})`
+                        : 'Download ZIP'}
                   </button>
                 </>
               )}
@@ -619,6 +719,128 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
             onRefresh?.();
           }}
         />
+      )}
+
+      {/* Download Mode Modal */}
+      {showDownloadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDownloadModal(false)}
+          />
+
+          {/* Modal */}
+          <div className="relative bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 shadow-2xl w-full max-w-md p-6 animate-fade-in">
+            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+              Download {selectedIds.size} Design{selectedIds.size !== 1 ? 's' : ''}
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              Choose your download quality
+            </p>
+
+            <div className="space-y-3">
+              {/* Standard Quality Option */}
+              <button
+                onClick={() => setDownloadMode('standard')}
+                className={`w-full p-4 rounded-xl border-2 transition-all text-left ${
+                  downloadMode === 'standard'
+                    ? 'border-brand-500 bg-brand-500/10'
+                    : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    downloadMode === 'standard'
+                      ? 'border-brand-500 bg-brand-500'
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}>
+                    {downloadMode === 'standard' && (
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="font-semibold text-gray-900 dark:text-white">Standard Quality</div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">Original resolution, fast download</div>
+                  </div>
+                </div>
+              </button>
+
+              {/* HD Vector Quality Option */}
+              <button
+                onClick={() => canUseHDDownload && setDownloadMode('hd')}
+                disabled={!canUseHDDownload}
+                className={`w-full p-4 rounded-xl border-2 transition-all text-left relative ${
+                  !canUseHDDownload
+                    ? 'border-gray-200 dark:border-white/5 opacity-60 cursor-not-allowed'
+                    : downloadMode === 'hd'
+                      ? 'border-brand-500 bg-brand-500/10'
+                      : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                    downloadMode === 'hd' && canUseHDDownload
+                      ? 'border-brand-500 bg-brand-500'
+                      : 'border-gray-300 dark:border-gray-600'
+                  }`}>
+                    {downloadMode === 'hd' && canUseHDDownload && (
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-900 dark:text-white">HD Vector PNG</span>
+                      <Sparkles className="w-4 h-4 text-amber-500" />
+                    </div>
+                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                      Vectorized, 4x resolution, print-ready
+                    </div>
+                  </div>
+                  {!canUseHDDownload && (
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
+                      <Lock className="w-3 h-3" />
+                      <span>Paid</span>
+                    </div>
+                  )}
+                </div>
+              </button>
+            </div>
+
+            {/* Upgrade prompt for free users */}
+            {!canUseHDDownload && vectorizerEnabled && (
+              <div className="mt-4 p-3 bg-gradient-to-r from-brand-500/10 to-cyan-500/10 border border-brand-500/20 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  <span className="font-medium text-gray-900 dark:text-white">Upgrade to unlock HD downloads</span>
+                  {' '}— Get vectorized, print-ready images with crisper edges.
+                </p>
+                <a
+                  href="/subscription"
+                  className="inline-flex items-center gap-1 mt-2 text-sm font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                >
+                  View Plans →
+                </a>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowDownloadModal(false)}
+                className="flex-1 px-4 py-2.5 bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-900 dark:text-white font-medium rounded-lg border border-gray-200 dark:border-white/10 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={startDownload}
+                className="flex-1 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white font-medium rounded-lg shadow-lg shadow-brand-500/20 transition-colors flex items-center justify-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
