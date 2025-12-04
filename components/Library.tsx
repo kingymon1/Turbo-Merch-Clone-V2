@@ -800,7 +800,7 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
                   {!canUseHDDownload && (
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-white/5 px-2 py-1 rounded">
                       <Lock className="w-3 h-3" />
-                      <span>Pro</span>
+                      <span>Paid</span>
                     </div>
                   )}
                 </div>
