@@ -32,8 +32,8 @@ const Library: React.FC<LibraryProps> = ({ savedListings, onDelete, onView, user
   const [downloadMode, setDownloadMode] = useState<DownloadMode>('standard');
   const [downloadProgress, setDownloadProgress] = useState<{ current: number; total: number; status: string } | null>(null);
 
-  // Vectorizer feature check
-  const vectorizerEnabled = FEATURES.enableVectorizer;
+  // Vectorizer feature check (with defensive fallback to ensure downloads work)
+  const vectorizerEnabled = FEATURES?.enableVectorizer ?? false;
   const canUseHDDownload = vectorizerEnabled && userTier !== 'free' && userTier !== 'Free';
 
   // Variations modal state

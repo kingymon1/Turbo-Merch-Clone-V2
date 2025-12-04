@@ -401,7 +401,13 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
   const upscaleImageToPrintReady = async (base64Source: string): Promise<Blob> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.src = base64Source;
+
+        // Use proxy for R2 images to bypass CORS
+        const imageSource = base64Source.includes('.r2.') || base64Source.includes('r2.dev')
+          ? `/api/proxy-image?url=${encodeURIComponent(base64Source)}`
+          : base64Source;
+
+        img.src = imageSource;
         img.crossOrigin = "Anonymous";
         
         img.onload = () => {
