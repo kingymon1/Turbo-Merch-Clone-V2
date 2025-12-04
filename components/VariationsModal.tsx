@@ -38,6 +38,7 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<VariationResult[]>([]);
   const [stage, setStage] = useState<'input' | 'generating' | 'complete'>('input');
+  const [progress, setProgress] = useState(0);
 
   // Fetch fresh quota when modal opens instead of relying on potentially stale props
   const [fetchedQuota, setFetchedQuota] = useState<number | null>(null);
@@ -74,6 +75,32 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
       setFetchedQuota(null);
     }
   }, [isOpen]);
+
+  // Animate progress bar during generation
+  useEffect(() => {
+    if (stage !== 'generating') {
+      setProgress(0);
+      return;
+    }
+
+    // Start at 0 and animate smoothly
+    setProgress(0);
+
+    // Estimate ~8 seconds per variation for progress calculation
+    const estimatedDuration = count * 8000;
+    const startTime = Date.now();
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      // Use an easing function that slows down as it approaches 95%
+      const rawProgress = Math.min(elapsed / estimatedDuration, 1);
+      // Ease out - progress slows as it gets higher, caps at 95%
+      const easedProgress = 1 - Math.pow(1 - rawProgress, 2);
+      setProgress(Math.min(easedProgress * 95, 95));
+    }, 100);
+
+    return () => clearInterval(interval);
+  }, [stage, count]);
 
   // Use fetched quota if available, otherwise fall back to prop (or 0)
   const remainingQuota = fetchedQuota ?? propQuota ?? 0;
@@ -263,8 +290,12 @@ const VariationsModal: React.FC<VariationsModalProps> = ({
               Creating {count} unique design{count !== 1 ? 's' : ''} based on your original...
             </p>
             <div className="mt-4 w-full bg-gray-200 dark:bg-dark-900 rounded-full h-2 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-brand-500 to-cyan-500 animate-pulse" style={{ width: '60%' }}></div>
+              <div
+                className="h-full bg-gradient-to-r from-brand-500 to-cyan-500 transition-all duration-200 ease-out"
+                style={{ width: `${progress}%` }}
+              />
             </div>
+            <p className="text-xs text-gray-400 mt-2">{Math.round(progress)}%</p>
           </div>
         )}
 
