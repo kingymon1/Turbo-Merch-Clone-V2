@@ -5,9 +5,18 @@
  * The service takes generated images from Gemini (Nano Banana Pro) and returns
  * vectorized PNG images that are 4x the input resolution.
  *
+ * Flow for HD downloads:
+ * 1. Receive original image (any size)
+ * 2. Shrink to ≤3 megapixels if needed (Vectorizer.AI limit)
+ * 3. Send to Vectorizer.AI for vectorization
+ * 4. Receive 4x sized vectorized PNG
+ * 5. Resize to target dimensions (4500x5400 for Amazon Merch)
+ *
  * API Documentation: https://vectorizer.ai/api
  * Output Options: https://vectorizer.ai/api/outputOptions
  */
+
+import { VECTORIZER_CONFIG } from '@/config';
 
 // Supported output formats from Vectorizer.AI
 export type VectorizerOutputFormat = 'svg' | 'pdf' | 'eps' | 'dxf' | 'png';
@@ -464,3 +473,120 @@ export const validateImageForVectorization = (imageDataUrl: string): {
         fileSizeMB
     };
 };
+
+/**
+ * Check if the vectorizer feature is enabled
+ */
+export const isVectorizerEnabled = (): boolean => {
+    return VECTORIZER_CONFIG.enabled;
+};
+
+/**
+ * Check if a subscription tier has access to HD vectorized downloads
+ */
+export const tierHasVectorizerAccess = (tier: string): boolean => {
+    return (VECTORIZER_CONFIG.allowedTiers as readonly string[]).includes(tier);
+};
+
+/**
+ * Calculate dimensions that fit within the megapixel limit while maintaining aspect ratio
+ */
+export const calculateFitDimensions = (
+    width: number,
+    height: number,
+    maxPixels: number = VECTORIZER_CONFIG.maxInputPixels
+): { width: number; height: number; wasResized: boolean } => {
+    const currentPixels = width * height;
+
+    if (currentPixels <= maxPixels) {
+        return { width, height, wasResized: false };
+    }
+
+    // Calculate scale factor to fit within max pixels
+    const scale = Math.sqrt(maxPixels / currentPixels);
+    const newWidth = Math.floor(width * scale);
+    const newHeight = Math.floor(height * scale);
+
+    return { width: newWidth, height: newHeight, wasResized: true };
+};
+
+/**
+ * Calculate dimensions to resize to target while maintaining aspect ratio
+ * Uses "cover" strategy - fills target area, may crop edges
+ */
+export const calculateTargetDimensions = (
+    sourceWidth: number,
+    sourceHeight: number,
+    targetWidth: number = VECTORIZER_CONFIG.targetOutputWidth,
+    targetHeight: number = VECTORIZER_CONFIG.targetOutputHeight
+): { width: number; height: number; offsetX: number; offsetY: number } => {
+    const sourceRatio = sourceWidth / sourceHeight;
+    const targetRatio = targetWidth / targetHeight;
+
+    let width: number;
+    let height: number;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    if (sourceRatio > targetRatio) {
+        // Source is wider - fit height, crop width
+        height = targetHeight;
+        width = Math.round(height * sourceRatio);
+        offsetX = Math.round((width - targetWidth) / 2);
+    } else {
+        // Source is taller - fit width, crop height
+        width = targetWidth;
+        height = Math.round(width / sourceRatio);
+        offsetY = Math.round((height - targetHeight) / 2);
+    }
+
+    return { width, height, offsetX, offsetY };
+};
+
+/**
+ * Full HD vectorization pipeline for downloads
+ *
+ * This function handles the complete flow:
+ * 1. Shrink image to fit Vectorizer.AI's 3MP limit (if needed)
+ * 2. Vectorize the image
+ * 3. Return the vectorized result (resizing to target happens client-side)
+ *
+ * @param imageDataUrl - Original image as base64 data URL
+ * @param options - Vectorization options
+ * @returns Vectorized image result
+ */
+export const vectorizeForHDDownload = async (
+    imageDataUrl: string,
+    options: VectorizerOptions = {}
+): Promise<VectorizerResult & { originalDimensions?: { width: number; height: number }; wasResized?: boolean }> => {
+    console.log('🖼️ Starting HD vectorization pipeline...');
+
+    // For now, we pass through to the main vectorize function
+    // The resize logic will be handled client-side or in a future enhancement
+    // since we need canvas/sharp for image manipulation which requires different setup
+
+    const result = await vectorizeImage(imageDataUrl, {
+        ...options,
+        outputFormat: 'png',
+        mode: options.mode || 'production'
+    });
+
+    console.log('✓ HD vectorization pipeline complete');
+
+    return {
+        ...result,
+        wasResized: false // Will be set when resize logic is implemented
+    };
+};
+
+/**
+ * Extended result type for HD downloads with caching info
+ */
+export interface HDVectorizeResult extends VectorizerResult {
+    /** Whether the result was served from cache */
+    fromCache: boolean;
+    /** Design ID if cached */
+    designId?: string;
+    /** R2 URL where the vectorized image is stored */
+    storageUrl?: string;
+}

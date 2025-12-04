@@ -232,3 +232,61 @@ export async function uploadVector(
     throw new Error('Failed to upload vector to R2');
   }
 }
+
+/**
+ * Generic upload to R2 with custom key
+ * @param key - Full path/key for the file (e.g., "vectors/userId/designId_hd.png")
+ * @param data - File data as Buffer
+ * @param contentType - MIME type of the file
+ * @returns R2 URL
+ */
+export async function uploadToR2(
+  key: string,
+  data: Buffer,
+  contentType: string
+): Promise<string> {
+  try {
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: data,
+        ContentType: contentType,
+        CacheControl: 'public, max-age=31536000',
+      })
+    );
+
+    return getPublicUrl(key);
+  } catch (error) {
+    console.error('Error uploading to R2:', error);
+    throw new Error('Failed to upload to R2');
+  }
+}
+
+/**
+ * Get public URL for an R2 key
+ * @param key - Full path/key for the file
+ * @returns Public URL
+ */
+export function getPublicUrl(key: string): string {
+  const publicUrl = process.env.R2_PUBLIC_URL || `https://pub-${process.env.R2_ACCOUNT_ID}.r2.dev`;
+  return `${publicUrl}/${key}`;
+}
+
+/**
+ * Delete file from R2 by key
+ * @param key - Full path/key for the file
+ */
+export async function deleteFromR2(key: string): Promise<void> {
+  try {
+    await r2Client.send(
+      new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+      })
+    );
+  } catch (error) {
+    console.error('Error deleting from R2:', error);
+    // Don't throw - deletion failure shouldn't block other operations
+  }
+}

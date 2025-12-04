@@ -162,6 +162,10 @@ model DesignHistory {
   imageQuality String // 'low' | 'standard' | 'high'
   canDownload  Boolean @default(true) // false for free tier images
 
+  // Vectorized HD image (cached after first HD download)
+  vectorizedUrl  String?   // R2 URL to cached vectorized HD image
+  vectorizedAt   DateTime? // When the image was vectorized (null = not yet)
+
   // Files
   csvData Json?   // Parsed CSV data
   zipUrl  String? // URL to downloadable ZIP (expires after retention period)
