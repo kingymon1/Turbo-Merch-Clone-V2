@@ -878,6 +878,7 @@ model MerchDesign {
   userRating        Int?
   views             Int      @default(0)
   sales             Int      @default(0)
+  isTest            Boolean  @default(false)
 
   // Relationships for variations
   variations        MerchDesign[] @relation("Variations")
