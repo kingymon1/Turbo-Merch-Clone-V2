@@ -3,6 +3,12 @@
  *
  * Generate multiple unique variations of a design to "dominate" a niche.
  * Uses AI to create diverse visual strategies for each variation.
+ *
+ * PERFORMANCE NOTES:
+ * - Uses parallel batch processing (3 at a time)
+ * - 250s time budget with partial results on timeout
+ * - Recommended: 5-10 variations for reliable completion
+ * - Max: 20 variations per request
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,6 +24,10 @@ import { MerchDesign } from '@/lib/merch/types';
 // Increase timeout for bulk generation (max 300s on Vercel Pro)
 export const maxDuration = 300;
 
+// Limits
+const DEFAULT_COUNT = 5;
+const MAX_COUNT = 20;  // Reduced from 50 to ensure completion within timeout
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const { userId } = await auth();
@@ -30,7 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const body = await request.json();
-    const { designId, count = 10 } = body;
+    const { designId, count = DEFAULT_COUNT } = body;
 
     // Validate inputs
     if (!designId) {
@@ -40,9 +50,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    if (typeof count !== 'number' || count < 1 || count > 50) {
+    if (typeof count !== 'number' || count < 1 || count > MAX_COUNT) {
       return NextResponse.json(
-        { success: false, error: 'count must be between 1 and 50' },
+        { success: false, error: `count must be between 1 and ${MAX_COUNT}` },
         { status: 400 }
       );
     }
@@ -90,17 +100,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Generate variations
     const result = await generateVariations(original, count, userId);
 
-    console.log(`[Dominate API] Complete: ${result.variations.length} successful, ${result.failed} failed`);
+    console.log(`[Dominate API] Complete: ${result.variations.length} successful, ${result.failed} failed${result.timedOut ? ' (timed out)' : ''}`);
+
+    // Build response message
+    let message: string;
+    if (result.timedOut) {
+      message = `Generated ${result.variations.length} of ${count} variations (timed out - try requesting fewer variations)`;
+    } else if (result.failed > 0) {
+      message = `Generated ${result.variations.length} of ${count} variations (${result.failed} failed)`;
+    } else {
+      message = `Successfully generated ${result.variations.length} variations`;
+    }
 
     return NextResponse.json({
       success: true,
       count: result.variations.length,
+      requested: count,
       failed: result.failed,
+      timedOut: result.timedOut || false,
       variations: result.variations,
       strategies: result.strategies,
-      message: result.failed > 0
-        ? `Generated ${result.variations.length} of ${count} variations (${result.failed} failed)`
-        : `Successfully generated ${result.variations.length} variations`,
+      message,
     });
   } catch (error) {
     console.error('[Dominate API] Error:', error);
