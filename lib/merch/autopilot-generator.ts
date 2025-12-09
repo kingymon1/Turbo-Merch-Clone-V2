@@ -212,7 +212,7 @@ function generateFallbackConcept(riskLevel: number, niche: string): {
     sentiment: 'Funny',
     keywords: [phrase, niche],
     description: `${phrase} design for ${niche}`,
-    visualStyle: concept.style,
+    visualStyle: concept.style || 'Bold Modern',
     customerPhrases: [`Perfect for ${niche}`],
   };
 
