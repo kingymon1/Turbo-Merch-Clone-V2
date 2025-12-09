@@ -202,7 +202,7 @@ export async function getRecentMarketData(
   // Flatten all trends from all records
   const allTrends: TrendData[] = [];
   for (const record of records) {
-    const trends = record.data as TrendData[];
+    const trends = record.data as unknown as TrendData[];
     if (Array.isArray(trends)) {
       allTrends.push(...trends);
     }

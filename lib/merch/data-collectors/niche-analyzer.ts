@@ -70,7 +70,7 @@ export async function analyzeNicheTrends(): Promise<number> {
   const nicheGroups: Record<string, TrendData[]> = {};
 
   for (const record of marketData) {
-    const trends = record.data as TrendData[];
+    const trends = record.data as unknown as TrendData[];
     if (!Array.isArray(trends)) continue;
 
     for (const trend of trends) {
