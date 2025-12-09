@@ -24,4 +24,7 @@ export {
   getRelevantInsights,
   applyInsightsToGeneration,
   logInsightUsage,
+  getBestPhraseTemplate,
+  getRecommendedStyle,
+  isNichePeakSeason,
 } from './insight-applier';
