@@ -62,9 +62,9 @@ function generateMockDesign(
   return {
     userId,
     mode,
-    riskLevel: riskLevel ?? null,
-    sourceData: mode === 'autopilot' ? { riskLevel, generatedAt: new Date().toISOString() } : null,
-    userSpecs: mode === 'manual' ? userSpecs : null,
+    riskLevel: riskLevel,
+    sourceData: mode === 'autopilot' ? { riskLevel, generatedAt: new Date().toISOString() } : undefined,
+    userSpecs: mode === 'manual' ? userSpecs : undefined,
     phrase,
     niche,
     style: selectedStyle,
