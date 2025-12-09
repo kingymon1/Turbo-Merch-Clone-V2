@@ -23,6 +23,7 @@ const Library = lazy(() => import('./components/Library'));
 const IdeasVault = lazy(() => import('./components/IdeasVault'));
 const LegalDocs = lazy(() => import('./components/LegalDocs'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
+const MerchGenerator = lazy(() => import('./components/MerchGenerator'));
 
 // Loading component for Suspense fallback
 const LoadingSpinner: React.FC = () => (
@@ -785,6 +786,8 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
             userTier={userTier}
           />
         );
+      case AppView.MERCH_GENERATOR:
+        return <MerchGenerator />;
       case AppView.LIBRARY:
         return <Library savedListings={savedListings} onDelete={handleDeleteListing} onView={handleViewListing} userTier={userTier} onRefresh={fetchSavedDesigns} isLoading={isLibraryLoading} hasMore={libraryHasMore} onLoadMore={loadMoreDesigns} isLoadingMore={isLoadingMore} total={libraryTotal} />;
       case AppView.IDEAS_VAULT:

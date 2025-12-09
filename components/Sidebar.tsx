@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppView } from '../types';
-import { LayoutDashboard, Search, CreditCard, Activity, FolderHeart, User, LogIn, X, Lightbulb, Beaker, Wand2 } from 'lucide-react';
+import { LayoutDashboard, Search, CreditCard, Activity, FolderHeart, User, LogIn, X, Lightbulb, Beaker, Wand2, Sparkles } from 'lucide-react';
 import { UserButton, useUser } from "@clerk/clerk-react";
 import ThemeToggle from './ThemeToggle';
 
@@ -56,6 +56,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isAnonymous,
     { id: AppView.DASHBOARD, label: 'Nexus Dashboard', icon: LayoutDashboard },
     { id: AppView.TREND_RESEARCH, label: 'Trend Scanner', icon: Search },
     { id: AppView.TREND_LAB, label: 'Trend Lab', icon: Beaker, badge: 'LAB' },
+    { id: AppView.MERCH_GENERATOR, label: 'Merch Generator', icon: Sparkles, badge: 'NEW' },
     { id: AppView.IMAGE_VECTORIZER, label: 'Image Vectorizer', icon: Wand2, badge: 'NEW' },
     { id: AppView.IDEAS_VAULT, label: 'Ideas Vault', icon: Lightbulb },
     { id: AppView.LIBRARY, label: 'My Library', icon: FolderHeart },
