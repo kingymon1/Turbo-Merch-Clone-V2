@@ -23,9 +23,6 @@ import {
 } from './data-collectors';
 import {
   applyInsightsToGeneration,
-  getBestPhraseTemplate,
-  getRecommendedStyle,
-  isNichePeakSeason,
 } from './learning';
 
 // Track applied insights for logging
