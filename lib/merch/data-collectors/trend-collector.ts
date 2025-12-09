@@ -6,6 +6,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
 import { searchTrends } from '@/services/geminiService';
 import { TrendData } from '@/types';
 
@@ -196,7 +197,7 @@ export async function cleanOldMarketData(): Promise<{
         { sales: { gt: 0 } },
         { userRating: { gte: 4 } },
       ],
-      sourceData: { not: null },
+      sourceData: { not: Prisma.DbNull },
     },
     select: {
       sourceData: true,
