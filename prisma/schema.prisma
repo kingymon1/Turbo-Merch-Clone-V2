@@ -837,3 +837,149 @@ model NicheFusion {
   @@index([opportunityScore])
   @@index([recommendation])
 }
+
+// ============================================================================
+// MERCH DESIGN GENERATOR (Standalone Feature)
+// ============================================================================
+
+model MerchDesign {
+  id                String   @id @default(cuid())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  userId            String
+
+  // Generation mode
+  mode              String   // 'autopilot' | 'manual'
+
+  // Autopilot fields
+  riskLevel         Int?
+  sourceData        Json?
+
+  // Manual fields
+  userSpecs         Json?
+
+  // Common fields
+  phrase            String
+  niche             String
+  style             String?
+  tone              String?
+
+  // Generated assets
+  imageUrl          String
+  imagePrompt       String
+  listingTitle      String
+  listingBullets    String[]
+  listingDesc       String
+
+  // Performance tracking
+  approved          Boolean  @default(false)
+  approvedAt        DateTime?
+  userRating        Int?
+  views             Int      @default(0)
+  sales             Int      @default(0)
+  isTest            Boolean  @default(false)
+
+  // Relationships for variations
+  variations        MerchDesign[] @relation("Variations")
+  parentId          String?
+  parent            MerchDesign?  @relation("Variations", fields: [parentId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([mode])
+}
+
+// ============================================================================
+// MARKET INTELLIGENCE (Background Data Collection)
+// ============================================================================
+
+model MarketData {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  source      String   // 'grok' | 'brave' | 'google' | 'multi-agent'
+  category    String   // 'proven' | 'emerging' | 'moonshot'
+  query       String?  // What was searched
+  data        Json     // The actual results
+  metadata    Json?    // Additional context
+
+  @@index([source, createdAt])
+  @@index([category, createdAt])
+  @@index([createdAt])
+}
+
+model NicheTrend {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  niche       String   @unique // 'nurses' | 'teachers' | 'dog-lovers' etc
+  category    String   // 'profession' | 'hobby' | 'pet' | 'lifestyle'
+
+  // Trend metrics
+  searchVolume    Int     @default(0)
+  growthRate      Float   @default(0)
+  competition     String  // 'low' | 'medium' | 'high'
+
+  // Insights
+  popularPhrases  String[]
+  commonKeywords  String[]
+  successPatterns Json?
+
+  // Freshness
+  lastAnalyzed    DateTime @default(now())
+
+  @@index([category])
+  @@index([lastAnalyzed])
+}
+
+// ============================================================================
+// PROVEN INSIGHTS (Permanent Knowledge Repository)
+// ============================================================================
+// These are high-confidence patterns extracted from historical data.
+// Unlike raw MarketData, ProvenInsights are PERMANENT and SACRED.
+// They represent validated knowledge that compounds over time.
+
+model ProvenInsight {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Classification
+  insightType     String   // 'phrase-pattern' | 'niche-timing' | 'style-effectiveness' | 'listing-structure' | 'cross-niche'
+  category        String   // 'evergreen' | 'seasonal' | 'design' | 'listing' | 'approval'
+
+  // The Insight
+  title           String   // Human-readable summary
+  description     String   @db.Text // Detailed explanation
+  pattern         Json     // Structured pattern data (flexible schema)
+
+  // Evidence & Confidence
+  sampleSize      Int      // Number of designs/data points this is based on
+  confidence      Float    // 0-1 confidence score (0.8+ = high confidence)
+  successRate     Float?   // Success rate (approval rate, conversion rate, etc.)
+  avgPerformance  Json?    // Average metrics (sales, views, etc.)
+
+  // Context & Applicability
+  niche           String?  // Specific niche or null for general
+  niches          String[] // Multiple applicable niches
+  timeframe       String?  // 'year-round' | 'holiday-season' | 'mothers-day' | etc.
+  riskLevel       String?  // 'proven' | 'emerging' | 'moonshot'
+
+  // Validation & Lifecycle
+  lastValidated   DateTime @default(now())
+  timesValidated  Int      @default(1)
+  stillRelevant   Boolean  @default(true)
+  supersededBy    String?  // ID of newer insight that replaces this
+
+  // Source tracking
+  sourceDataIds   String[] // IDs of data that contributed to this insight
+
+  @@index([insightType])
+  @@index([category])
+  @@index([niche])
+  @@index([stillRelevant])
+  @@index([confidence])
+  @@index([createdAt])
+}

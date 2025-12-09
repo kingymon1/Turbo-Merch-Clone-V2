@@ -47,6 +47,26 @@ const API_TIMEOUTS = {
     research: 60000,    // 60 seconds for design research
 };
 
+// --- HELPER: Get base URL for API calls ---
+// Required for server-side fetch to resolve relative URLs correctly
+const getBaseUrl = (): string => {
+    // In browser, relative URLs work
+    if (typeof window !== 'undefined') {
+        return '';
+    }
+    // In server-side context, use environment variable
+    // VERCEL_URL is auto-set by Vercel (without https://)
+    // NEXT_PUBLIC_APP_URL is our custom full URL
+    if (process.env.NEXT_PUBLIC_APP_URL) {
+        return process.env.NEXT_PUBLIC_APP_URL;
+    }
+    if (process.env.VERCEL_URL) {
+        return `https://${process.env.VERCEL_URL}`;
+    }
+    // Fallback for local development
+    return 'http://localhost:3000';
+};
+
 // --- HELPER: Get current date context ---
 const getCurrentDateContext = () => {
     const now = new Date();
@@ -502,7 +522,7 @@ const maxCoverageBraveAgent = async (query: string): Promise<string> => {
                 endpoint: 'web',
                 extra_snippets: 'true'
             });
-            requests.push(fetch(`/api/brave-search?${params.toString()}`));
+            requests.push(fetch(`${getBaseUrl()}/api/brave-search?${params.toString()}`));
         }
 
         // Also add news and discussions
@@ -512,7 +532,7 @@ const maxCoverageBraveAgent = async (query: string): Promise<string> => {
             freshness: 'py',
             endpoint: 'news'
         });
-        requests.push(fetch(`/api/brave-search?${newsParams.toString()}`));
+        requests.push(fetch(`${getBaseUrl()}/api/brave-search?${newsParams.toString()}`));
 
         const responses = await Promise.all(requests);
 
@@ -769,7 +789,7 @@ const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<
                 endpoint: 'web',
                 extra_snippets: 'true'
             });
-            requests.push(fetch(`/api/brave-search?${webParams.toString()}`));
+            requests.push(fetch(`${getBaseUrl()}/api/brave-search?${webParams.toString()}`));
             requestTypes.push({ type: 'web', query: searchQuery });
         }
 
@@ -780,7 +800,7 @@ const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<
             freshness: freshness,
             endpoint: 'news'
         });
-        requests.push(fetch(`/api/brave-search?${newsParams.toString()}`));
+        requests.push(fetch(`${getBaseUrl()}/api/brave-search?${newsParams.toString()}`));
         requestTypes.push({ type: 'news', query: query });
 
         // Add community search if enabled
@@ -793,7 +813,7 @@ const fetchBraveSignals = async (query: string, viralityLevel: number): Promise<
                 endpoint: 'web',
                 extra_snippets: 'true'
             });
-            requests.push(fetch(`/api/brave-search?${communityParams.toString()}`));
+            requests.push(fetch(`${getBaseUrl()}/api/brave-search?${communityParams.toString()}`));
             requestTypes.push({ type: 'community', query: communityQuery });
         }
 
