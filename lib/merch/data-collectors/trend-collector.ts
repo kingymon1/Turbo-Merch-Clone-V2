@@ -158,22 +158,93 @@ export async function collectMoonshotTrends(): Promise<number> {
 }
 
 /**
- * Clean up old market data (keep last 7 days)
+ * Smart cleanup of market data with intelligent retention
+ *
+ * RETENTION PHILOSOPHY (Phase 6):
+ * Raw data can be deleted, but we preserve valuable historical data for learning.
+ * Different categories have different retention periods based on their value:
+ *
+ * - PROVEN/EMERGING: 180 days (high value for pattern learning)
+ * - MOONSHOT: 30 days (volatile, less reliable for long-term learning)
+ * - DATA LINKED TO SUCCESSFUL DESIGNS: Never deleted (success evidence)
+ *
+ * This enables the learning system to extract ProvenInsights from historical
+ * patterns while not bloating the database with stale viral data.
  */
-export async function cleanOldMarketData(): Promise<number> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - 7);
+export async function cleanOldMarketData(): Promise<{
+  provenEmerging: number;
+  moonshot: number;
+  preserved: number;
+}> {
+  // Calculate cutoff dates for each category
+  const now = new Date();
 
-  const result = await prisma.marketData.deleteMany({
+  // Proven/Emerging: Keep for 180 days (6 months of learning data)
+  const provenEmergingCutoff = new Date(now);
+  provenEmergingCutoff.setDate(provenEmergingCutoff.getDate() - 180);
+
+  // Moonshot: Keep for 30 days (viral data is time-sensitive)
+  const moonshotCutoff = new Date(now);
+  moonshotCutoff.setDate(moonshotCutoff.getDate() - 30);
+
+  // First, find IDs of market data linked to successful designs
+  // A "successful" design is one that was approved OR has sales > 0 OR has userRating >= 4
+  const successfulDesigns = await prisma.merchDesign.findMany({
     where: {
-      createdAt: {
-        lt: cutoffDate,
-      },
+      OR: [
+        { approved: true },
+        { sales: { gt: 0 } },
+        { userRating: { gte: 4 } },
+      ],
+      sourceData: { not: null },
+    },
+    select: {
+      sourceData: true,
     },
   });
 
-  console.log(`[TrendCollector] Cleaned ${result.count} old market data records`);
-  return result.count;
+  // Extract market data IDs from successful designs' sourceData
+  const preservedIds = new Set<string>();
+  for (const design of successfulDesigns) {
+    const sourceData = design.sourceData as any;
+    if (sourceData?.marketDataId) {
+      preservedIds.add(sourceData.marketDataId);
+    }
+    if (sourceData?.marketDataIds && Array.isArray(sourceData.marketDataIds)) {
+      sourceData.marketDataIds.forEach((id: string) => preservedIds.add(id));
+    }
+  }
+
+  console.log(`[TrendCollector] Preserving ${preservedIds.size} market data records linked to successful designs`);
+
+  // Delete old proven/emerging data (except preserved)
+  const provenEmergingResult = await prisma.marketData.deleteMany({
+    where: {
+      category: { in: ['proven', 'emerging'] },
+      createdAt: { lt: provenEmergingCutoff },
+      id: { notIn: Array.from(preservedIds) },
+    },
+  });
+
+  // Delete old moonshot data (except preserved)
+  const moonshotResult = await prisma.marketData.deleteMany({
+    where: {
+      category: 'moonshot',
+      createdAt: { lt: moonshotCutoff },
+      id: { notIn: Array.from(preservedIds) },
+    },
+  });
+
+  console.log(`[TrendCollector] Smart cleanup complete:`);
+  console.log(`  - Proven/Emerging deleted: ${provenEmergingResult.count} (older than 180 days)`);
+  console.log(`  - Moonshot deleted: ${moonshotResult.count} (older than 30 days)`);
+  console.log(`  - Preserved (linked to success): ${preservedIds.size}`);
+
+  return {
+    provenEmerging: provenEmergingResult.count,
+    moonshot: moonshotResult.count,
+    preserved: preservedIds.size,
+  };
 }
 
 /**

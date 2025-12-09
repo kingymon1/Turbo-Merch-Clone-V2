@@ -933,3 +933,53 @@ model NicheTrend {
   @@index([category])
   @@index([lastAnalyzed])
 }
+
+// ============================================================================
+// PROVEN INSIGHTS (Permanent Knowledge Repository)
+// ============================================================================
+// These are high-confidence patterns extracted from historical data.
+// Unlike raw MarketData, ProvenInsights are PERMANENT and SACRED.
+// They represent validated knowledge that compounds over time.
+
+model ProvenInsight {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Classification
+  insightType     String   // 'phrase-pattern' | 'niche-timing' | 'style-effectiveness' | 'listing-structure' | 'cross-niche'
+  category        String   // 'evergreen' | 'seasonal' | 'design' | 'listing' | 'approval'
+
+  // The Insight
+  title           String   // Human-readable summary
+  description     String   @db.Text // Detailed explanation
+  pattern         Json     // Structured pattern data (flexible schema)
+
+  // Evidence & Confidence
+  sampleSize      Int      // Number of designs/data points this is based on
+  confidence      Float    // 0-1 confidence score (0.8+ = high confidence)
+  successRate     Float?   // Success rate (approval rate, conversion rate, etc.)
+  avgPerformance  Json?    // Average metrics (sales, views, etc.)
+
+  // Context & Applicability
+  niche           String?  // Specific niche or null for general
+  niches          String[] // Multiple applicable niches
+  timeframe       String?  // 'year-round' | 'holiday-season' | 'mothers-day' | etc.
+  riskLevel       String?  // 'proven' | 'emerging' | 'moonshot'
+
+  // Validation & Lifecycle
+  lastValidated   DateTime @default(now())
+  timesValidated  Int      @default(1)
+  stillRelevant   Boolean  @default(true)
+  supersededBy    String?  // ID of newer insight that replaces this
+
+  // Source tracking
+  sourceDataIds   String[] // IDs of data that contributed to this insight
+
+  @@index([insightType])
+  @@index([category])
+  @@index([niche])
+  @@index([stillRelevant])
+  @@index([confidence])
+  @@index([createdAt])
+}

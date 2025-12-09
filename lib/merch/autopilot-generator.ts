@@ -6,6 +6,10 @@
  *
  * Phase 5 Enhancement: Now uses cached market data when available, falling back
  * to live API calls only when necessary. This reduces API costs by ~90%.
+ *
+ * Phase 6 Enhancement: Integrates ProvenInsights learning system to make smarter
+ * generation decisions based on historical patterns. Low-risk generations heavily
+ * favor proven insights, while high-risk allows more experimentation.
  */
 
 import { searchTrends } from '@/services/geminiService';
@@ -17,6 +21,20 @@ import {
   getRandomHighPerformingNiche,
   generateConceptFromCachedData,
 } from './data-collectors';
+import {
+  applyInsightsToGeneration,
+  getBestPhraseTemplate,
+  getRecommendedStyle,
+  isNichePeakSeason,
+} from './learning';
+
+// Track applied insights for logging
+interface AppliedInsight {
+  id: string;
+  type: string;
+  appliedAs: string;
+  confidence: number;
+}
 
 // Niches to explore based on risk level
 const NICHE_POOLS = {
@@ -89,16 +107,28 @@ function selectNicheForRisk(riskLevel: number): string {
 
 /**
  * Extract the best design concept from trend data
+ * Phase 6: Now accepts insight guidance to influence style/tone selection
  */
-function extractDesignConcept(trend: TrendData): DesignConcept {
+function extractDesignConcept(
+  trend: TrendData,
+  insightGuidance?: {
+    recommendedStyles: string[];
+    recommendedTones: string[];
+    phraseTemplates: string[];
+    warnings: string[];
+    appliedInsights: AppliedInsight[];
+  } | null
+): DesignConcept {
   // Use designText if available, otherwise extract from topic
   const phrase = trend.designText ||
                  trend.topic.split(' ').slice(0, 5).join(' ').toUpperCase() ||
                  trend.topic;
 
-  // Determine style from trend visual style
-  let style = 'Bold Modern';
-  if (trend.visualStyle) {
+  // Phase 6: Use insight-recommended style if available, otherwise infer from trend
+  let style = insightGuidance?.recommendedStyles[0] || 'Bold Modern';
+
+  // If no insight, try to infer from trend visual style
+  if (!insightGuidance?.recommendedStyles.length && trend.visualStyle) {
     if (trend.visualStyle.toLowerCase().includes('vintage') || trend.visualStyle.toLowerCase().includes('retro')) {
       style = 'Vintage Retro';
     } else if (trend.visualStyle.toLowerCase().includes('minimal')) {
@@ -110,9 +140,11 @@ function extractDesignConcept(trend: TrendData): DesignConcept {
     }
   }
 
-  // Determine tone from sentiment
-  let tone = 'Funny';
-  if (trend.sentiment) {
+  // Phase 6: Use insight-recommended tone if available
+  let tone = insightGuidance?.recommendedTones[0] || 'Funny';
+
+  // If no insight, infer from sentiment
+  if (!insightGuidance?.recommendedTones.length && trend.sentiment) {
     const sentiment = trend.sentiment.toLowerCase();
     if (sentiment.includes('inspirational') || sentiment.includes('motivat')) {
       tone = 'Inspirational';
@@ -150,19 +182,52 @@ function getCategoryFromRisk(riskLevel: number): 'proven' | 'emerging' | 'moonsh
  * Generate a design concept using cached data when available.
  * Falls back to live API calls only when no recent cached data exists.
  *
+ * Phase 6: Now integrates ProvenInsights to make smarter decisions.
+ *
  * @param riskLevel - 0-100, where 0 is safe/evergreen and 100 is viral/risky
- * @returns Design concept with phrase, niche, style, and tone
+ * @returns Design concept with phrase, niche, style, tone, and applied insights
  */
 export async function generateAutopilotConcept(riskLevel: number): Promise<{
   concept: DesignConcept;
   trend: TrendData;
   source: string;
+  appliedInsights?: AppliedInsight[];
 }> {
   console.log(`[Autopilot] Generating concept at risk level ${riskLevel}`);
 
   // Determine which data category to use
   const category = getCategoryFromRisk(riskLevel);
   console.log(`[Autopilot] Data category: ${category}`);
+
+  // PHASE 6: Query insights to guide generation
+  let insightGuidance: {
+    recommendedStyles: string[];
+    recommendedTones: string[];
+    phraseTemplates: string[];
+    warnings: string[];
+    appliedInsights: AppliedInsight[];
+  } | null = null;
+
+  try {
+    const selectedNiche = selectNicheForRisk(riskLevel);
+    insightGuidance = await applyInsightsToGeneration({
+      niche: selectedNiche,
+      riskLevel,
+      month: new Date().getMonth(),
+    });
+
+    if (insightGuidance.appliedInsights.length > 0) {
+      console.log(`[Autopilot] Applied ${insightGuidance.appliedInsights.length} insights`);
+      console.log(`[Autopilot] Recommended styles: ${insightGuidance.recommendedStyles.join(', ')}`);
+
+      // Log any warnings from anti-patterns
+      for (const warning of insightGuidance.warnings) {
+        console.log(`[Autopilot] Warning: ${warning}`);
+      }
+    }
+  } catch (insightError) {
+    console.log('[Autopilot] Insight lookup failed, continuing without:', insightError);
+  }
 
   // PHASE 5: Try to use cached data first
   try {
@@ -179,13 +244,14 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         const randomIndex = Math.floor(Math.random() * Math.min(cachedTrends.length, 10));
         const selectedTrend = cachedTrends[randomIndex];
 
-        const concept = extractDesignConcept(selectedTrend);
+        const concept = extractDesignConcept(selectedTrend, insightGuidance);
 
         console.log(`[Autopilot] Using cached trend: ${selectedTrend.topic}`);
         return {
           concept,
           trend: selectedTrend,
           source: `Cached data (${category})`,
+          appliedInsights: insightGuidance?.appliedInsights,
         };
       }
     }
@@ -198,10 +264,13 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
       // Generate concept from cached niche analysis
       const generated = await generateConceptFromCachedData(nicheData);
 
+      // Apply insight-recommended style if available (Phase 6)
+      const style = insightGuidance?.recommendedStyles[0] || generated.style;
+
       const concept: DesignConcept = {
         phrase: generated.phrase,
         niche: nicheData.niche,
-        style: generated.style,
+        style,
         tone: generated.tone,
         visualStyle: generated.visualDirection,
       };
@@ -221,6 +290,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         concept,
         trend,
         source: `Niche Intelligence (${nicheData.category})`,
+        appliedInsights: insightGuidance?.appliedInsights,
       };
     }
   } catch (cacheError) {
@@ -246,33 +316,46 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
 
     if (!trends || trends.length === 0) {
       console.log('[Autopilot] No trends found, using fallback');
-      return generateFallbackConcept(riskLevel, selectedNiche);
+      return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance);
     }
 
     // Select the best trend (first one is usually highest quality)
     const bestTrend = trends[0];
     console.log(`[Autopilot] Best trend: ${bestTrend.topic}`);
 
-    const concept = extractDesignConcept(bestTrend);
+    const concept = extractDesignConcept(bestTrend, insightGuidance);
 
     return {
       concept,
       trend: bestTrend,
       source: `Live API (${bestTrend.sources?.join(', ') || bestTrend.platform})`,
+      appliedInsights: insightGuidance?.appliedInsights,
     };
   } catch (error) {
     console.error('[Autopilot] Error in trend research:', error);
-    return generateFallbackConcept(riskLevel, selectedNiche);
+    return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance);
   }
 }
 
 /**
  * Generate a fallback concept when trend research fails
+ * Phase 6: Now uses insight guidance to improve fallback quality
  */
-function generateFallbackConcept(riskLevel: number, niche: string): {
+function generateFallbackConcept(
+  riskLevel: number,
+  niche: string,
+  insightGuidance?: {
+    recommendedStyles: string[];
+    recommendedTones: string[];
+    phraseTemplates: string[];
+    warnings: string[];
+    appliedInsights: AppliedInsight[];
+  } | null
+): {
   concept: DesignConcept;
   trend: TrendData;
   source: string;
+  appliedInsights?: AppliedInsight[];
 } {
   // Fallback phrases based on niche and risk level
   const fallbackPhrases: Record<string, string[]> = {
@@ -288,21 +371,26 @@ function generateFallbackConcept(riskLevel: number, niche: string): {
   const phrases = fallbackPhrases[niche] || fallbackPhrases.default;
   const phrase = phrases[Math.floor(Math.random() * phrases.length)];
 
+  // Phase 6: Use insight-recommended style/tone if available
+  const style = insightGuidance?.recommendedStyles[0] ||
+                (riskLevel > 50 ? 'Distressed' : 'Bold Modern');
+  const tone = insightGuidance?.recommendedTones[0] || 'Funny';
+
   const concept: DesignConcept = {
     phrase,
     niche: niche.split(' ')[0],
-    style: riskLevel > 50 ? 'Distressed' : 'Bold Modern',
-    tone: 'Funny',
+    style,
+    tone,
   };
 
   const trend: TrendData = {
     topic: phrase,
     platform: 'Fallback',
     volume: 'Generated',
-    sentiment: 'Funny',
+    sentiment: tone,
     keywords: [phrase, niche],
     description: `${phrase} design for ${niche}`,
-    visualStyle: concept.style || 'Bold Modern',
+    visualStyle: style,
     customerPhrases: [`Perfect for ${niche}`],
   };
 
@@ -310,6 +398,7 @@ function generateFallbackConcept(riskLevel: number, niche: string): {
     concept,
     trend,
     source: 'Fallback (trend research unavailable)',
+    appliedInsights: insightGuidance?.appliedInsights,
   };
 }
 

@@ -13,6 +13,7 @@ import { createImagePrompt, DesignConcept } from '@/lib/merch/image-prompter';
 import { generateMerchListing } from '@/lib/merch/listing-generator';
 import { generateMerchImage, generatePlaceholderImage, isValidImageUrl } from '@/lib/merch/image-generator';
 import { generateAutopilotConcept } from '@/lib/merch/autopilot-generator';
+import { logInsightUsage } from '@/lib/merch/learning';
 
 // Increase timeout for AI generation (max 300s on Vercel Pro)
 export const maxDuration = 300;
@@ -87,6 +88,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     let concept: DesignConcept;
     let sourceData: any = {};
     let isTest = USE_MOCK_DATA;
+    let appliedInsights: any[] = []; // Phase 6: Track insights used
 
     // ========================================
     // STEP 1: Generate or extract concept
@@ -104,15 +106,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         };
         sourceData = { riskLevel, mock: true };
       } else {
-        // Real mode: use multi-agent trend research
+        // Real mode: use multi-agent trend research + insights
         try {
           const autopilotResult = await generateAutopilotConcept(riskLevel!);
           concept = autopilotResult.concept;
+
+          // Phase 6: Capture applied insights for performance tracking
+          if (autopilotResult.appliedInsights) {
+            appliedInsights = autopilotResult.appliedInsights;
+            console.log(`[Merch Generate] Used ${appliedInsights.length} insights`);
+          }
+
           sourceData = {
             riskLevel,
             trend: autopilotResult.trend,
             source: autopilotResult.source,
             generatedAt: new Date().toISOString(),
+            // Phase 6: Store insight references for learning system
+            appliedInsights: appliedInsights.map(i => ({
+              id: i.id,
+              type: i.type,
+              appliedAs: i.appliedAs,
+              confidence: i.confidence,
+            })),
+            insightCount: appliedInsights.length,
           };
         } catch (error) {
           console.error('[Merch Generate] Autopilot failed, using fallback:', error);
@@ -251,6 +268,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     });
 
     console.log(`[Merch Generate] Design saved with ID: ${savedDesign.id}`);
+
+    // Phase 6: Log insight usage for performance tracking (non-blocking)
+    if (appliedInsights.length > 0) {
+      logInsightUsage(savedDesign.id, appliedInsights).catch(err => {
+        console.error('[Merch Generate] Failed to log insight usage:', err);
+      });
+    }
 
     // Transform to response format
     const design: MerchDesign = {

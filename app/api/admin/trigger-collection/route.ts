@@ -13,6 +13,11 @@ import {
   analyzeNicheTrends,
   cleanOldMarketData,
 } from '@/lib/merch/data-collectors';
+import {
+  extractAllInsights,
+  validateAllInsights,
+  getInsightsSummary,
+} from '@/lib/merch/learning';
 
 // Extended timeout for collection
 export const maxDuration = 300;
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!action) {
       return NextResponse.json(
-        { success: false, error: 'action is required (collect, moonshot, analyze, clean)' },
+        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights)' },
         { status: 400 }
       );
     }
@@ -89,6 +94,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const moonshot = await collectMoonshotTrends();
         const analyzed = await analyzeNicheTrends();
         result = { cleaned, proven, emerging, moonshot, nichesAnalyzed: analyzed };
+        break;
+
+      case 'learn':
+        // Phase 6: Extract insights from accumulated data
+        const extraction = await extractAllInsights();
+        result = {
+          insightsCreated: extraction.insightsCreated,
+          insightsUpdated: extraction.insightsUpdated,
+          errors: extraction.errors,
+        };
+        break;
+
+      case 'validate':
+        // Phase 6: Validate existing insights
+        const validation = await validateAllInsights();
+        result = {
+          validated: validation.validated,
+          degraded: validation.degraded,
+          invalidated: validation.invalidated,
+          errors: validation.errors,
+        };
+        break;
+
+      case 'insights':
+        // Phase 6: Get insights summary
+        result = await getInsightsSummary();
         break;
 
       default:
