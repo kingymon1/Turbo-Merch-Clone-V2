@@ -28,7 +28,8 @@ const TONE_OPTIONS = [
   'Edgy',
 ];
 
-const VARIATION_COUNT_OPTIONS = [5, 10, 20, 50];
+// Max 20 variations - higher counts may timeout
+const VARIATION_COUNT_OPTIONS = [5, 10, 15, 20];
 
 function getRiskHelperText(riskLevel: number): string {
   if (riskLevel < 30) {
@@ -41,7 +42,10 @@ function getRiskHelperText(riskLevel: number): string {
 }
 
 function estimateTime(count: number): string {
-  const minutes = Math.ceil((count * 15) / 60);
+  // With parallel batches of 3, roughly 45s per batch + 10s for strategies
+  const batches = Math.ceil(count / 3);
+  const seconds = batches * 45 + 10;
+  const minutes = Math.ceil(seconds / 60);
   if (minutes < 2) return 'about 1 minute';
   return `about ${minutes} minutes`;
 }
@@ -207,12 +211,24 @@ const MerchGenerator: React.FC = () => {
         setShowDominateModal(false);
         setShowVariations(true);
         fetchRecentDesigns();
+
+        // Show message if timed out with partial results
+        if (data.timedOut && data.variations.length > 0) {
+          alert(`Generated ${data.variations.length} of ${dominateCount} variations before timeout. Try requesting fewer variations next time.`);
+        } else if (data.timedOut && data.variations.length === 0) {
+          alert('Generation timed out. Please try with fewer variations (5-10 recommended).');
+        }
       } else {
         alert(data.error || 'Failed to generate variations');
       }
     } catch (error) {
       console.error('Error generating variations:', error);
-      alert('Failed to generate variations. Please try again.');
+      // Check if it's a network/timeout error
+      if (error instanceof Error && error.message.includes('504')) {
+        alert('Request timed out. Please try with fewer variations (5-10 recommended).');
+      } else {
+        alert('Failed to generate variations. Please try again with fewer variations.');
+      }
     } finally {
       setIsDominating(false);
     }

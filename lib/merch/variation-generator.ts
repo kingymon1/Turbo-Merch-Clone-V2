@@ -3,6 +3,12 @@
  *
  * Generates multiple unique variations of a design using AI-powered strategies.
  * Each variation looks like it was designed by a different person.
+ *
+ * PERFORMANCE OPTIMIZATION (v2):
+ * - Pre-generates all strategies upfront (fast, ~1s each)
+ * - Processes image+listing in parallel batches
+ * - Returns partial results if nearing timeout
+ * - Uses fallback listings to speed up generation
  */
 
 import { prisma } from '@/lib/prisma';
@@ -10,6 +16,11 @@ import { MerchDesign } from './types';
 import { generateVariationStrategy, VariationStrategy } from './variation-strategy';
 import { generateMerchImage, generatePlaceholderImage } from './image-generator';
 import { generateMerchListing } from './listing-generator';
+
+// Configuration
+const PARALLEL_BATCH_SIZE = 3;  // Process 3 variations at a time
+const MAX_GENERATION_TIME_MS = 250000; // 250 seconds - leave 50s buffer for response
+const SINGLE_VARIATION_TIMEOUT_MS = 45000; // 45 seconds per variation max
 
 export interface VariationResult {
   success: boolean;
@@ -23,6 +34,31 @@ export interface DominateProgress {
   total: number;
   status: 'generating_strategy' | 'generating_image' | 'generating_listing' | 'saving' | 'complete' | 'error';
   message: string;
+}
+
+/**
+ * Wrap a promise with a timeout
+ */
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  errorMessage: string = 'Operation timed out'
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, ms);
+
+    promise
+      .then((result) => {
+        clearTimeout(timeout);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+  });
 }
 
 /**
@@ -55,57 +91,92 @@ Create a unique design following this exact visual direction.`;
 }
 
 /**
- * Generate a single variation
+ * Generate a quick fallback listing (no AI call)
+ */
+function generateQuickFallbackListing(
+  phrase: string,
+  niche: string,
+  style: string,
+  vibe: string
+): { title: string; bullets: string[]; description: string } {
+  const capitalizedNiche = niche.charAt(0).toUpperCase() + niche.slice(1);
+  return {
+    title: `${phrase} - ${vibe} ${capitalizedNiche} Gift Shirt`,
+    bullets: [
+      `Perfect gift for ${niche} who appreciate ${vibe.toLowerCase()} designs`,
+      'Premium quality fabric for maximum comfort',
+      'Vibrant long-lasting print that won\'t fade',
+      'Available in multiple sizes and colors',
+      'Great for birthdays, holidays, or just because',
+    ],
+    description: `Show off your style with this ${style} design featuring "${phrase}". Perfect for ${niche}. Premium quality fabric ensures all-day comfort with a vibrant print that lasts.`,
+  };
+}
+
+/**
+ * Generate a single variation (image + listing)
  */
 async function generateSingleVariation(
   original: MerchDesign,
   strategy: VariationStrategy,
   variationNumber: number,
-  userId: string
+  userId: string,
+  useFallbackListing: boolean = false
 ): Promise<VariationResult> {
   try {
     // Create image prompt from strategy
     const imagePrompt = createPromptFromStrategy(strategy, original.niche);
 
-    // Generate image
+    // Generate image with timeout
     let imageUrl: string;
     try {
-      const imageResult = await generateMerchImage(
-        imagePrompt,
-        strategy.visualDirection,
-        strategy.phraseVariation,
-        'black',
-        'simple'
+      const imageResult = await withTimeout(
+        generateMerchImage(
+          imagePrompt,
+          strategy.visualDirection,
+          strategy.phraseVariation,
+          'black',
+          'simple'
+        ),
+        35000, // 35 second timeout for image
+        'Image generation timed out'
       );
       imageUrl = imageResult.imageUrl;
     } catch (imageError) {
-      console.error(`[Variation ${variationNumber}] Image generation failed:`, imageError);
+      console.error(`[Variation ${variationNumber + 1}] Image failed:`, imageError);
       imageUrl = generatePlaceholderImage(strategy.phraseVariation, strategy.visualDirection);
     }
 
-    // Generate listing variation
+    // Generate listing - use fallback for speed if requested
     let listing;
-    try {
-      listing = await generateMerchListing(
+    if (useFallbackListing) {
+      listing = generateQuickFallbackListing(
         strategy.phraseVariation,
         original.niche,
-        strategy.overallVibe,
-        strategy.visualDirection
+        strategy.visualDirection,
+        strategy.overallVibe
       );
-    } catch (listingError) {
-      console.error(`[Variation ${variationNumber}] Listing generation failed:`, listingError);
-      // Fallback listing
-      listing = {
-        title: `${strategy.phraseVariation} - ${original.niche} Gift Shirt`,
-        bullets: [
-          `Perfect gift for ${original.niche}`,
-          'Premium quality fabric',
-          'Vibrant long-lasting print',
-          'Available in multiple sizes',
-          'Great for any occasion',
-        ],
-        description: `Show off your style with this ${strategy.visualDirection} design featuring "${strategy.phraseVariation}". Perfect for ${original.niche}.`,
-      };
+    } else {
+      try {
+        listing = await withTimeout(
+          generateMerchListing(
+            strategy.phraseVariation,
+            original.niche,
+            strategy.overallVibe,
+            strategy.visualDirection
+          ),
+          10000, // 10 second timeout for listing
+          'Listing generation timed out'
+        );
+      } catch (listingError) {
+        console.error(`[Variation ${variationNumber + 1}] Listing failed:`, listingError);
+        listing = generateQuickFallbackListing(
+          strategy.phraseVariation,
+          original.niche,
+          strategy.visualDirection,
+          strategy.overallVibe
+        );
+      }
     }
 
     // Save to database
@@ -157,7 +228,7 @@ async function generateSingleVariation(
       strategy,
     };
   } catch (error) {
-    console.error(`[Variation ${variationNumber}] Error:`, error);
+    console.error(`[Variation ${variationNumber + 1}] Error:`, error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -167,10 +238,43 @@ async function generateSingleVariation(
 }
 
 /**
+ * Process a batch of variations in parallel
+ */
+async function processBatch(
+  original: MerchDesign,
+  strategies: VariationStrategy[],
+  startIndex: number,
+  userId: string,
+  useFallbackListings: boolean
+): Promise<VariationResult[]> {
+  const promises = strategies.map((strategy, idx) =>
+    withTimeout(
+      generateSingleVariation(
+        original,
+        strategy,
+        startIndex + idx,
+        userId,
+        useFallbackListings
+      ),
+      SINGLE_VARIATION_TIMEOUT_MS,
+      `Variation ${startIndex + idx + 1} timed out`
+    ).catch(error => ({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      strategy,
+    }))
+  );
+
+  return Promise.all(promises);
+}
+
+/**
  * Generate multiple variations of a design
  *
+ * OPTIMIZED: Uses parallel batch processing
+ *
  * @param original - The original design to create variations of
- * @param count - Number of variations to generate (1-50)
+ * @param count - Number of variations to generate (1-20 recommended)
  * @param userId - User ID for ownership
  * @param onProgress - Optional callback for progress updates
  * @returns Array of generated variations
@@ -184,97 +288,132 @@ export async function generateVariations(
   variations: MerchDesign[];
   failed: number;
   strategies: VariationStrategy[];
+  timedOut?: boolean;
 }> {
+  const startTime = Date.now();
   const variations: MerchDesign[] = [];
   const strategies: VariationStrategy[] = [];
   let failedCount = 0;
+  let timedOut = false;
 
-  console.log(`[Dominate] Starting generation of ${count} variations for "${original.phrase}"`);
+  console.log(`[Dominate] Starting PARALLEL generation of ${count} variations for "${original.phrase}"`);
+
+  // PHASE 1: Pre-generate all strategies upfront (fast, ~1-2s each)
+  console.log(`[Dominate] Phase 1: Pre-generating ${count} strategies...`);
+
+  if (onProgress) {
+    onProgress({
+      current: 0,
+      total: count,
+      status: 'generating_strategy',
+      message: `Creating ${count} unique visual strategies...`,
+    });
+  }
 
   for (let i = 0; i < count; i++) {
-    try {
-      // Update progress: generating strategy
-      if (onProgress) {
-        onProgress({
-          current: i + 1,
-          total: count,
-          status: 'generating_strategy',
-          message: `Creating unique visual strategy for variation ${i + 1}...`,
-        });
-      }
+    // Check time budget
+    if (Date.now() - startTime > MAX_GENERATION_TIME_MS) {
+      console.log(`[Dominate] Time limit reached during strategy generation`);
+      timedOut = true;
+      break;
+    }
 
-      // Generate unique strategy using AI
-      const strategy = await generateVariationStrategy(
-        original.phrase,
-        original.niche,
-        i,
-        strategies
+    try {
+      const strategy = await withTimeout(
+        generateVariationStrategy(original.phrase, original.niche, i, strategies),
+        5000, // 5 second timeout for strategy
+        'Strategy generation timed out'
       );
       strategies.push(strategy);
-
-      console.log(`[Dominate] Variation ${i + 1} strategy: ${strategy.visualDirection}`);
-
-      // Update progress: generating image
-      if (onProgress) {
-        onProgress({
-          current: i + 1,
-          total: count,
-          status: 'generating_image',
-          message: `Generating ${strategy.visualDirection} design...`,
-        });
-      }
-
-      // Generate the variation
-      const result = await generateSingleVariation(
-        original,
-        strategy,
-        i,
-        userId
-      );
-
-      if (result.success && result.design) {
-        variations.push(result.design);
-        console.log(`[Dominate] Variation ${i + 1} complete: ${result.design.id}`);
-      } else {
-        failedCount++;
-        console.error(`[Dominate] Variation ${i + 1} failed: ${result.error}`);
-      }
-
-      // Update progress: complete for this variation
-      if (onProgress) {
-        onProgress({
-          current: i + 1,
-          total: count,
-          status: 'complete',
-          message: `Completed variation ${i + 1} of ${count}`,
-        });
-      }
-
-      // Small delay between variations to avoid rate limiting
-      if (i < count - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
+      console.log(`[Dominate] Strategy ${i + 1}: ${strategy.visualDirection}`);
     } catch (error) {
-      console.error(`[Dominate] Error on variation ${i + 1}:`, error);
-      failedCount++;
-
-      if (onProgress) {
-        onProgress({
-          current: i + 1,
-          total: count,
-          status: 'error',
-          message: `Error on variation ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        });
-      }
+      console.error(`[Dominate] Strategy ${i + 1} failed:`, error);
+      // Use fallback strategy
+      const fallbackStrategy: VariationStrategy = {
+        phraseVariation: original.phrase,
+        visualDirection: ['Modern minimalist', 'Vintage retro', 'Bold streetwear', 'Hand-drawn'][i % 4],
+        fontStyle: 'Bold sans-serif',
+        layoutApproach: 'Center-aligned',
+        colorScheme: 'High contrast',
+        graphicElements: 'None - text only',
+        overallVibe: 'Professional',
+        specificDetails: `Variation ${i + 1} style`,
+      };
+      strategies.push(fallbackStrategy);
     }
   }
 
-  console.log(`[Dominate] Complete: ${variations.length} successful, ${failedCount} failed`);
+  console.log(`[Dominate] Generated ${strategies.length} strategies in ${Date.now() - startTime}ms`);
+
+  // PHASE 2: Process variations in parallel batches
+  console.log(`[Dominate] Phase 2: Generating images in batches of ${PARALLEL_BATCH_SIZE}...`);
+
+  // Use fallback listings to speed up (skip AI listing calls)
+  const useFallbackListings = count > 5;
+
+  for (let batchStart = 0; batchStart < strategies.length; batchStart += PARALLEL_BATCH_SIZE) {
+    // Check time budget before each batch
+    const elapsed = Date.now() - startTime;
+    if (elapsed > MAX_GENERATION_TIME_MS) {
+      console.log(`[Dominate] Time limit reached after ${variations.length} variations`);
+      timedOut = true;
+      break;
+    }
+
+    const batchStrategies = strategies.slice(batchStart, batchStart + PARALLEL_BATCH_SIZE);
+    const batchNumber = Math.floor(batchStart / PARALLEL_BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(strategies.length / PARALLEL_BATCH_SIZE);
+
+    console.log(`[Dominate] Processing batch ${batchNumber}/${totalBatches} (${batchStrategies.length} variations)`);
+
+    if (onProgress) {
+      onProgress({
+        current: batchStart,
+        total: count,
+        status: 'generating_image',
+        message: `Generating designs batch ${batchNumber}/${totalBatches}...`,
+      });
+    }
+
+    // Process batch in parallel
+    const results = await processBatch(
+      original,
+      batchStrategies,
+      batchStart,
+      userId,
+      useFallbackListings
+    );
+
+    // Collect results
+    for (const result of results) {
+      if (result.success && result.design) {
+        variations.push(result.design);
+        console.log(`[Dominate] Variation complete: ${result.design.id}`);
+      } else {
+        failedCount++;
+        console.error(`[Dominate] Variation failed: ${result.error}`);
+      }
+    }
+
+    // Update progress
+    if (onProgress) {
+      onProgress({
+        current: Math.min(batchStart + PARALLEL_BATCH_SIZE, strategies.length),
+        total: count,
+        status: 'complete',
+        message: `Completed ${Math.min(batchStart + PARALLEL_BATCH_SIZE, strategies.length)} of ${count}`,
+      });
+    }
+  }
+
+  const totalTime = Date.now() - startTime;
+  console.log(`[Dominate] Complete in ${totalTime}ms: ${variations.length} successful, ${failedCount} failed${timedOut ? ' (timed out)' : ''}`);
 
   return {
     variations,
     failed: failedCount,
     strategies,
+    timedOut,
   };
 }
 
@@ -319,10 +458,12 @@ export async function getVariationsForDesign(
 
 /**
  * Get estimated time for variation generation
+ * Updated for parallel processing
  */
 export function estimateGenerationTime(count: number): string {
-  // Roughly 15 seconds per variation
-  const seconds = count * 15;
+  // With parallel batches of 3, roughly 45 seconds per batch
+  const batches = Math.ceil(count / PARALLEL_BATCH_SIZE);
+  const seconds = batches * 45 + 10; // 10s for strategy generation
   const minutes = Math.ceil(seconds / 60);
 
   if (minutes < 2) {
@@ -330,6 +471,6 @@ export function estimateGenerationTime(count: number): string {
   } else if (minutes < 5) {
     return `about ${minutes} minutes`;
   } else {
-    return `${minutes}-${minutes + 2} minutes`;
+    return `${minutes}-${minutes + 1} minutes`;
   }
 }
