@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Rocket, Target, Copy, Download, Check, Loader2, RefreshCw, ChevronDown } from 'lucide-react';
+import { Rocket, Target, Copy, Download, Check, Loader2, RefreshCw, ChevronDown, Zap, X, FileDown } from 'lucide-react';
 import { MerchDesign, ManualSpecs, GenerationResponse } from '../lib/merch/types';
+import { downloadAllVariations, downloadListingData, downloadBase64Image } from '../lib/merch/download-helper';
 
 type Mode = 'autopilot' | 'manual';
 
@@ -27,6 +28,8 @@ const TONE_OPTIONS = [
   'Edgy',
 ];
 
+const VARIATION_COUNT_OPTIONS = [5, 10, 20, 50];
+
 function getRiskHelperText(riskLevel: number): string {
   if (riskLevel < 30) {
     return 'Focus on proven, evergreen niches with consistent demand';
@@ -35,6 +38,12 @@ function getRiskHelperText(riskLevel: number): string {
   } else {
     return 'Chase early trends and viral potential';
   }
+}
+
+function estimateTime(count: number): string {
+  const minutes = Math.ceil((count * 15) / 60);
+  if (minutes < 2) return 'about 1 minute';
+  return `about ${minutes} minutes`;
 }
 
 const MerchGenerator: React.FC = () => {
@@ -58,6 +67,15 @@ const MerchGenerator: React.FC = () => {
   const [editableTitle, setEditableTitle] = useState('');
   const [editableBullets, setEditableBullets] = useState<string[]>([]);
   const [editableDesc, setEditableDesc] = useState('');
+
+  // Dominate feature state
+  const [showDominateModal, setShowDominateModal] = useState(false);
+  const [dominateDesign, setDominateDesign] = useState<MerchDesign | null>(null);
+  const [dominateCount, setDominateCount] = useState(10);
+  const [isDominating, setIsDominating] = useState(false);
+  const [dominateProgress, setDominateProgress] = useState({ current: 0, total: 0 });
+  const [variations, setVariations] = useState<MerchDesign[]>([]);
+  const [showVariations, setShowVariations] = useState(false);
 
   // Fetch recent designs on mount
   useEffect(() => {
@@ -119,7 +137,6 @@ const MerchGenerator: React.FC = () => {
 
       if (data.success && data.design) {
         setGeneratedDesign(data.design);
-        // Refresh history
         fetchRecentDesigns();
       } else {
         console.error('Generation failed:', data.error);
@@ -143,14 +160,9 @@ const MerchGenerator: React.FC = () => {
     }
   };
 
-  const handleDownloadImage = () => {
-    if (generatedDesign?.imageUrl) {
-      const link = document.createElement('a');
-      link.href = generatedDesign.imageUrl;
-      link.download = `merch-design-${generatedDesign.id}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+  const handleDownloadImage = (design: MerchDesign) => {
+    if (design?.imageUrl) {
+      downloadBase64Image(design.imageUrl, `merch-design-${design.id}.png`);
     }
   };
 
@@ -162,6 +174,54 @@ const MerchGenerator: React.FC = () => {
     setTargetNiche('');
     setTone('Let AI decide');
     setAdditionalInstructions('');
+  };
+
+  // Dominate feature handlers
+  const openDominateModal = (design: MerchDesign) => {
+    setDominateDesign(design);
+    setDominateCount(10);
+    setShowDominateModal(true);
+  };
+
+  const handleDominate = async () => {
+    if (!dominateDesign) return;
+
+    setIsDominating(true);
+    setDominateProgress({ current: 0, total: dominateCount });
+    setVariations([]);
+
+    try {
+      const response = await fetch('/api/merch/dominate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          designId: dominateDesign.id,
+          count: dominateCount,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setVariations(data.variations);
+        setShowDominateModal(false);
+        setShowVariations(true);
+        fetchRecentDesigns();
+      } else {
+        alert(data.error || 'Failed to generate variations');
+      }
+    } catch (error) {
+      console.error('Error generating variations:', error);
+      alert('Failed to generate variations. Please try again.');
+    } finally {
+      setIsDominating(false);
+    }
+  };
+
+  const handleDownloadAllVariations = () => {
+    if (variations.length > 0 && dominateDesign) {
+      downloadAllVariations(variations, dominateDesign.phrase);
+    }
   };
 
   const CopyButton: React.FC<{ field: string; text: string }> = ({ field, text }) => (
@@ -217,7 +277,6 @@ const MerchGenerator: React.FC = () => {
       {/* Generator Panel */}
       <div className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 p-6 shadow-xl">
         {mode === 'autopilot' ? (
-          /* Autopilot Mode UI */
           <div className="space-y-6">
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
@@ -261,9 +320,7 @@ const MerchGenerator: React.FC = () => {
             </button>
           </div>
         ) : (
-          /* Manual Mode UI */
           <div className="space-y-5">
-            {/* Exact Text */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Exact Text <span className="text-red-500">*</span>
@@ -277,7 +334,6 @@ const MerchGenerator: React.FC = () => {
               />
             </div>
 
-            {/* Visual Style */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Visual Style
@@ -289,16 +345,13 @@ const MerchGenerator: React.FC = () => {
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                 >
                   {STYLE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
+                    <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
             </div>
 
-            {/* Image Feature */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Image Feature/Icon
@@ -312,7 +365,6 @@ const MerchGenerator: React.FC = () => {
               />
             </div>
 
-            {/* Target Niche */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Target Niche
@@ -326,7 +378,6 @@ const MerchGenerator: React.FC = () => {
               />
             </div>
 
-            {/* Tone */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Tone
@@ -338,16 +389,13 @@ const MerchGenerator: React.FC = () => {
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                 >
                   {TONE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
+                    <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
             </div>
 
-            {/* Additional Instructions */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Additional Instructions
@@ -397,7 +445,6 @@ const MerchGenerator: React.FC = () => {
           </div>
 
           <div className="grid md:grid-cols-2 gap-6">
-            {/* Image */}
             <div className="space-y-3">
               <div className="aspect-square bg-gray-100 dark:bg-dark-700 rounded-xl overflow-hidden border border-gray-200 dark:border-white/10">
                 <img
@@ -406,13 +453,22 @@ const MerchGenerator: React.FC = () => {
                   className="w-full h-full object-contain"
                 />
               </div>
-              <button
-                onClick={handleDownloadImage}
-                className="w-full py-3 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Download Image
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDownloadImage(generatedDesign)}
+                  className="flex-1 py-3 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Download
+                </button>
+                <button
+                  onClick={() => openDominateModal(generatedDesign)}
+                  className="flex-1 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <Zap className="w-4 h-4" />
+                  Dominate Niche
+                </button>
+              </div>
               <div className="text-center">
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-brand-500/10 text-brand-500">
                   {generatedDesign.mode === 'autopilot' ? 'Autopilot' : 'Manual'} Mode
@@ -420,14 +476,10 @@ const MerchGenerator: React.FC = () => {
               </div>
             </div>
 
-            {/* Listing Details */}
             <div className="space-y-4">
-              {/* Title */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                    Listing Title
-                  </label>
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Listing Title</label>
                   <CopyButton field="title" text={editableTitle} />
                 </div>
                 <textarea
@@ -438,12 +490,9 @@ const MerchGenerator: React.FC = () => {
                 />
               </div>
 
-              {/* Bullet Points */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                    Bullet Points
-                  </label>
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Bullet Points</label>
                   <CopyButton field="bullets" text={editableBullets.join('\n')} />
                 </div>
                 <div className="space-y-2">
@@ -463,12 +512,9 @@ const MerchGenerator: React.FC = () => {
                 </div>
               </div>
 
-              {/* Description */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                    Description
-                  </label>
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Description</label>
                   <CopyButton field="desc" text={editableDesc} />
                 </div>
                 <textarea
@@ -479,6 +525,63 @@ const MerchGenerator: React.FC = () => {
                 />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Variations Display */}
+      {showVariations && variations.length > 0 && (
+        <div className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 p-6 shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                Generated Variations ({variations.length})
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                {dominateDesign?.phrase} - {variations.length} unique designs
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleDownloadAllVariations}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-medium rounded-lg transition-colors"
+              >
+                <FileDown className="w-4 h-4" />
+                Download All
+              </button>
+              <button
+                onClick={() => setShowVariations(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {variations.map((variation, index) => (
+              <div
+                key={variation.id}
+                className="group cursor-pointer"
+                onClick={() => setGeneratedDesign(variation)}
+              >
+                <div className="aspect-square bg-gray-100 dark:bg-dark-700 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 group-hover:border-brand-500 transition-colors relative">
+                  <img
+                    src={variation.imageUrl}
+                    alt={variation.phrase}
+                    className="w-full h-full object-contain"
+                  />
+                  <div className="absolute top-2 left-2 bg-black/70 text-white text-xs px-2 py-1 rounded">
+                    #{index + 1}
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {variation.style}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -498,12 +601,11 @@ const MerchGenerator: React.FC = () => {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {recentDesigns.map((design) => (
-              <div
-                key={design.id}
-                className="group cursor-pointer"
-                onClick={() => setGeneratedDesign(design)}
-              >
-                <div className="aspect-square bg-gray-100 dark:bg-dark-700 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 group-hover:border-brand-500 transition-colors">
+              <div key={design.id} className="group">
+                <div
+                  className="aspect-square bg-gray-100 dark:bg-dark-700 rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 group-hover:border-brand-500 transition-colors cursor-pointer"
+                  onClick={() => setGeneratedDesign(design)}
+                >
                   <img
                     src={design.imageUrl}
                     alt={design.phrase}
@@ -514,13 +616,20 @@ const MerchGenerator: React.FC = () => {
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                     {design.phrase}
                   </p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center justify-between mt-1">
                     <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-dark-700 text-gray-500 dark:text-gray-400">
                       {design.mode}
                     </span>
-                    <span className="text-xs text-gray-400">
-                      {new Date(design.createdAt).toLocaleDateString()}
-                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openDominateModal(design);
+                      }}
+                      className="text-xs px-2 py-0.5 rounded bg-purple-500/10 text-purple-500 hover:bg-purple-500/20 transition-colors flex items-center gap-1"
+                    >
+                      <Zap className="w-3 h-3" />
+                      Dominate
+                    </button>
                   </div>
                 </div>
               </div>
@@ -528,6 +637,106 @@ const MerchGenerator: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Dominate Modal */}
+      {showDominateModal && dominateDesign && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-dark-800 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                <Zap className="w-5 h-5 text-purple-500" />
+                Dominate This Niche
+              </h3>
+              <button
+                onClick={() => setShowDominateModal(false)}
+                className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                disabled={isDominating}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex items-center gap-4 p-3 bg-gray-50 dark:bg-dark-700 rounded-lg">
+                <div className="w-16 h-16 bg-gray-200 dark:bg-dark-600 rounded overflow-hidden flex-shrink-0">
+                  <img
+                    src={dominateDesign.imageUrl}
+                    alt={dominateDesign.phrase}
+                    className="w-full h-full object-contain"
+                  />
+                </div>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">{dominateDesign.phrase}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{dominateDesign.niche}</p>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                  Number of Variations
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {VARIATION_COUNT_OPTIONS.map((count) => (
+                    <button
+                      key={count}
+                      onClick={() => setDominateCount(count)}
+                      disabled={isDominating}
+                      className={`py-2 rounded-lg font-medium transition-all ${
+                        dominateCount === count
+                          ? 'bg-purple-600 text-white'
+                          : 'bg-gray-100 dark:bg-dark-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-dark-600'
+                      }`}
+                    >
+                      {count}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Estimated time: {estimateTime(dominateCount)}
+                </p>
+              </div>
+
+              {isDominating && (
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <Loader2 className="w-5 h-5 animate-spin text-purple-500" />
+                    <div>
+                      <p className="font-medium text-purple-700 dark:text-purple-300">
+                        Generating variations...
+                      </p>
+                      <p className="text-sm text-purple-600 dark:text-purple-400">
+                        This may take several minutes. Please wait.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={handleDominate}
+                disabled={isDominating}
+                className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {isDominating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    Generating {dominateCount} Variations...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-5 h-5" />
+                    Generate {dominateCount} Variations
+                  </>
+                )}
+              </button>
+
+              <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+                Each variation will have a unique visual style and listing
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
