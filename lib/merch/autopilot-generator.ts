@@ -26,11 +26,27 @@ import {
 } from './learning';
 
 // Track applied insights for logging
+// Maps from InsightApplication (from insight-applier) to simplified format for storage
 interface AppliedInsight {
-  id: string;
-  type: string;
+  id: string;        // mapped from insightId
+  type: string;      // mapped from insightType
   appliedAs: string;
   confidence: number;
+}
+
+// Helper to map InsightApplication to AppliedInsight
+function mapToAppliedInsight(insight: {
+  insightId: string;
+  insightType: string;
+  appliedAs: string;
+  confidence: number;
+}): AppliedInsight {
+  return {
+    id: insight.insightId,
+    type: insight.insightType,
+    appliedAs: insight.appliedAs,
+    confidence: insight.confidence,
+  };
 }
 
 // Niches to explore based on risk level
@@ -207,11 +223,17 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
 
   try {
     const selectedNiche = selectNicheForRisk(riskLevel);
-    insightGuidance = await applyInsightsToGeneration({
+    const rawGuidance = await applyInsightsToGeneration({
       niche: selectedNiche,
       riskLevel,
       month: new Date().getMonth(),
     });
+
+    // Map InsightApplication to AppliedInsight format
+    insightGuidance = {
+      ...rawGuidance,
+      appliedInsights: rawGuidance.appliedInsights.map(mapToAppliedInsight),
+    };
 
     if (insightGuidance.appliedInsights.length > 0) {
       console.log(`[Autopilot] Applied ${insightGuidance.appliedInsights.length} insights`);
