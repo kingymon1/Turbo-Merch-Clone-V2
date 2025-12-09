@@ -889,3 +889,47 @@ model MerchDesign {
   @@index([createdAt])
   @@index([mode])
 }
+
+// ============================================================================
+// MARKET INTELLIGENCE (Background Data Collection)
+// ============================================================================
+
+model MarketData {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  source      String   // 'grok' | 'brave' | 'google' | 'multi-agent'
+  category    String   // 'proven' | 'emerging' | 'moonshot'
+  query       String?  // What was searched
+  data        Json     // The actual results
+  metadata    Json?    // Additional context
+
+  @@index([source, createdAt])
+  @@index([category, createdAt])
+  @@index([createdAt])
+}
+
+model NicheTrend {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  niche       String   @unique // 'nurses' | 'teachers' | 'dog-lovers' etc
+  category    String   // 'profession' | 'hobby' | 'pet' | 'lifestyle'
+
+  // Trend metrics
+  searchVolume    Int     @default(0)
+  growthRate      Float   @default(0)
+  competition     String  // 'low' | 'medium' | 'high'
+
+  // Insights
+  popularPhrases  String[]
+  commonKeywords  String[]
+  successPatterns Json?
+
+  // Freshness
+  lastAnalyzed    DateTime @default(now())
+
+  @@index([category])
+  @@index([lastAnalyzed])
+}

@@ -3,6 +3,18 @@
     {
       "path": "/api/designs/cleanup",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/collect-trends",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/analyze-niches",
+      "schedule": "0 1,13 * * *"
+    },
+    {
+      "path": "/api/cron/moonshot-trends",
+      "schedule": "0 3 * * *"
     }
   ],
   "headers": [
