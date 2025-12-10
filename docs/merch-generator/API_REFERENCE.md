@@ -447,6 +447,70 @@ Delete an insight.
 
 ---
 
+### POST /api/marketplace/keywords
+
+**Phase 7A** - Get optimized keywords for a niche from learned marketplace data.
+
+**Request Body:**
+```json
+{
+  "niche": "nurse gifts",      // Required: Target niche
+  "quick": false               // Optional: Return only keyword list (faster)
+}
+```
+
+**Response (Full Mode):**
+```json
+{
+  "success": true,
+  "data": {
+    "niche": "nurse gifts",
+    "primaryKeywords": ["nurse", "nursing", "rn gift", "nurse appreciation"],
+    "longTailPhrases": ["funny nurse shirt", "registered nurse gift"],
+    "titlePatterns": ["Nurse Life Funny Gift...", "RN Nursing Shirt..."],
+    "effectiveBrands": ["NurseVibes", "MedicalHumor"],
+    "priceGuidance": { "optimal": 19.99, "range": { "min": 14.99, "max": 24.99 } },
+    "mbaInsights": { "productCount": 45, "avgTitleLength": 120, "commonTones": ["funny", "gift-focused"] },
+    "saturation": "medium",
+    "entryRecommendation": "enter",
+    "confidence": 75,
+    "lastUpdated": "2024-12-10T..."
+  },
+  "source": "learned",
+  "message": "Found optimized keywords for \"nurse gifts\" with 75% confidence",
+  "stats": { "primaryKeywords": 15, "longTailPhrases": 8, "titlePatterns": 5, "mbaProducts": 45 }
+}
+```
+
+**Response (Quick Mode):**
+```json
+{
+  "success": true,
+  "data": ["nurse", "nursing", "rn gift", "nurse appreciation", "funny nurse"],
+  "source": "learned",
+  "message": "Found 5 keywords for \"nurse gifts\""
+}
+```
+
+**Response (No Data):**
+```json
+{
+  "success": false,
+  "data": null,
+  "source": "none",
+  "message": "No marketplace data found for niche...",
+  "suggestions": ["Run POST /api/marketplace/scrape...", "Run POST /api/marketplace/trending..."]
+}
+```
+
+---
+
+### GET /api/marketplace/keywords
+
+Get endpoint information and usage examples.
+
+---
+
 ## 4. Authentication
 
 ### User Endpoints

@@ -100,7 +100,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // API Configuration
 const DECODO_API_ENDPOINT = 'https://scraper-api.decodo.com/v2/scrape';
-const API_TIMEOUT_MS = 30000; // 30 seconds
+const API_TIMEOUT_MS = 45000; // 45 seconds (increased for slow API responses)
 
 /**
  * Check if Decodo API is configured and available
@@ -122,41 +122,111 @@ const getAuthHeader = (): string => {
 };
 
 /**
- * Make a request to Decodo API with timeout and error handling
+ * Make a request to Decodo API with timeout, error handling, and retry logic
  */
-const makeDecodoRequest = async (payload: Record<string, unknown>): Promise<unknown> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+const makeDecodoRequest = async (payload: Record<string, unknown>, retries = 4): Promise<unknown> => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-  try {
-    const response = await fetch(DECODO_API_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': getAuthHeader(),
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+    try {
+      console.log(`[MARKETPLACE] Decodo request (attempt ${attempt}/${retries}):`, JSON.stringify(payload));
 
-    clearTimeout(timeoutId);
+      const response = await fetch(DECODO_API_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': getAuthHeader(),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      console.error(`[MARKETPLACE] Decodo API error: ${response.status} ${response.statusText}`);
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        console.error(`[MARKETPLACE] Decodo API error: ${response.status} ${response.statusText}`);
+        if (attempt < retries) {
+          console.log(`[MARKETPLACE] Retrying in ${attempt * 2}s...`);
+          await new Promise(r => setTimeout(r, attempt * 2000));
+          continue;
+        }
+        return null;
+      }
+
+      const jsonResponse = await response.json();
+      console.log(`[MARKETPLACE] Decodo raw response keys:`, Object.keys(jsonResponse));
+
+      // Check for Decodo-specific error codes in response
+      // Note: status_code 12000 may actually mean SUCCESS in some scraping APIs
+      // We need to check the actual content, not just the status code
+      if (Array.isArray(jsonResponse.results) && jsonResponse.results.length > 0) {
+        const firstResult = jsonResponse.results[0] as Record<string, unknown>;
+        const content = firstResult.content as Record<string, unknown>;
+
+        // Log FULL response structure for debugging
+        console.log(`[MARKETPLACE] Full response content:`, JSON.stringify(content, null, 2).slice(0, 3000));
+
+        // Convert status_code to number (API may return string or number)
+        const statusCode = content ? Number(content.status_code) : 0;
+        console.log(`[MARKETPLACE] Status code: ${statusCode}, content.results type: ${typeof content?.results}`);
+
+        // Check if we have actual results data (regardless of status code)
+        // Status 12000 may mean "successfully parsed" not "error"
+        if (content && content.results && typeof content.results === 'object') {
+          console.log(`[MARKETPLACE] Found results in content.results, proceeding...`);
+          // Data exists, continue processing
+        } else if (content && content.results === null) {
+          // Results is explicitly null - this is the real error
+          console.error(`[MARKETPLACE] Decodo returned null results (status: ${statusCode})`);
+
+          // Check if there's data elsewhere in the response
+          console.log(`[MARKETPLACE] Content keys:`, Object.keys(content || {}));
+          console.log(`[MARKETPLACE] First result keys:`, Object.keys(firstResult || {}));
+
+          if (attempt < retries) {
+            const waitTime = attempt * 4000;
+            console.log(`[MARKETPLACE] Empty results, retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
+            await new Promise(r => setTimeout(r, waitTime));
+            continue;
+          }
+          console.error(`[MARKETPLACE] All ${retries} retry attempts returned null results`);
+          return null;
+        } else if (statusCode === 429 || statusCode >= 500) {
+          // Only treat HTTP-style errors as actual errors
+          console.error(`[MARKETPLACE] HTTP error status ${statusCode}`);
+          if (attempt < retries) {
+            const waitTime = attempt * 5000;
+            console.log(`[MARKETPLACE] Retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
+            await new Promise(r => setTimeout(r, waitTime));
+            continue;
+          }
+          return null;
+        }
+      }
+
+      console.log(`[MARKETPLACE] Decodo response structure:`, JSON.stringify(jsonResponse, null, 2).slice(0, 2000));
+      return jsonResponse;
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('[MARKETPLACE] Decodo API request timed out');
+      } else {
+        console.error('[MARKETPLACE] Decodo API request failed:', error);
+      }
+
+      if (attempt < retries) {
+        console.log(`[MARKETPLACE] Retrying in ${attempt * 2}s...`);
+        await new Promise(r => setTimeout(r, attempt * 2000));
+        continue;
+      }
       return null;
     }
-
-    return await response.json();
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[MARKETPLACE] Decodo API request timed out');
-    } else {
-      console.error('[MARKETPLACE] Decodo API request failed:', error);
-    }
-    return null;
   }
+
+  return null;
 };
 
 /**
@@ -188,11 +258,12 @@ export const searchAmazon = async (
   console.log(`[MARKETPLACE] Searching Amazon for "${query}"`);
 
   try {
+    // Decodo API format: target, query, page_from (string), parse
+    // Note: locale is not supported - use domain for regional targeting
     const payload = {
       target: 'amazon_search',
       query: `${query} t-shirt`,
-      locale: options.locale || 'en-US',
-      page_from: options.page || 1,
+      page_from: String(options.page || 1),  // Must be string
       parse: true,
     };
 
@@ -324,14 +395,23 @@ export const searchEtsy = async (
   console.log(`[MARKETPLACE] Searching Etsy for "${query}"`);
 
   try {
+    // NOTE: Etsy scraping is temporarily disabled.
+    // Decodo doesn't have a dedicated 'etsy_search' target - would require
+    // 'universal' target with HTML parsing. Focusing on Amazon for MBA data.
+    console.log('[MARKETPLACE] Etsy scraping disabled - focusing on Amazon for MBA products');
+    return createEmptyResult(query, 'etsy', 'Etsy scraping temporarily disabled - use Amazon');
+
+    /* Original Etsy implementation (requires HTML parsing):
+    const etsySearchUrl = `https://www.etsy.com/search?q=${encodeURIComponent(query + ' shirt')}`;
     const payload = {
-      target: 'etsy_search',
-      query: `${query} shirt`,
-      parse: true,
+      target: 'universal',
+      url: etsySearchUrl,
+      headless: 'html',
     };
-
     const response = await makeDecodoRequest(payload);
+    */
 
+    const response = null; // Placeholder
     if (!response) {
       return createEmptyResult(query, 'etsy', 'API request failed');
     }
@@ -363,24 +443,145 @@ export const searchEtsy = async (
 const parseAmazonSearchResults = (response: unknown, query: string): MarketplaceProduct[] => {
   try {
     const data = response as Record<string, unknown>;
-    const results = data.results as Record<string, unknown>[] ||
-                   (data.content as Record<string, unknown>)?.results as Record<string, unknown>[] ||
-                   [];
 
-    return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => ({
-      id: `amazon-${query}-${index}`,
-      source: 'amazon' as const,
-      title: String(item.title || ''),
-      price: parseFloat(String(item.price || item.price_raw || '0').replace(/[^0-9.]/g, '')) || 0,
-      currency: 'USD',
-      url: String(item.url || item.link || ''),
-      asin: String(item.asin || ''),
-      reviewCount: parseInt(String(item.reviews_count || item.rating_count || '0')) || 0,
-      avgRating: parseFloat(String(item.rating || item.stars || '0')) || 0,
-      salesRank: item.sales_rank ? parseInt(String(item.sales_rank)) : undefined,
-      imageUrl: String(item.image || item.thumbnail || ''),
-      scrapedAt: new Date(),
-    }));
+    // Debug: Log what paths we're trying to find products in
+    console.log(`[MARKETPLACE] Parsing Amazon results. Top-level keys:`, Object.keys(data));
+
+    // Decodo returns: { results: [{ content: { results: { results: { organic: [...], paid: [...] } } } }] }
+    // We need to drill down to find the actual product arrays
+    let products: Record<string, unknown>[] = [];
+
+    // Path 1: Decodo nested structure - results[0].content.results.results.organic
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      const wrapper = data.results[0] as Record<string, unknown>;
+      if (wrapper.content && typeof wrapper.content === 'object') {
+        const content = wrapper.content as Record<string, unknown>;
+        if (content.results && typeof content.results === 'object') {
+          const innerResults = content.results as Record<string, unknown>;
+          if (innerResults.results && typeof innerResults.results === 'object') {
+            const productResults = innerResults.results as Record<string, unknown>;
+
+            // Get organic results (non-sponsored)
+            if (Array.isArray(productResults.organic)) {
+              products = [...products, ...productResults.organic];
+              console.log(`[MARKETPLACE] Found ${productResults.organic.length} organic products`);
+            }
+
+            // Also get paid/sponsored results for more data
+            if (Array.isArray(productResults.paid)) {
+              products = [...products, ...productResults.paid];
+              console.log(`[MARKETPLACE] Found ${productResults.paid.length} sponsored products`);
+            }
+          }
+        }
+      }
+    }
+
+    // Path 2: Simpler structure - data.results (if it's already an array of products)
+    if (products.length === 0 && Array.isArray(data.results)) {
+      // Check if first item looks like a product (has title, price, etc)
+      const firstItem = data.results[0] as Record<string, unknown>;
+      if (firstItem && (firstItem.title || firstItem.asin)) {
+        products = data.results;
+        console.log(`[MARKETPLACE] Found products at data.results (${products.length} items)`);
+      }
+    }
+
+    // Path 3: data.content.organic or data.organic
+    if (products.length === 0) {
+      if (data.content && typeof data.content === 'object') {
+        const content = data.content as Record<string, unknown>;
+        if (Array.isArray(content.organic)) {
+          products = content.organic;
+          console.log(`[MARKETPLACE] Found products at data.content.organic (${products.length} items)`);
+        }
+      } else if (Array.isArray(data.organic)) {
+        products = data.organic;
+        console.log(`[MARKETPLACE] Found products at data.organic (${products.length} items)`);
+      }
+    }
+
+    console.log(`[MARKETPLACE] Total products found: ${products.length}`);
+
+    if (products.length > 0) {
+      // Log full first product to see ALL available fields for MBA detection
+      console.log(`[MARKETPLACE] First product FULL:`, JSON.stringify(products[0], null, 2));
+    } else {
+      console.log(`[MARKETPLACE] No products found. Response structure:`, JSON.stringify(data).slice(0, 1000));
+    }
+
+    // Map to results variable for compatibility
+    const results = products;
+
+    // Log ALL available fields from first few products for debugging
+    if (results.length > 0) {
+      console.log(`[MARKETPLACE] Available fields in search results:`, Object.keys(results[0]));
+      // Log seller-related fields specifically
+      const sampleProduct = results[0] as Record<string, unknown>;
+      console.log(`[MARKETPLACE] Seller-related fields:`, {
+        seller: sampleProduct.seller,
+        brand: sampleProduct.brand,
+        merchant: sampleProduct.merchant,
+        sold_by: sampleProduct.sold_by,
+        manufacturer: sampleProduct.manufacturer,
+        byline: sampleProduct.byline,
+        bylineInfo: sampleProduct.byline_info,
+        fulfillment: sampleProduct.fulfillment,
+        prime: sampleProduct.prime,
+        amazonChoice: sampleProduct.amazon_choice,
+        bestSeller: sampleProduct.best_seller,
+      });
+    }
+
+    return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => {
+      // Extract ALL possible seller/brand fields
+      const sellerFields = [
+        item.seller,
+        item.brand,
+        item.merchant,
+        item.sold_by,
+        item.manufacturer,
+        item.byline,
+        typeof item.byline_info === 'object' ? (item.byline_info as Record<string, unknown>)?.text : null,
+      ].filter(Boolean).map(String);
+
+      const sellerText = sellerFields.join(' ').toLowerCase();
+
+      // Detect MBA from search results
+      // MBA products typically have:
+      // - seller/brand as "Amazon.com" (not third-party)
+      // - OR brand contains Amazon-related terms
+      // - OR no brand (generic listings)
+      const isMbaFromSearch =
+        sellerText.includes('amazon.com') ||
+        sellerText.includes('merch by amazon') ||
+        sellerText.includes('amazon merch') ||
+        sellerText.includes('amazon.com services');
+
+      if (index < 5) {
+        console.log(`[MARKETPLACE] Product ${index}: seller="${sellerFields[0] || 'N/A'}", brand="${item.brand || 'N/A'}", isMBA=${isMbaFromSearch}`);
+      }
+
+      return {
+        id: `amazon-${query}-${index}`,
+        source: 'amazon' as const,
+        title: String(item.title || ''),
+        price: parseFloat(String(item.price || item.price_raw || '0').replace(/[^0-9.]/g, '')) || 0,
+        currency: 'USD',
+        url: String(item.url || item.link || ''),
+        asin: String(item.asin || ''),
+        reviewCount: parseInt(String(item.reviews_count || item.rating_count || '0')) || 0,
+        avgRating: parseFloat(String(item.rating || item.stars || '0')) || 0,
+        salesRank: item.sales_rank ? parseInt(String(item.sales_rank)) : undefined,
+        // Extract seller/brand for storage
+        seller: sellerFields[0] || '',
+        category: String(item.category || item.department || ''),
+        imageUrl: String(item.image || item.thumbnail || ''),
+        // MBA detection from search results (preliminary - product detail fetch can override)
+        isMerchByAmazon: isMbaFromSearch,
+        scrapedAt: new Date(),
+      };
+    });
   } catch (error) {
     console.error('[MARKETPLACE] Error parsing Amazon results:', error);
     return [];
@@ -390,9 +591,87 @@ const parseAmazonSearchResults = (response: unknown, query: string): Marketplace
 const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
   try {
     const data = response as Record<string, unknown>;
-    const product = data.content as Record<string, unknown> || data;
 
-    if (!product.title) return null;
+    // Debug: Log full response structure to understand where MBA tag appears
+    console.log(`[MARKETPLACE] Amazon product response keys:`, Object.keys(data));
+
+    // Decodo returns: { results: [{ content: { results: { ...product } } }] }
+    // Note: Product data is at results[0].content.results (not results[0].content)
+    let product: Record<string, unknown> = {};
+
+    // Path 1: Deeply nested structure - results[0].content.results
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      const wrapper = data.results[0] as Record<string, unknown>;
+      if (wrapper.content && typeof wrapper.content === 'object') {
+        const content = wrapper.content as Record<string, unknown>;
+        // Product data is inside content.results
+        if (content.results && typeof content.results === 'object') {
+          product = content.results as Record<string, unknown>;
+          console.log(`[MARKETPLACE] Found product at results[0].content.results`);
+        } else if (content.title) {
+          // Fallback: product directly in content
+          product = content;
+          console.log(`[MARKETPLACE] Found product at results[0].content`);
+        }
+      }
+    }
+
+    // Path 2: Direct content.results
+    if (!product.title && data.content && typeof data.content === 'object') {
+      const content = data.content as Record<string, unknown>;
+      if (content.results && typeof content.results === 'object') {
+        product = content.results as Record<string, unknown>;
+        console.log(`[MARKETPLACE] Found product at data.content.results`);
+      } else if (content.title) {
+        product = content;
+        console.log(`[MARKETPLACE] Found product at data.content`);
+      }
+    }
+
+    // Path 3: Direct response
+    if (!product.title && data.title) {
+      product = data;
+      console.log(`[MARKETPLACE] Found product at root level`);
+    }
+
+    if (!product.title) {
+      console.log(`[MARKETPLACE] No title found. Response structure:`, JSON.stringify(data).slice(0, 1000));
+      return null;
+    }
+
+    // Extract seller info from buybox array - MBA tag appears as seller_name
+    // Structure: buybox: [{ seller_name: "Amazon Merch on Demand", ships_from_name: "..." }]
+    let sellerName = '';
+    let shipsFrom = '';
+
+    if (Array.isArray(product.buybox) && product.buybox.length > 0) {
+      const buybox = product.buybox[0] as Record<string, unknown>;
+      sellerName = String(buybox.seller_name || '');
+      shipsFrom = String(buybox.ships_from_name || '');
+      console.log(`[MARKETPLACE] Buybox seller_name: "${sellerName}"`);
+      console.log(`[MARKETPLACE] Buybox ships_from_name: "${shipsFrom}"`);
+    }
+
+    // Also check top-level brand/seller fields as fallback
+    const brandInfo = String(product.brand || '');
+
+    // Combine all seller-related info for MBA detection
+    const allSellerText = [sellerName, shipsFrom, brandInfo].join(' ');
+
+    console.log(`[MARKETPLACE] Product ASIN: ${product.asin}`);
+    console.log(`[MARKETPLACE] Brand: "${brandInfo}"`);
+    console.log(`[MARKETPLACE] All seller text: "${allSellerText}"`);
+
+    // Check for MBA in any seller-related field
+    // MBA products show seller as "Amazon.com" (not third-party sellers)
+    const lowerSellerText = allSellerText.toLowerCase();
+    const isMba = lowerSellerText.includes('amazon merch on demand') ||
+                  lowerSellerText.includes('merch by amazon') ||
+                  lowerSellerText.includes('amazon.com services llc') ||
+                  sellerName.toLowerCase() === 'amazon.com' ||  // MBA products sold by Amazon.com
+                  shipsFrom.toLowerCase() === 'amazon.com';     // Ships from Amazon.com
+
+    console.log(`[MARKETPLACE] MBA detected: ${isMba}`);
 
     return {
       id: `amazon-${product.asin || 'unknown'}`,
@@ -402,12 +681,13 @@ const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
       currency: 'USD',
       url: String(product.url || ''),
       asin: String(product.asin || ''),
-      reviewCount: parseInt(String(product.reviews_count || '0')) || 0,
-      avgRating: parseFloat(String(product.rating || '0')) || 0,
+      reviewCount: parseInt(String(product.reviews_count || product.rating_count || '0')) || 0,
+      avgRating: parseFloat(String(product.rating || product.stars || '0')) || 0,
       salesRank: product.sales_rank ? parseInt(String(product.sales_rank)) : undefined,
-      category: String(product.category || ''),
-      seller: String(product.seller || ''),
-      imageUrl: String(product.image || ''),
+      category: String(product.category || product.department || ''),
+      seller: sellerName || brandInfo, // Use seller_name from buybox, fallback to brand
+      imageUrl: Array.isArray(product.images) ? String(product.images[0] || '') : String(product.image || product.thumbnail || ''),
+      isMerchByAmazon: isMba, // Set MBA flag based on seller info
       scrapedAt: new Date(),
     };
   } catch (error) {
@@ -436,9 +716,43 @@ const parseAmazonReviews = (response: unknown): { reviews: string[]; avgRating: 
 const parseEtsySearchResults = (response: unknown, query: string): MarketplaceProduct[] => {
   try {
     const data = response as Record<string, unknown>;
-    const results = data.results as Record<string, unknown>[] ||
-                   (data.content as Record<string, unknown>)?.listings as Record<string, unknown>[] ||
-                   [];
+
+    // Debug: Log what paths we're trying to find products in
+    console.log(`[MARKETPLACE] Parsing Etsy results. data.results exists:`, !!data.results);
+    console.log(`[MARKETPLACE] data.content exists:`, !!data.content);
+
+    let results: Record<string, unknown>[] = [];
+
+    if (Array.isArray(data.results)) {
+      results = data.results;
+      console.log(`[MARKETPLACE] Etsy: Found results at data.results (${results.length} items)`);
+    } else if (data.content && typeof data.content === 'object') {
+      const content = data.content as Record<string, unknown>;
+      if (Array.isArray(content.listings)) {
+        results = content.listings;
+        console.log(`[MARKETPLACE] Etsy: Found results at data.content.listings (${results.length} items)`);
+      } else if (Array.isArray(content.results)) {
+        results = content.results;
+        console.log(`[MARKETPLACE] Etsy: Found results at data.content.results (${results.length} items)`);
+      } else if (Array.isArray(content.organic)) {
+        results = content.organic;
+        console.log(`[MARKETPLACE] Etsy: Found results at data.content.organic (${results.length} items)`);
+      } else {
+        console.log(`[MARKETPLACE] Etsy: data.content keys:`, Object.keys(content));
+      }
+    } else if (Array.isArray(data.listings)) {
+      results = data.listings;
+      console.log(`[MARKETPLACE] Etsy: Found results at data.listings (${results.length} items)`);
+    } else if (Array.isArray(data.organic)) {
+      results = data.organic;
+      console.log(`[MARKETPLACE] Etsy: Found results at data.organic (${results.length} items)`);
+    } else {
+      console.log(`[MARKETPLACE] Etsy: Could not find products array. Top-level keys:`, Object.keys(data));
+    }
+
+    if (results.length > 0) {
+      console.log(`[MARKETPLACE] Etsy: First result sample:`, JSON.stringify(results[0]).slice(0, 500));
+    }
 
     return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => ({
       id: `etsy-${query}-${index}`,
@@ -457,6 +771,172 @@ const parseEtsySearchResults = (response: unknown, query: string): MarketplacePr
     console.error('[MARKETPLACE] Error parsing Etsy results:', error);
     return [];
   }
+};
+
+// ============================================================================
+// HYBRID MBA DETECTION - Fetch product details to reliably detect MBA
+// ============================================================================
+
+/**
+ * Fetch product details for a sample of ASINs to detect MBA products
+ *
+ * The "Amazon Merch on Demand" tag only appears on product detail pages,
+ * not in search results. This function fetches details for a sample of
+ * products to reliably detect which ones are MBA.
+ *
+ * @param products - Products from search results (must have ASINs)
+ * @param sampleSize - How many products to check (default: 5)
+ * @returns Map of ASIN -> isMBA boolean
+ */
+export const fetchMbaDetectionForProducts = async (
+  products: MarketplaceProduct[],
+  sampleSize: number = 5
+): Promise<{
+  mbaAsins: Set<string>;
+  checkedCount: number;
+  mbaCount: number;
+  mbaProducts: MarketplaceProduct[];
+}> => {
+  const result = {
+    mbaAsins: new Set<string>(),
+    checkedCount: 0,
+    mbaCount: 0,
+    mbaProducts: [] as MarketplaceProduct[],
+  };
+
+  if (!isApiConfigured()) {
+    console.log('[MARKETPLACE] API not configured - skipping MBA detection');
+    return result;
+  }
+
+  // Get products with ASINs
+  const productsWithAsins = products.filter(p => p.asin && p.asin.length > 0);
+
+  if (productsWithAsins.length === 0) {
+    console.log('[MARKETPLACE] No products with ASINs found - skipping MBA detection');
+    return result;
+  }
+
+  // Take a sample (prioritize products with more reviews as they're more likely MBA bestsellers)
+  const sortedByReviews = [...productsWithAsins].sort((a, b) => b.reviewCount - a.reviewCount);
+  const sample = sortedByReviews.slice(0, sampleSize);
+
+  console.log(`[MARKETPLACE] Fetching product details for ${sample.length} ASINs to detect MBA...`);
+
+  // Fetch product details in parallel (with small batches to avoid rate limiting)
+  const batchSize = 3;
+  for (let i = 0; i < sample.length; i += batchSize) {
+    const batch = sample.slice(i, i + batchSize);
+
+    const detailPromises = batch.map(async (product) => {
+      try {
+        const details = await getAmazonProduct(product.asin!);
+        result.checkedCount++;
+
+        if (details) {
+          console.log(`[MARKETPLACE] ASIN ${product.asin}: MBA=${details.isMerchByAmazon}, seller="${details.seller?.slice(0, 50)}..."`);
+
+          if (details.isMerchByAmazon) {
+            result.mbaAsins.add(product.asin!);
+            result.mbaCount++;
+            result.mbaProducts.push(details);
+          }
+        }
+      } catch (error) {
+        console.log(`[MARKETPLACE] Failed to fetch details for ${product.asin}: ${error}`);
+      }
+    });
+
+    await Promise.all(detailPromises);
+
+    // Small delay between batches to avoid rate limiting
+    if (i + batchSize < sample.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  console.log(`[MARKETPLACE] MBA detection complete: ${result.mbaCount}/${result.checkedCount} products are MBA`);
+
+  return result;
+};
+
+/**
+ * Enhanced search that includes MBA detection
+ *
+ * This performs:
+ * 1. Normal Amazon search to get product listings (includes preliminary MBA detection from search data)
+ * 2. Optionally fetches product details for sample to confirm/enhance MBA detection
+ * 3. Returns enriched results with MBA flags from both sources
+ *
+ * MBA detection strategy:
+ * - Primary: Detect from search results (seller/brand fields) - always works
+ * - Secondary: Fetch product details for more reliable detection - may fail with rate limits
+ */
+export const searchAmazonWithMbaDetection = async (
+  query: string,
+  options: {
+    locale?: string;
+    page?: number;
+    category?: string;
+    mbaSampleSize?: number;
+    skipDetailFetch?: boolean; // Skip product detail fetches (use search-only MBA detection)
+  } = {}
+): Promise<MarketplaceSearchResult & { mbaStats: { checked: number; found: number; fromSearch: number } }> => {
+  const { mbaSampleSize = 5, skipDetailFetch = false, ...searchOptions } = options;
+
+  // Step 1: Normal search (now includes preliminary MBA detection from search results)
+  const searchResult = await searchAmazon(query, searchOptions);
+
+  if (!searchResult.success || searchResult.products.length === 0) {
+    return {
+      ...searchResult,
+      mbaStats: { checked: 0, found: 0, fromSearch: 0 },
+    };
+  }
+
+  // Count MBA products detected from search results (primary method)
+  const mbaFromSearch = searchResult.products.filter(p => p.isMerchByAmazon).length;
+  console.log(`[MARKETPLACE] Search found ${searchResult.products.length} products, ${mbaFromSearch} detected as MBA from search data`);
+
+  // If we already found MBA products from search OR skipDetailFetch is true, don't do detail fetches
+  if (mbaFromSearch > 0 || skipDetailFetch) {
+    console.log(`[MARKETPLACE] Using search-based MBA detection (${mbaFromSearch} MBA products)`);
+    return {
+      ...searchResult,
+      mbaStats: {
+        checked: searchResult.products.length,
+        found: mbaFromSearch,
+        fromSearch: mbaFromSearch,
+      },
+    };
+  }
+
+  // Step 2: Try to fetch product details for more reliable MBA detection
+  // This is a secondary method - may fail with rate limits
+  console.log(`[MARKETPLACE] No MBA from search data, trying product detail fetches...`);
+
+  const mbaDetection = await fetchMbaDetectionForProducts(searchResult.products, mbaSampleSize);
+
+  // Step 3: Update products with MBA detection results from detail fetches
+  const enrichedProducts = searchResult.products.map(product => {
+    // Use detail fetch result if available, otherwise keep search-based detection
+    if (product.asin && mbaDetection.mbaAsins.has(product.asin)) {
+      return { ...product, isMerchByAmazon: true };
+    }
+    return product;
+  });
+
+  const totalMba = enrichedProducts.filter(p => p.isMerchByAmazon).length;
+
+  return {
+    ...searchResult,
+    products: enrichedProducts,
+    mbaStats: {
+      checked: mbaDetection.checkedCount,
+      found: totalMba,
+      fromSearch: mbaFromSearch,
+    },
+  };
 };
 
 // ============================================================================
@@ -1163,8 +1643,17 @@ export const isGraphicTee = (title: string): boolean => {
 };
 
 /**
- * Detect if product is likely from Merch by Amazon
- * Checks for common MBA indicators in listing data
+ * Detect if product is from Merch by Amazon
+ *
+ * The ONLY reliable indicator is the "Amazon Merch on Demand" tag that appears
+ * on MBA product pages underneath the price. This text may appear in:
+ * - seller field
+ * - brand field
+ * - category field
+ * - or other metadata returned by the API
+ *
+ * NOTE: Price ranges and brand patterns like "Solid Colors" are NOT reliable
+ * indicators and should not be used.
  */
 export const detectMerchByAmazon = (product: {
   seller?: string;
@@ -1172,31 +1661,24 @@ export const detectMerchByAmazon = (product: {
   title?: string;
   url?: string;
 }): boolean => {
+  // Combine all available text fields to search for the MBA tag
+  const searchText = [
+    product.seller || '',
+    product.category || '',
+    product.title || '',
+  ].join(' ').toLowerCase();
+
+  // The ONLY reliable indicator - the actual MBA tag text
   const mbaIndicators = [
     'amazon merch on demand',
     'merch by amazon',
-    'amazon.com services llc',
-    'brand: solid colors',
-    'brand: heather colors',
+    'amazon.com services llc',  // Sometimes appears as seller for MBA products
   ];
 
-  const checkText = [
-    product.seller?.toLowerCase() || '',
-    product.category?.toLowerCase() || '',
-    product.title?.toLowerCase() || '',
-  ].join(' ');
-
   for (const indicator of mbaIndicators) {
-    if (checkText.includes(indicator)) {
+    if (searchText.includes(indicator)) {
       return true;
     }
-  }
-
-  // Additional heuristics for MBA products:
-  // - Specific brand patterns used by MBA sellers
-  // - URL patterns (if available)
-  if (product.url?.includes('/dp/') && product.seller?.toLowerCase().includes('solid colors')) {
-    return true;
   }
 
   return false;
@@ -1339,8 +1821,9 @@ export const enhanceProductWithAnalysis = (product: MarketplaceProduct): Marketp
   enhanced.brandStyle = brandAnalysis.style;
   enhanced.brandName = brandAnalysis.brandName;
 
-  // MBA detection
-  enhanced.isMerchByAmazon = detectMerchByAmazon(product);
+  // MBA detection - preserve existing value if already set (from product detail fetch)
+  // Product detail fetch sets isMerchByAmazon based on buybox seller_name = "Amazon.com"
+  enhanced.isMerchByAmazon = product.isMerchByAmazon || detectMerchByAmazon(product);
 
   return enhanced;
 };
@@ -1385,4 +1868,7 @@ export default {
   enhanceProductWithAnalysis,
   filterGraphicTees,
   filterMerchByAmazon,
+  // Hybrid MBA detection
+  fetchMbaDetectionForProducts,
+  searchAmazonWithMbaDetection,
 };

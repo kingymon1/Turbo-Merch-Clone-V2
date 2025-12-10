@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchAmazon, searchEtsy, isApiConfigured } from '@/services/marketplaceIntelligence';
+import {
+  searchAmazonWithMbaDetection,
+  searchEtsy,
+  isApiConfigured,
+  enhanceProductWithAnalysis,
+} from '@/services/marketplaceIntelligence';
 import { storeMarketplaceProduct, updateNicheMarketData, isDatabaseConfigured } from '@/services/marketplaceLearning';
 
-// Increase timeout for scraping
-export const maxDuration = 120;
+// Increase timeout for scraping (MBA detection adds ~10-15s for product detail fetches)
+export const maxDuration = 180;
 
 /**
  * POST /api/marketplace/scrape
  *
- * Trigger marketplace scraping for t-shirt designs
+ * Trigger marketplace scraping for t-shirt designs with hybrid MBA detection.
+ *
+ * The scraper uses a two-step approach for reliable MBA detection:
+ * 1. Search Amazon for products (gets ASINs)
+ * 2. Fetch product details for a sample to detect "Amazon Merch on Demand" tag
  *
  * Body:
  * - niche?: string - Specific niche to scrape (default: best sellers)
  * - sources?: ('amazon' | 'etsy')[] - Which marketplaces (default: both)
  * - limit?: number - Max products per source (default: 50)
+ * - mbaSampleSize?: number - How many products to check for MBA (default: 5)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,41 +49,74 @@ export async function POST(request: NextRequest) {
       niche = 'graphic tshirt best seller',
       sources = ['amazon', 'etsy'],
       limit = 50,
+      mbaSampleSize = 5, // How many products to fetch details for MBA detection
     } = body;
 
     console.log(`[SCRAPE] Starting scrape for "${niche}" from ${sources.join(', ')}`);
+    console.log(`[SCRAPE] MBA detection: will check ${mbaSampleSize} products via product detail fetch`);
 
     const results = {
       niche,
-      amazon: { success: false, count: 0, error: null as string | null },
+      amazon: {
+        success: false,
+        count: 0,
+        mbaCount: 0,
+        mbaChecked: 0,
+        error: null as string | null,
+      },
       etsy: { success: false, count: 0, error: null as string | null },
       stored: 0,
+      mbaDetected: 0,
       timestamp: new Date().toISOString(),
     };
 
-    // Scrape Amazon
+    // Scrape Amazon with hybrid MBA detection
     if (sources.includes('amazon')) {
       try {
-        const amazonResult = await searchAmazon(niche, limit);
+        // Use hybrid search that fetches product details for MBA detection
+        const amazonResult = await searchAmazonWithMbaDetection(niche, {
+          mbaSampleSize,
+        });
+
         if (amazonResult.success && amazonResult.products.length > 0) {
           results.amazon.success = true;
           results.amazon.count = amazonResult.products.length;
+          results.amazon.mbaChecked = amazonResult.mbaStats.checked;
 
-          // Store products for learning
+          console.log(`[SCRAPE] Amazon search returned ${amazonResult.products.length} products`);
+          console.log(`[SCRAPE] MBA detection: ${amazonResult.mbaStats.found}/${amazonResult.mbaStats.checked} products are MBA`);
+
+          // Store products for learning (enhanced with MBA detection and keyword analysis)
           for (const product of amazonResult.products) {
+            const enhanced = enhanceProductWithAnalysis(product);
+
+            // Track MBA products (from hybrid detection)
+            if (enhanced.isMerchByAmazon) {
+              results.amazon.mbaCount++;
+              results.mbaDetected++;
+            }
+
             await storeMarketplaceProduct({
               source: 'amazon',
-              externalId: product.asin || product.id,
-              title: product.title,
-              price: product.price,
-              url: product.url,
-              reviewCount: product.reviewCount,
-              avgRating: product.avgRating,
-              salesRank: product.salesRank,
-              category: product.category,
-              seller: product.seller,
-              imageUrl: product.imageUrl,
+              externalId: enhanced.asin || enhanced.id,
+              title: enhanced.title,
+              price: enhanced.price,
+              url: enhanced.url,
+              reviewCount: enhanced.reviewCount,
+              avgRating: enhanced.avgRating,
+              salesRank: enhanced.salesRank,
+              category: enhanced.category,
+              seller: enhanced.seller,
+              imageUrl: enhanced.imageUrl,
               niche: niche,
+              // Enhanced fields for MBA analysis
+              isMerchByAmazon: enhanced.isMerchByAmazon,
+              titleCharCount: enhanced.titleCharCount,
+              primaryKeywords: enhanced.primaryKeywords,
+              keywordRepetitions: enhanced.keywordRepetitions,
+              designTextInTitle: enhanced.designTextInTitle,
+              brandStyle: enhanced.brandStyle,
+              brandName: enhanced.brandName,
             });
             results.stored++;
           }
@@ -93,19 +136,27 @@ export async function POST(request: NextRequest) {
           results.etsy.success = true;
           results.etsy.count = etsyResult.products.length;
 
-          // Store products for learning
+          // Store products for learning (enhanced with keyword analysis)
           for (const product of etsyResult.products) {
+            const enhanced = enhanceProductWithAnalysis(product);
             await storeMarketplaceProduct({
               source: 'etsy',
-              externalId: product.id,
-              title: product.title,
-              price: product.price,
-              url: product.url,
-              reviewCount: product.reviewCount,
-              avgRating: product.avgRating,
-              seller: product.seller,
-              imageUrl: product.imageUrl,
+              externalId: enhanced.id,
+              title: enhanced.title,
+              price: enhanced.price,
+              url: enhanced.url,
+              reviewCount: enhanced.reviewCount,
+              avgRating: enhanced.avgRating,
+              seller: enhanced.seller,
+              imageUrl: enhanced.imageUrl,
               niche: niche,
+              // Enhanced fields
+              titleCharCount: enhanced.titleCharCount,
+              primaryKeywords: enhanced.primaryKeywords,
+              keywordRepetitions: enhanced.keywordRepetitions,
+              designTextInTitle: enhanced.designTextInTitle,
+              brandStyle: enhanced.brandStyle,
+              brandName: enhanced.brandName,
             });
             results.stored++;
           }
@@ -122,7 +173,7 @@ export async function POST(request: NextRequest) {
       await updateNicheMarketData(niche);
     }
 
-    console.log(`[SCRAPE] Complete: ${results.stored} products stored`);
+    console.log(`[SCRAPE] Complete: ${results.stored} products stored, ${results.mbaDetected} MBA products detected`);
 
     return NextResponse.json({
       success: results.stored > 0,
@@ -141,10 +192,47 @@ export async function POST(request: NextRequest) {
  * GET /api/marketplace/scrape
  *
  * Get scraping status and configuration
+ * Use ?test=true to run a quick API health check
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const apiConfigured = isApiConfigured();
   const dbConfigured = await isDatabaseConfigured();
+
+  // Check for test parameter
+  const testMode = request.nextUrl.searchParams.get('test') === 'true';
+
+  if (testMode && apiConfigured) {
+    // Run a simple API test with a basic query
+    console.log('[SCRAPE] Running API health check...');
+
+    try {
+      const { searchAmazon } = await import('@/services/marketplaceIntelligence');
+      const testResult = await searchAmazon('t-shirt', { page: 1 });
+
+      return NextResponse.json({
+        status: 'test_complete',
+        apiTest: {
+          success: testResult.success,
+          productsFound: testResult.products.length,
+          error: testResult.error || null,
+          timestamp: new Date().toISOString(),
+        },
+        decodoApi: 'configured',
+        database: dbConfigured ? 'connected' : 'not configured',
+      });
+    } catch (testError) {
+      return NextResponse.json({
+        status: 'test_failed',
+        apiTest: {
+          success: false,
+          error: testError instanceof Error ? testError.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        },
+        decodoApi: 'configured (but failing)',
+        database: dbConfigured ? 'connected' : 'not configured',
+      });
+    }
+  }
 
   return NextResponse.json({
     status: apiConfigured && dbConfigured ? 'ready' : 'not_configured',
@@ -160,5 +248,6 @@ export async function GET() {
       'dog lover shirt',
       'coffee shirt',
     ],
+    testUrl: '/api/marketplace/scrape?test=true',
   });
 }

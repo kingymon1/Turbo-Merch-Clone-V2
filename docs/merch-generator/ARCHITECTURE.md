@@ -1,7 +1,7 @@
 # Merch Generator Architecture
 
 > **Last Updated:** December 2024
-> **Version:** Phase 6 Complete
+> **Version:** Phase 7A Complete
 
 ---
 
@@ -15,6 +15,7 @@
 6. [File Structure](#6-file-structure)
 7. [API Endpoints](#7-api-endpoints)
 8. [Configuration](#8-configuration)
+9. [Marketplace Intelligence Integration (Phase 7A)](#9-marketplace-intelligence-integration-phase-7a)
 
 ---
 
@@ -532,6 +533,149 @@ const MIN_CONFIDENCE = 0.8;   // Wilson score threshold
 
 ---
 
+## 9. Marketplace Intelligence Integration (Phase 7A)
+
+### Overview
+
+Phase 7A connects the existing Decodo/marketplace scraping system to the listing generator, injecting proven keywords from successful MBA (Merch by Amazon) products into listing generation.
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│           MARKETPLACE INTELLIGENCE DATA FLOW                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. SCRAPING (Background/Manual)                                │
+│     ├── POST /api/marketplace/scrape                            │
+│     ├── POST /api/marketplace/trending                          │
+│     └── Data stored in MarketplaceProduct + NicheMarketData     │
+│                                                                  │
+│  2. LEARNING (Automatic)                                        │
+│     ├── runLearningEngine() extracts patterns                   │
+│     ├── Identifies MBA products via detectMerchByAmazon()       │
+│     └── Extracts keywords via extractLongTailKeywords()         │
+│                                                                  │
+│  3. RETRIEVAL (On-Demand)                                       │
+│     ├── getOptimizedKeywordsForNiche(niche)                     │
+│     └── Returns: primaryKeywords, longTailPhrases, patterns     │
+│                                                                  │
+│  4. INJECTION (During Generation)                               │
+│     ├── listing-generator.ts queries marketplace data           │
+│     ├── autopilot-generator.ts merges with trend keywords       │
+│     └── Enhanced listings with proven MBA keywords              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Functions
+
+| Function | Location | Purpose |
+|----------|----------|---------|
+| `getOptimizedKeywordsForNiche()` | marketplaceLearning.ts | Returns proven keywords for a niche |
+| `getQuickKeywordSuggestions()` | marketplaceLearning.ts | Fast keyword suggestions for autocomplete |
+| `enhanceTrendWithMarketplace()` | autopilot-generator.ts | Merges trend + marketplace keywords |
+| `buildMarketplaceContextForAI()` | listing-generator.ts | Creates AI context with patterns |
+
+### OptimizedKeywords Interface
+
+```typescript
+interface OptimizedKeywords {
+  niche: string;
+  primaryKeywords: string[];      // Top performing single keywords
+  longTailPhrases: string[];      // 3+ word phrases from successful listings
+  titlePatterns: string[];        // Example titles from top sellers
+  effectiveBrands: string[];      // Brand naming patterns that work
+  priceGuidance: {
+    optimal: number;
+    range: { min: number; max: number };
+  };
+  mbaInsights: {
+    productCount: number;         // How many MBA products in this niche
+    avgTitleLength: number;       // Average title character count
+    commonTones: string[];        // funny, inspirational, etc.
+  };
+  saturation: string;             // low, medium, high, oversaturated
+  entryRecommendation: string;    // enter, caution, avoid
+  confidence: number;             // 0-100 based on data quality
+  lastUpdated: Date;
+}
+```
+
+### Graceful Degradation
+
+The system gracefully handles missing marketplace data:
+
+1. **Database not configured** → Standard generation (no marketplace data)
+2. **No data for niche** → Standard generation (logs warning)
+3. **Low confidence data** (<30%) → Standard generation (data ignored)
+4. **Good confidence data** (30%+) → Enhanced generation with marketplace keywords
+
+### Testing Endpoint
+
+```bash
+# Test if marketplace data exists for a niche
+curl -X POST http://localhost:3000/api/marketplace/keywords \
+  -H "Content-Type: application/json" \
+  -d '{"niche": "nurse gifts"}'
+
+# Quick keyword suggestions only
+curl -X POST http://localhost:3000/api/marketplace/keywords \
+  -H "Content-Type: application/json" \
+  -d '{"niche": "dog mom", "quick": true}'
+```
+
+### Usage in Listing Generator
+
+```typescript
+// listing-generator.ts automatically queries marketplace data
+const result = await generateMerchListing(phrase, niche, tone, style);
+
+// Result includes:
+// - marketplaceEnhanced: boolean (whether marketplace data was used)
+// - marketplaceConfidence: number (0-100)
+```
+
+### Usage in Autopilot Mode
+
+```typescript
+// autopilot-generator.ts merges trends + marketplace
+const result = await generateAutopilotConcept(riskLevel);
+
+// Result includes:
+// - trend.keywords (merged with marketplace keywords)
+// - trend.marketplaceContext (AI-consumable context string)
+// - marketplaceData (full OptimizedKeywords object)
+```
+
+### Confidence Calculation
+
+Confidence is calculated based on data quality:
+
+| Factor | Points |
+|--------|--------|
+| 100+ total products | +30 |
+| 50-99 total products | +20 |
+| 20-49 total products | +10 |
+| 20+ MBA products | +30 |
+| 10-19 MBA products | +20 |
+| 5-9 MBA products | +10 |
+| 15+ top performers | +25 |
+| 10-14 top performers | +15 |
+| 5-9 top performers | +10 |
+| Any MBA products | +15 |
+
+**Maximum: 100 points**
+
+### Data Freshness
+
+- Marketplace data is cached in the database
+- `lastAnalyzed` timestamp tracks when learning engine last processed
+- Recommended to run `/api/marketplace/trending` weekly
+- Individual niche scrapes via `/api/marketplace/scrape` as needed
+
+---
+
 ## Quick Reference: Key Interfaces
 
 ```typescript
@@ -544,6 +688,7 @@ interface TrendData {
   customerPhrases: string[];
   visualStyle: string;
   designText?: string;
+  marketplaceContext?: string;  // Phase 7A: Learned patterns from MBA
 }
 
 interface DesignConcept {

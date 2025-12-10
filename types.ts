@@ -49,6 +49,9 @@ export interface TrendData {
   // Trend Classification
   interpretationLevel?: string; // Commercial, Niche, etc.
   undergroundLevel?: number; // 1-10 scale of how obscure the trend is
+
+  // Phase 7A: Marketplace Intelligence Context
+  marketplaceContext?: string; // Learned keywords/patterns from MBA products
 }
 
 export interface GeneratedListing {

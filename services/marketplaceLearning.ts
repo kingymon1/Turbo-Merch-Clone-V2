@@ -1236,6 +1236,245 @@ export const getFusionOpportunities = async (niche: string): Promise<Array<{
 };
 
 // ============================================================================
+// OPTIMIZED KEYWORDS FOR LISTING GENERATION
+// Phase 7A: Provides learned keywords to listing generator
+// ============================================================================
+
+/**
+ * Return type for optimized keywords
+ */
+export interface OptimizedKeywords {
+  niche: string;
+  primaryKeywords: string[];      // Top performing single keywords
+  longTailPhrases: string[];      // 3+ word phrases from successful listings
+  titlePatterns: string[];        // Example titles from top sellers
+  effectiveBrands: string[];      // Brand naming patterns that work
+  priceGuidance: {
+    optimal: number;
+    range: { min: number; max: number };
+  };
+  mbaInsights: {
+    productCount: number;         // How many MBA products in this niche
+    avgTitleLength: number;       // Average title character count
+    commonTones: string[];        // funny, inspirational, etc.
+  };
+  saturation: string;             // low, medium, high, oversaturated
+  entryRecommendation: string;    // enter, caution, avoid
+  confidence: number;             // 0-100 based on data quality
+  lastUpdated: Date;
+}
+
+/**
+ * Get optimized keywords and patterns for a niche from learned marketplace data.
+ * This is the main function used by listing-generator.ts to enhance listings
+ * with proven keywords from successful MBA products.
+ *
+ * @param niche - The target niche (e.g., "nurse gifts", "dog mom")
+ * @returns OptimizedKeywords or null if no data exists
+ */
+export const getOptimizedKeywordsForNiche = async (
+  niche: string
+): Promise<OptimizedKeywords | null> => {
+  try {
+    const db = getPrisma();
+    const normalizedNiche = niche.toLowerCase().trim();
+
+    // First, try to find exact niche match
+    let nicheData = await db.nicheMarketData.findUnique({
+      where: { niche: normalizedNiche },
+    });
+
+    // If no exact match, try fuzzy match (contains)
+    if (!nicheData) {
+      nicheData = await db.nicheMarketData.findFirst({
+        where: {
+          OR: [
+            { niche: { contains: normalizedNiche, mode: 'insensitive' } },
+            { niche: { contains: normalizedNiche.split(' ')[0], mode: 'insensitive' } },
+          ],
+        },
+        orderBy: { totalProducts: 'desc' },
+      });
+    }
+
+    if (!nicheData) {
+      console.log(`[KEYWORDS] No marketplace data found for niche: ${niche}`);
+      return null;
+    }
+
+    // Get top-performing products in this niche for title examples
+    // Note: Use niche string, not nicheId (nicheId foreign key is not always set)
+    const topProducts = await db.marketplaceProduct.findMany({
+      where: {
+        niche: normalizedNiche,
+        reviewCount: { gt: 10 },
+      },
+      orderBy: { reviewCount: 'desc' },
+      take: 20,
+      select: {
+        title: true,
+        titleCharCount: true,
+        brandName: true,
+        brandStyle: true,
+        isMerchByAmazon: true,
+        designTextInTitle: true,
+        primaryKeywords: true,
+      },
+    });
+
+    // Also get MBA-specific products for MBA insights
+    const mbaProducts = await db.marketplaceProduct.findMany({
+      where: {
+        niche: normalizedNiche,
+        isMerchByAmazon: true,
+      },
+      orderBy: { reviewCount: 'desc' },
+      take: 50,
+      select: {
+        title: true,
+        titleCharCount: true,
+        brandName: true,
+        designTextInTitle: true,
+      },
+    });
+
+    // Extract effective keywords
+    const effectiveKeywords = (nicheData.effectiveKeywords as string[]) || [];
+    const longTailKeywords = (nicheData.longTailKeywords as string[]) || [];
+
+    // Extract title patterns from top products
+    const titlePatterns = topProducts
+      .filter(p => p.title && p.title.length > 20)
+      .map(p => p.title)
+      .slice(0, 5);
+
+    // Extract brand patterns
+    const effectiveBrands = topProducts
+      .filter(p => p.brandName && p.brandStyle === 'studio_name')
+      .map(p => p.brandName as string)
+      .filter((b, i, arr) => arr.indexOf(b) === i) // unique
+      .slice(0, 5);
+
+    // Calculate MBA insights
+    const avgTitleLength = mbaProducts.length > 0
+      ? Math.round(mbaProducts.reduce((sum, p) => sum + (p.titleCharCount || 0), 0) / mbaProducts.length)
+      : 0;
+
+    // Detect common tones from MBA products
+    const tones: string[] = [];
+    const funnyCount = mbaProducts.filter(p => p.title?.toLowerCase().includes('funny')).length;
+    const giftCount = mbaProducts.filter(p => p.title?.toLowerCase().includes('gift')).length;
+    const vintageCount = mbaProducts.filter(p => p.title?.toLowerCase().includes('vintage') || p.title?.toLowerCase().includes('retro')).length;
+
+    if (funnyCount > mbaProducts.length * 0.2) tones.push('funny');
+    if (giftCount > mbaProducts.length * 0.3) tones.push('gift-focused');
+    if (vintageCount > mbaProducts.length * 0.1) tones.push('vintage');
+    if (mbaProducts.some(p => p.designTextInTitle)) tones.push('text-based');
+
+    // Calculate confidence based on data quality
+    const confidence = calculateDataConfidence(nicheData, topProducts.length, mbaProducts.length);
+
+    return {
+      niche: nicheData.niche,
+      primaryKeywords: effectiveKeywords.slice(0, 15),
+      longTailPhrases: longTailKeywords.slice(0, 10),
+      titlePatterns,
+      effectiveBrands,
+      priceGuidance: {
+        optimal: Number(nicheData.optimalPricePoint) || Number(nicheData.avgPrice) || 19.99,
+        range: {
+          min: Number(nicheData.minPrice) || 14.99,
+          max: Number(nicheData.maxPrice) || 24.99,
+        },
+      },
+      mbaInsights: {
+        productCount: nicheData.mbaProducts || mbaProducts.length,
+        avgTitleLength,
+        commonTones: tones.length > 0 ? tones : ['general'],
+      },
+      saturation: nicheData.saturationLevel || 'unknown',
+      entryRecommendation: nicheData.entryRecommendation || 'unknown',
+      confidence,
+      lastUpdated: nicheData.lastAnalyzed || nicheData.updatedAt,
+    };
+  } catch (error) {
+    console.error('[KEYWORDS] Error fetching optimized keywords:', error);
+    return null;
+  }
+};
+
+/**
+ * Calculate confidence score based on data quality
+ */
+const calculateDataConfidence = (
+  nicheData: { totalProducts: number; mbaProducts: number | null },
+  topProductCount: number,
+  mbaProductCount: number
+): number => {
+  let score = 0;
+
+  // More products = more confidence
+  if (nicheData.totalProducts >= 100) score += 30;
+  else if (nicheData.totalProducts >= 50) score += 20;
+  else if (nicheData.totalProducts >= 20) score += 10;
+
+  // MBA products are high-value data
+  if (mbaProductCount >= 20) score += 30;
+  else if (mbaProductCount >= 10) score += 20;
+  else if (mbaProductCount >= 5) score += 10;
+
+  // Top performers provide pattern insights
+  if (topProductCount >= 15) score += 25;
+  else if (topProductCount >= 10) score += 15;
+  else if (topProductCount >= 5) score += 10;
+
+  // Ensure at least some MBA data for confidence
+  if ((nicheData.mbaProducts || 0) > 0) score += 15;
+
+  return Math.min(100, score);
+};
+
+/**
+ * Get quick keyword suggestions without full analysis
+ * Faster version for autocomplete/preview scenarios
+ */
+export const getQuickKeywordSuggestions = async (
+  niche: string,
+  limit: number = 10
+): Promise<string[]> => {
+  try {
+    const db = getPrisma();
+    const normalizedNiche = niche.toLowerCase().trim();
+
+    // Get niche data
+    const nicheData = await db.nicheMarketData.findFirst({
+      where: {
+        OR: [
+          { niche: { contains: normalizedNiche, mode: 'insensitive' } },
+          { niche: { contains: normalizedNiche.split(' ')[0], mode: 'insensitive' } },
+        ],
+      },
+      select: {
+        effectiveKeywords: true,
+        longTailKeywords: true,
+      },
+    });
+
+    if (!nicheData) return [];
+
+    const keywords = [
+      ...((nicheData.effectiveKeywords as string[]) || []),
+      ...((nicheData.longTailKeywords as string[]) || []),
+    ];
+
+    return keywords.slice(0, limit);
+  } catch (error) {
+    console.error('[KEYWORDS] Error in quick suggestions:', error);
+    return [];
+  }
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -1248,4 +1487,6 @@ export default {
   buildLearnedPatternsContext,
   detectNicheFusions,
   getFusionOpportunities,
+  getOptimizedKeywordsForNiche,
+  getQuickKeywordSuggestions,
 };
