@@ -1303,9 +1303,10 @@ export const getOptimizedKeywordsForNiche = async (
     }
 
     // Get top-performing products in this niche for title examples
+    // Note: Use niche string, not nicheId (nicheId foreign key is not always set)
     const topProducts = await db.marketplaceProduct.findMany({
       where: {
-        nicheId: nicheData.id,
+        niche: normalizedNiche,
         reviewCount: { gt: 10 },
       },
       orderBy: { reviewCount: 'desc' },
@@ -1324,7 +1325,7 @@ export const getOptimizedKeywordsForNiche = async (
     // Also get MBA-specific products for MBA insights
     const mbaProducts = await db.marketplaceProduct.findMany({
       where: {
-        nicheId: nicheData.id,
+        niche: normalizedNiche,
         isMerchByAmazon: true,
       },
       orderBy: { reviewCount: 'desc' },
