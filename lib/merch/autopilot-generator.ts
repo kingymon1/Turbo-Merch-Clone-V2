@@ -10,6 +10,9 @@
  * Phase 6 Enhancement: Integrates ProvenInsights learning system to make smarter
  * generation decisions based on historical patterns. Low-risk generations heavily
  * favor proven insights, while high-risk allows more experimentation.
+ *
+ * Phase 7A Enhancement: Now integrates marketplace intelligence from MBA products
+ * to inject proven keywords and patterns into the generation process.
  */
 
 import { searchTrends } from '@/services/geminiService';
@@ -24,6 +27,11 @@ import {
 import {
   applyInsightsToGeneration,
 } from './learning';
+import {
+  getOptimizedKeywordsForNiche,
+  OptimizedKeywords,
+  isDatabaseConfigured,
+} from '@/services/marketplaceLearning';
 
 // Track applied insights for logging
 // Maps from InsightApplication (from insight-applier) to simplified format for storage
@@ -196,15 +204,17 @@ function getCategoryFromRisk(riskLevel: number): 'proven' | 'emerging' | 'moonsh
  * Falls back to live API calls only when no recent cached data exists.
  *
  * Phase 6: Now integrates ProvenInsights to make smarter decisions.
+ * Phase 7A: Now integrates marketplace intelligence from MBA products.
  *
  * @param riskLevel - 0-100, where 0 is safe/evergreen and 100 is viral/risky
- * @returns Design concept with phrase, niche, style, tone, and applied insights
+ * @returns Design concept with phrase, niche, style, tone, applied insights, and marketplace data
  */
 export async function generateAutopilotConcept(riskLevel: number): Promise<{
   concept: DesignConcept;
   trend: TrendData;
   source: string;
   appliedInsights?: AppliedInsight[];
+  marketplaceData?: OptimizedKeywords;
 }> {
   console.log(`[Autopilot] Generating concept at risk level ${riskLevel}`);
 
@@ -248,6 +258,25 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
     console.log('[Autopilot] Insight lookup failed, continuing without:', insightError);
   }
 
+  // PHASE 7A: Query marketplace intelligence for proven keywords
+  let marketplaceData: OptimizedKeywords | null = null;
+  const selectedNicheForMarketplace = selectNicheForRisk(riskLevel);
+
+  try {
+    const dbConfigured = await isDatabaseConfigured();
+    if (dbConfigured) {
+      marketplaceData = await getOptimizedKeywordsForNiche(selectedNicheForMarketplace);
+      if (marketplaceData && marketplaceData.confidence >= 30) {
+        console.log(`[Autopilot] Marketplace data found for "${selectedNicheForMarketplace}" (confidence: ${marketplaceData.confidence}%)`);
+        console.log(`[Autopilot] MBA products: ${marketplaceData.mbaInsights.productCount}, saturation: ${marketplaceData.saturation}`);
+      } else {
+        marketplaceData = null; // Low confidence, don't use
+      }
+    }
+  } catch (marketplaceError) {
+    console.log('[Autopilot] Marketplace lookup failed, continuing without:', marketplaceError);
+  }
+
   // PHASE 5: Try to use cached data first
   try {
     const hasCached = await hasRecentData(category, 12); // 12 hours
@@ -265,12 +294,16 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
 
         const concept = extractDesignConcept(selectedTrend, insightGuidance);
 
+        // Phase 7A: Enhance trend with marketplace keywords
+        const enhancedTrend = enhanceTrendWithMarketplace(selectedTrend, marketplaceData);
+
         console.log(`[Autopilot] Using cached trend: ${selectedTrend.topic}`);
         return {
           concept,
-          trend: selectedTrend,
+          trend: enhancedTrend,
           source: `Cached data (${category})`,
           appliedInsights: insightGuidance?.appliedInsights,
+          marketplaceData: marketplaceData || undefined,
         };
       }
     }
@@ -294,15 +327,25 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         visualStyle: generated.visualDirection,
       };
 
+      // Phase 7A: Merge niche keywords with marketplace keywords
+      const mergedKeywords = mergeKeywordsWithMarketplace(
+        nicheData.keywords.slice(0, 10),
+        marketplaceData
+      );
+
       const trend: TrendData = {
         topic: generated.phrase,
         platform: 'Cached Niche Intelligence',
         volume: 'Analyzed',
         sentiment: generated.tone,
-        keywords: nicheData.keywords.slice(0, 10),
+        keywords: mergedKeywords,
         description: `Design based on ${nicheData.niche} niche analysis`,
         visualStyle: generated.visualDirection,
         customerPhrases: nicheData.phrases.slice(0, 5),
+        // Phase 7A: Add marketplace context
+        marketplaceContext: marketplaceData
+          ? buildAutopilotMarketplaceContext(marketplaceData)
+          : undefined,
       };
 
       return {
@@ -310,6 +353,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         trend,
         source: `Niche Intelligence (${nicheData.category})`,
         appliedInsights: insightGuidance?.appliedInsights,
+        marketplaceData: marketplaceData || undefined,
       };
     }
   } catch (cacheError) {
@@ -335,7 +379,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
 
     if (!trends || trends.length === 0) {
       console.log('[Autopilot] No trends found, using fallback');
-      return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance);
+      return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance, marketplaceData);
     }
 
     // Select the best trend (first one is usually highest quality)
@@ -344,21 +388,26 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
 
     const concept = extractDesignConcept(bestTrend, insightGuidance);
 
+    // Phase 7A: Enhance trend with marketplace keywords
+    const enhancedTrend = enhanceTrendWithMarketplace(bestTrend, marketplaceData);
+
     return {
       concept,
-      trend: bestTrend,
+      trend: enhancedTrend,
       source: `Live API (${bestTrend.sources?.join(', ') || bestTrend.platform})`,
       appliedInsights: insightGuidance?.appliedInsights,
+      marketplaceData: marketplaceData || undefined,
     };
   } catch (error) {
     console.error('[Autopilot] Error in trend research:', error);
-    return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance);
+    return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance, marketplaceData);
   }
 }
 
 /**
  * Generate a fallback concept when trend research fails
  * Phase 6: Now uses insight guidance to improve fallback quality
+ * Phase 7A: Now uses marketplace data for keywords
  */
 function generateFallbackConcept(
   riskLevel: number,
@@ -369,12 +418,14 @@ function generateFallbackConcept(
     phraseTemplates: string[];
     warnings: string[];
     appliedInsights: AppliedInsight[];
-  } | null
+  } | null,
+  marketplaceData?: OptimizedKeywords | null
 ): {
   concept: DesignConcept;
   trend: TrendData;
   source: string;
   appliedInsights?: AppliedInsight[];
+  marketplaceData?: OptimizedKeywords;
 } {
   // Fallback phrases based on niche and risk level
   const fallbackPhrases: Record<string, string[]> = {
@@ -402,15 +453,22 @@ function generateFallbackConcept(
     tone,
   };
 
+  // Phase 7A: Merge fallback keywords with marketplace keywords
+  const keywords = mergeKeywordsWithMarketplace([phrase, niche], marketplaceData || null);
+
   const trend: TrendData = {
     topic: phrase,
     platform: 'Fallback',
     volume: 'Generated',
     sentiment: tone,
-    keywords: [phrase, niche],
+    keywords,
     description: `${phrase} design for ${niche}`,
     visualStyle: style,
     customerPhrases: [`Perfect for ${niche}`],
+    // Phase 7A: Add marketplace context even for fallback
+    marketplaceContext: marketplaceData
+      ? buildAutopilotMarketplaceContext(marketplaceData)
+      : undefined,
   };
 
   return {
@@ -418,6 +476,7 @@ function generateFallbackConcept(
     trend,
     source: 'Fallback (trend research unavailable)',
     appliedInsights: insightGuidance?.appliedInsights,
+    marketplaceData: marketplaceData || undefined,
   };
 }
 
@@ -434,4 +493,90 @@ export function getRiskLevelDescription(riskLevel: number): string {
   } else {
     return 'Moonshot: Early viral signals and maximum trend potential';
   }
+}
+
+// ============================================================================
+// PHASE 7A HELPER FUNCTIONS - Marketplace Intelligence Integration
+// ============================================================================
+
+/**
+ * Enhance a trend with marketplace keywords
+ */
+function enhanceTrendWithMarketplace(
+  trend: TrendData,
+  marketplaceData: OptimizedKeywords | null
+): TrendData {
+  if (!marketplaceData) {
+    return trend;
+  }
+
+  // Merge keywords
+  const enhancedKeywords = mergeKeywordsWithMarketplace(trend.keywords, marketplaceData);
+
+  return {
+    ...trend,
+    keywords: enhancedKeywords,
+    marketplaceContext: buildAutopilotMarketplaceContext(marketplaceData),
+  };
+}
+
+/**
+ * Merge base keywords with marketplace proven keywords
+ */
+function mergeKeywordsWithMarketplace(
+  baseKeywords: string[],
+  marketplaceData: OptimizedKeywords | null
+): string[] {
+  if (!marketplaceData) {
+    return baseKeywords;
+  }
+
+  // Start with base keywords
+  const keywordSet = new Set(baseKeywords.map(k => k.toLowerCase()));
+  const result = [...baseKeywords];
+
+  // Add proven primary keywords (top 6)
+  for (const keyword of marketplaceData.primaryKeywords.slice(0, 6)) {
+    if (!keywordSet.has(keyword.toLowerCase())) {
+      result.push(keyword);
+      keywordSet.add(keyword.toLowerCase());
+    }
+  }
+
+  // Add long-tail phrases (top 3)
+  for (const phrase of marketplaceData.longTailPhrases.slice(0, 3)) {
+    if (!keywordSet.has(phrase.toLowerCase())) {
+      result.push(phrase);
+      keywordSet.add(phrase.toLowerCase());
+    }
+  }
+
+  return result.slice(0, 15); // Cap at 15 keywords
+}
+
+/**
+ * Build marketplace context string for autopilot trends
+ */
+function buildAutopilotMarketplaceContext(marketplaceData: OptimizedKeywords): string {
+  const sections: string[] = [
+    '=== MARKETPLACE INTELLIGENCE (Autopilot) ===',
+    `Niche: ${marketplaceData.niche}`,
+    `MBA Products: ${marketplaceData.mbaInsights.productCount}`,
+    `Saturation: ${marketplaceData.saturation}`,
+    `Confidence: ${marketplaceData.confidence}%`,
+    '',
+    'PROVEN KEYWORDS:',
+    marketplaceData.primaryKeywords.slice(0, 8).join(', '),
+  ];
+
+  if (marketplaceData.longTailPhrases.length > 0) {
+    sections.push('', 'HIGH-VALUE PHRASES:');
+    sections.push(marketplaceData.longTailPhrases.slice(0, 4).join(', '));
+  }
+
+  if (marketplaceData.mbaInsights.commonTones.length > 0) {
+    sections.push('', `COMMON TONES: ${marketplaceData.mbaInsights.commonTones.join(', ')}`);
+  }
+
+  return sections.join('\n');
 }
