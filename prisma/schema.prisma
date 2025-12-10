@@ -869,6 +869,7 @@ model MerchDesign {
   imageUrl          String
   imagePrompt       String
   listingTitle      String
+  listingBrand      String?  // Brand name for Amazon MBA (important for keywords)
   listingBullets    String[]
   listingDesc       String
 

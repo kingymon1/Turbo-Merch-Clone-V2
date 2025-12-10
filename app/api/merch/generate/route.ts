@@ -200,6 +200,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     // STEP 4: Generate listing
     // ========================================
     let listingTitle: string;
+    let listingBrand: string;  // Brand is crucial for Amazon MBA keywords
     let listingBullets: string[];
     let listingDesc: string;
 
@@ -211,6 +212,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         concept.tone || 'Funny'
       );
       listingTitle = mockData.listing.title;
+      listingBrand = `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Designs Co`;
       listingBullets = mockData.listing.bullets;
       listingDesc = mockData.listing.description;
     } else {
@@ -222,6 +224,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
           concept.style
         );
         listingTitle = listing.title;
+        listingBrand = listing.brand || `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Design Studio`;
         listingBullets = listing.bullets;
         listingDesc = listing.description;
       } catch (error) {
@@ -233,6 +236,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
           concept.tone || 'Funny'
         );
         listingTitle = mockData.listing.title;
+        listingBrand = `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Designs Co`;
         listingBullets = mockData.listing.bullets;
         listingDesc = mockData.listing.description;
         isTest = true;
@@ -258,6 +262,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         imageUrl,
         imagePrompt,
         listingTitle,
+        listingBrand,
         listingBullets,
         listingDesc,
         approved: false,
@@ -293,6 +298,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       imageUrl: savedDesign.imageUrl,
       imagePrompt: savedDesign.imagePrompt,
       listingTitle: savedDesign.listingTitle,
+      listingBrand: savedDesign.listingBrand ?? undefined,
       listingBullets: savedDesign.listingBullets,
       listingDesc: savedDesign.listingDesc,
       approved: savedDesign.approved,
