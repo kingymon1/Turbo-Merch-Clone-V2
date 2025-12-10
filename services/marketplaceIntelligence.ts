@@ -1821,8 +1821,9 @@ export const enhanceProductWithAnalysis = (product: MarketplaceProduct): Marketp
   enhanced.brandStyle = brandAnalysis.style;
   enhanced.brandName = brandAnalysis.brandName;
 
-  // MBA detection
-  enhanced.isMerchByAmazon = detectMerchByAmazon(product);
+  // MBA detection - preserve existing value if already set (from product detail fetch)
+  // Product detail fetch sets isMerchByAmazon based on buybox seller_name = "Amazon.com"
+  enhanced.isMerchByAmazon = product.isMerchByAmazon || detectMerchByAmazon(product);
 
   return enhanced;
 };
