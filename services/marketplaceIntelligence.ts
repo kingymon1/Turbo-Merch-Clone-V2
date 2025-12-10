@@ -547,9 +547,13 @@ const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
     console.log(`[MARKETPLACE] All seller text: "${allSellerText}"`);
 
     // Check for MBA in any seller-related field
-    const isMba = allSellerText.toLowerCase().includes('amazon merch on demand') ||
-                  allSellerText.toLowerCase().includes('merch by amazon') ||
-                  allSellerText.toLowerCase().includes('amazon.com services llc');
+    // MBA products show seller as "Amazon.com" (not third-party sellers)
+    const lowerSellerText = allSellerText.toLowerCase();
+    const isMba = lowerSellerText.includes('amazon merch on demand') ||
+                  lowerSellerText.includes('merch by amazon') ||
+                  lowerSellerText.includes('amazon.com services llc') ||
+                  sellerName.toLowerCase() === 'amazon.com' ||  // MBA products sold by Amazon.com
+                  shipsFrom.toLowerCase() === 'amazon.com';     // Ships from Amazon.com
 
     console.log(`[MARKETPLACE] MBA detected: ${isMba}`);
 
