@@ -381,43 +381,72 @@ const parseAmazonSearchResults = (response: unknown, query: string): Marketplace
     const data = response as Record<string, unknown>;
 
     // Debug: Log what paths we're trying to find products in
-    console.log(`[MARKETPLACE] Parsing Amazon results. data.results exists:`, !!data.results);
-    console.log(`[MARKETPLACE] data.content exists:`, !!data.content);
+    console.log(`[MARKETPLACE] Parsing Amazon results. Top-level keys:`, Object.keys(data));
 
-    // Try multiple paths to find the products array
-    let results: Record<string, unknown>[] = [];
+    // Decodo returns: { results: [{ content: { results: { results: { organic: [...], paid: [...] } } } }] }
+    // We need to drill down to find the actual product arrays
+    let products: Record<string, unknown>[] = [];
 
-    if (Array.isArray(data.results)) {
-      results = data.results;
-      console.log(`[MARKETPLACE] Found results at data.results (${results.length} items)`);
-    } else if (data.content && typeof data.content === 'object') {
-      const content = data.content as Record<string, unknown>;
-      if (Array.isArray(content.results)) {
-        results = content.results;
-        console.log(`[MARKETPLACE] Found results at data.content.results (${results.length} items)`);
-      } else if (Array.isArray(content.organic)) {
-        // Decodo often uses 'organic' for search results
-        results = content.organic;
-        console.log(`[MARKETPLACE] Found results at data.content.organic (${results.length} items)`);
-      } else if (Array.isArray(content.products)) {
-        results = content.products;
-        console.log(`[MARKETPLACE] Found results at data.content.products (${results.length} items)`);
-      } else {
-        console.log(`[MARKETPLACE] data.content keys:`, Object.keys(content));
+    // Path 1: Decodo nested structure - results[0].content.results.results.organic
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      const wrapper = data.results[0] as Record<string, unknown>;
+      if (wrapper.content && typeof wrapper.content === 'object') {
+        const content = wrapper.content as Record<string, unknown>;
+        if (content.results && typeof content.results === 'object') {
+          const innerResults = content.results as Record<string, unknown>;
+          if (innerResults.results && typeof innerResults.results === 'object') {
+            const productResults = innerResults.results as Record<string, unknown>;
+
+            // Get organic results (non-sponsored)
+            if (Array.isArray(productResults.organic)) {
+              products = [...products, ...productResults.organic];
+              console.log(`[MARKETPLACE] Found ${productResults.organic.length} organic products`);
+            }
+
+            // Also get paid/sponsored results for more data
+            if (Array.isArray(productResults.paid)) {
+              products = [...products, ...productResults.paid];
+              console.log(`[MARKETPLACE] Found ${productResults.paid.length} sponsored products`);
+            }
+          }
+        }
       }
-    } else if (Array.isArray(data.organic)) {
-      results = data.organic;
-      console.log(`[MARKETPLACE] Found results at data.organic (${results.length} items)`);
-    } else if (Array.isArray(data.products)) {
-      results = data.products;
-      console.log(`[MARKETPLACE] Found results at data.products (${results.length} items)`);
-    } else {
-      console.log(`[MARKETPLACE] Could not find products array. Top-level keys:`, Object.keys(data));
     }
 
-    if (results.length > 0) {
-      console.log(`[MARKETPLACE] First result sample:`, JSON.stringify(results[0]).slice(0, 500));
+    // Path 2: Simpler structure - data.results (if it's already an array of products)
+    if (products.length === 0 && Array.isArray(data.results)) {
+      // Check if first item looks like a product (has title, price, etc)
+      const firstItem = data.results[0] as Record<string, unknown>;
+      if (firstItem && (firstItem.title || firstItem.asin)) {
+        products = data.results;
+        console.log(`[MARKETPLACE] Found products at data.results (${products.length} items)`);
+      }
     }
+
+    // Path 3: data.content.organic or data.organic
+    if (products.length === 0) {
+      if (data.content && typeof data.content === 'object') {
+        const content = data.content as Record<string, unknown>;
+        if (Array.isArray(content.organic)) {
+          products = content.organic;
+          console.log(`[MARKETPLACE] Found products at data.content.organic (${products.length} items)`);
+        }
+      } else if (Array.isArray(data.organic)) {
+        products = data.organic;
+        console.log(`[MARKETPLACE] Found products at data.organic (${products.length} items)`);
+      }
+    }
+
+    console.log(`[MARKETPLACE] Total products found: ${products.length}`);
+
+    if (products.length > 0) {
+      console.log(`[MARKETPLACE] First product sample:`, JSON.stringify(products[0]).slice(0, 500));
+    } else {
+      console.log(`[MARKETPLACE] No products found. Response structure:`, JSON.stringify(data).slice(0, 1000));
+    }
+
+    // Map to results variable for compatibility
+    const results = products;
 
     return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => ({
       id: `amazon-${query}-${index}`,
