@@ -2457,6 +2457,19 @@ const createSimplePrompt = (
             ? 'Use light colors that contrast with navy.'
             : 'Use bright/white colors that contrast with black.';
 
+    // Extract niche/audience from subject if available (e.g., "Designed for fishing audience")
+    // This ensures the illustrated graphic is contextually relevant to the topic
+    let nicheContext = '';
+    let graphicInstruction = 'Add a relevant illustrated image/graphic in the middle of the design';
+    if (subject) {
+        const nicheMatch = subject.match(/Designed for ([^.]+) audience/i);
+        if (nicheMatch) {
+            const niche = nicheMatch[1].trim();
+            nicheContext = `\n- IMPORTANT: This design is for ${niche} - the graphic MUST clearly relate to ${niche}`;
+            graphicInstruction = `Add an illustrated ${niche}-themed image/graphic in the middle of the design`;
+        }
+    }
+
     // Check if subject contains rich style direction from autopilot research
     // If so, extract and use it as additional creative direction while keeping full prompt structure
     let styleDirection = '';
@@ -2495,9 +2508,9 @@ ${styleDescription} ${textInstruction}.
 DESIGN REQUIREMENTS:
 - This is a WEARABLE ART graphic for printing on a ${shirtColor} t-shirt
 - Make it in a ${style.toLowerCase()} style
-- Add a relevant illustrated image/graphic in the middle of the design
+- ${graphicInstruction}
 - Use the entire 4500x5400px canvas
-- ${colorNote}${styleDirection}
+- ${colorNote}${nicheContext}${styleDirection}
 - Output ONLY the graphic design artwork on a solid black background
 - NO t-shirt mockups, NO photos of shirts, NO fabric textures`.trim();
 };
