@@ -14,7 +14,6 @@ export interface MerchDesign {
   imageUrl: string;
   imagePrompt: string;
   listingTitle: string;
-  listingBrand?: string;  // Brand name for Amazon MBA (important for keywords)
   listingBullets: string[];
   listingDesc: string;
   approved: boolean;

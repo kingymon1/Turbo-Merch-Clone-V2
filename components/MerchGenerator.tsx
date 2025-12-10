@@ -69,7 +69,6 @@ const MerchGenerator: React.FC = () => {
 
   // Editable result fields
   const [editableTitle, setEditableTitle] = useState('');
-  const [editableBrand, setEditableBrand] = useState('');
   const [editableBullets, setEditableBullets] = useState<string[]>([]);
   const [editableDesc, setEditableDesc] = useState('');
 
@@ -91,7 +90,6 @@ const MerchGenerator: React.FC = () => {
   useEffect(() => {
     if (generatedDesign) {
       setEditableTitle(generatedDesign.listingTitle);
-      setEditableBrand(generatedDesign.listingBrand || '');
       setEditableBullets([...generatedDesign.listingBullets]);
       setEditableDesc(generatedDesign.listingDesc);
     }
@@ -505,23 +503,6 @@ const MerchGenerator: React.FC = () => {
                   onChange={(e) => setEditableTitle(e.target.value)}
                   rows={2}
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none text-sm"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
-                    Brand Name
-                    <span className="ml-2 text-xs font-normal text-cyan-500">(used for keywords in Amazon MBA)</span>
-                  </label>
-                  <CopyButton field="brand" text={editableBrand} />
-                </div>
-                <input
-                  type="text"
-                  value={editableBrand}
-                  onChange={(e) => setEditableBrand(e.target.value)}
-                  placeholder="Enter brand name for your listing"
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm"
                 />
               </div>
 
