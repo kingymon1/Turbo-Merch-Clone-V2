@@ -36,23 +36,27 @@ export async function generateMerchImage(
     console.log('[ImageGenerator] Text on design:', textOnDesign);
     console.log('[ImageGenerator] Prompt mode:', promptMode);
 
-    // Map our style names to geminiService style names
+    // Map our style names to geminiService style keywords
+    // Note: We now pass through descriptive styles instead of generic keywords
     const styleMap: Record<string, string> = {
-      'Bold Modern': 'streetwear',
-      'Vintage Retro': 'vintage',
-      'Elegant Script': 'elegant',
-      'Minimalist': 'minimalist',
-      'Distressed': 'grunge',
-      'Playful': 'playful',
-      'Professional': 'corporate',
+      'Bold Modern': 'bold modern',
+      'Vintage Retro': 'vintage retro',
+      'Elegant Script': 'elegant script',
+      'Minimalist': 'minimalist clean',
+      'Distressed': 'grunge distressed',
+      'Playful': 'playful cartoon',
+      'Professional': 'professional clean',
       // Direct mappings
-      'streetwear': 'streetwear',
-      'vintage': 'vintage',
-      'minimalist': 'minimalist',
-      'modern': 'streetwear',
+      'streetwear': 'streetwear urban',
+      'vintage': 'vintage retro',
+      'minimalist': 'minimalist clean',
+      'modern': 'bold modern',
+      'grunge': 'grunge distressed',
+      'elegant': 'elegant script',
     };
 
-    const mappedStyle = styleMap[style] || 'streetwear';
+    // Pass through the style - don't compress everything to one generic style
+    const mappedStyle = styleMap[style] || style || 'bold modern';
 
     // Use the existing Gemini service for image generation
     const imageUrl = await generateDesignImage(

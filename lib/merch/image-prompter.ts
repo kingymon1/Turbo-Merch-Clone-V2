@@ -43,8 +43,8 @@ export function createImagePrompt(
     // Manual mode: Honor exact user specifications
     return buildManualPrompt(phrase, effectiveStyle, effectiveTone, icon, niche, specs.additionalInstructions);
   } else {
-    // Autopilot mode: Simple, clean prompts
-    return buildAutopilotPrompt(phrase, effectiveStyle, effectiveTone, niche);
+    // Autopilot mode: Pass through the rich visualStyle from research
+    return buildAutopilotPrompt(phrase, effectiveStyle, effectiveTone, niche, visualStyle);
   }
 }
 
@@ -108,21 +108,35 @@ function buildManualPrompt(
 }
 
 /**
- * Build prompt for autopilot mode - simple and effective
+ * Build prompt for autopilot mode - uses rich visualStyle from trend research
  */
 function buildAutopilotPrompt(
   phrase: string,
   style: string,
   tone: string,
-  niche: string
+  niche: string,
+  visualStyle?: string
 ): string {
-  // Keep autopilot prompts simple but effective
+  // Use the rich visualStyle from research if available (80+ chars of creative direction)
+  // This is the key fix - we were compressing rich style data into generic keywords
+  if (visualStyle && visualStyle.length > 20) {
+    return `T-shirt design with the text "${phrase}".
+
+STYLE DIRECTION: ${visualStyle}
+
+Designed for ${niche} audience. ${tone} vibe.
+Center composition, high contrast, transparent background, print-ready graphic.`;
+  }
+
+  // Fallback: use basic style hints if no rich visualStyle available
   const styleHint = style.toLowerCase().includes('vintage') ? 'vintage retro distressed' :
                     style.toLowerCase().includes('minimalist') ? 'clean minimalist' :
                     style.toLowerCase().includes('playful') ? 'fun playful colorful' :
-                    'bold modern';
+                    style.toLowerCase().includes('elegant') ? 'elegant script calligraphy' :
+                    style.toLowerCase().includes('distress') ? 'grunge distressed worn' :
+                    'bold modern typography';
 
-  return `T-shirt design: "${phrase}" in ${styleHint} typography style. Perfect for ${niche}. ${tone} vibe. Center composition, high contrast, transparent background, print-ready graphic.`;
+  return `T-shirt design: "${phrase}" in ${styleHint} style. Perfect for ${niche}. ${tone} vibe. Center composition, high contrast, transparent background, print-ready graphic.`;
 }
 
 /**

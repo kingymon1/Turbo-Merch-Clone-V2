@@ -2433,16 +2433,34 @@ const createSimplePrompt = (
     textOnDesign?: string,
     shirtColor: string = 'black'
 ): string => {
-    // Parse text into top/bottom if it contains multiple parts
+    // If subject contains rich style direction (from image-prompter.ts), use it directly
+    // This fixes the issue where rich visualStyle from trend research was being discarded
+    if (subject && subject.includes('STYLE DIRECTION:')) {
+        // Rich prompt from autopilot mode - use it with minimal modification
+        const colorNote = shirtColor === 'white'
+            ? 'Use dark colors that contrast with white.'
+            : shirtColor === 'navy'
+                ? 'Use light colors that contrast with navy.'
+                : 'Use bright/white colors that contrast with black.';
+
+        return `${subject}
+
+TECHNICAL REQUIREMENTS:
+- Create a T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt)
+- This is WEARABLE ART for printing on a ${shirtColor} t-shirt
+- ${colorNote}
+- Output ONLY the graphic design on a solid black background
+- NO t-shirt mockups, NO photos of shirts`.trim();
+    }
+
+    // Fallback: build prompt from components (for backwards compatibility)
     const textParts = textOnDesign?.split(/\s+/).filter(Boolean) || [];
     let textInstruction = '';
 
     if (textParts.length > 0) {
         if (textParts.length <= 3) {
-            // Short text - can be single placement
             textInstruction = `with the words '${textOnDesign?.toUpperCase()}' as the main focal point`;
         } else {
-            // Longer text - split into top/bottom
             const midpoint = Math.ceil(textParts.length / 2);
             const topText = textParts.slice(0, midpoint).join(' ').toUpperCase();
             const bottomText = textParts.slice(midpoint).join(' ').toUpperCase();
@@ -2450,23 +2468,26 @@ const createSimplePrompt = (
         }
     }
 
-    // Determine style keywords
+    // Determine style keywords - expanded to support more variety
     const styleKeywords = style.toLowerCase();
-    let styleDescription = 'bold typography and graphic effects';
+    let styleDescription = 'bold typography';
 
     if (styleKeywords.includes('grunge') || styleKeywords.includes('distressed')) {
-        styleDescription = 'big typography and grunge effects';
+        styleDescription = 'distressed grunge typography with worn texture';
     } else if (styleKeywords.includes('vintage') || styleKeywords.includes('retro')) {
-        styleDescription = 'vintage typography and retro effects';
+        styleDescription = 'vintage retro typography with classic aesthetic';
     } else if (styleKeywords.includes('minimal')) {
-        styleDescription = 'clean minimal typography';
+        styleDescription = 'clean minimal typography with whitespace';
     } else if (styleKeywords.includes('streetwear') || styleKeywords.includes('urban')) {
-        styleDescription = 'bold streetwear typography and urban graphics';
+        styleDescription = 'bold streetwear typography';
     } else if (styleKeywords.includes('neon') || styleKeywords.includes('cyber')) {
-        styleDescription = 'neon glow effects and cyberpunk styling';
+        styleDescription = 'neon glow effects with cyberpunk styling';
+    } else if (styleKeywords.includes('elegant') || styleKeywords.includes('script')) {
+        styleDescription = 'elegant script calligraphy';
+    } else if (styleKeywords.includes('playful') || styleKeywords.includes('cartoon')) {
+        styleDescription = 'playful cartoon-style design';
     }
 
-    // Determine contrast colors based on shirt
     const colorNote = shirtColor === 'white'
         ? 'Use dark colors that contrast with white.'
         : shirtColor === 'navy'
@@ -2480,8 +2501,6 @@ ${styleDescription} ${textInstruction}.
 DESIGN REQUIREMENTS:
 - This is a WEARABLE ART graphic for printing on a ${shirtColor} t-shirt
 - Make it in a ${style.toLowerCase()} style
-- Add a relevant illustrated image/graphic in the middle of the design
-- Use the entire 4500x5400px canvas
 - ${colorNote}
 - Output ONLY the graphic design artwork on a solid black background
 - NO t-shirt mockups, NO photos of shirts, NO fabric textures`.trim();
