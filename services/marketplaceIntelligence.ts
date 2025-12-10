@@ -194,11 +194,12 @@ export const searchAmazon = async (
   console.log(`[MARKETPLACE] Searching Amazon for "${query}"`);
 
   try {
+    // Decodo API format: target, query, page_from (string), parse
+    // Note: locale is not supported - use domain for regional targeting
     const payload = {
       target: 'amazon_search',
       query: `${query} t-shirt`,
-      locale: options.locale || 'en-US',
-      page_from: options.page || 1,
+      page_from: String(options.page || 1),  // Must be string
       parse: true,
     };
 
@@ -330,14 +331,23 @@ export const searchEtsy = async (
   console.log(`[MARKETPLACE] Searching Etsy for "${query}"`);
 
   try {
+    // NOTE: Etsy scraping is temporarily disabled.
+    // Decodo doesn't have a dedicated 'etsy_search' target - would require
+    // 'universal' target with HTML parsing. Focusing on Amazon for MBA data.
+    console.log('[MARKETPLACE] Etsy scraping disabled - focusing on Amazon for MBA products');
+    return createEmptyResult(query, 'etsy', 'Etsy scraping temporarily disabled - use Amazon');
+
+    /* Original Etsy implementation (requires HTML parsing):
+    const etsySearchUrl = `https://www.etsy.com/search?q=${encodeURIComponent(query + ' shirt')}`;
     const payload = {
-      target: 'etsy_search',
-      query: `${query} shirt`,
-      parse: true,
+      target: 'universal',
+      url: etsySearchUrl,
+      headless: 'html',
     };
-
     const response = await makeDecodoRequest(payload);
+    */
 
+    const response = null; // Placeholder
     if (!response) {
       return createEmptyResult(query, 'etsy', 'API request failed');
     }
