@@ -32,6 +32,7 @@ import {
   OptimizedKeywords,
   isDatabaseConfigured,
 } from '@/services/marketplaceLearning';
+import { scrapeNicheOnDemand } from '@/services/marketplaceBootstrap';
 import {
   preValidateInput,
   findBannedWords,
@@ -282,18 +283,41 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
   }
 
   // PHASE 7A: Query marketplace intelligence for proven keywords
+  // Now with auto-scraping: if niche not in database, scrape it on-demand
   let marketplaceData: OptimizedKeywords | null = null;
   const selectedNicheForMarketplace = selectNicheForRisk(riskLevel);
 
   try {
     const dbConfigured = await isDatabaseConfigured();
     if (dbConfigured) {
+      // First try to get existing data
       marketplaceData = await getOptimizedKeywordsForNiche(selectedNicheForMarketplace);
+
       if (marketplaceData && marketplaceData.confidence >= 30) {
         console.log(`[Autopilot] Marketplace data found for "${selectedNicheForMarketplace}" (confidence: ${marketplaceData.confidence}%)`);
         console.log(`[Autopilot] MBA products: ${marketplaceData.mbaInsights.productCount}, saturation: ${marketplaceData.saturation}`);
       } else {
-        marketplaceData = null; // Low confidence, don't use
+        // AUTO-SCRAPE: No good data exists, try to scrape this niche on-demand
+        console.log(`[Autopilot] No marketplace data for "${selectedNicheForMarketplace}", triggering auto-scrape...`);
+
+        const scrapeResult = await scrapeNicheOnDemand(selectedNicheForMarketplace);
+
+        if (scrapeResult.success && !scrapeResult.alreadyHadData) {
+          console.log(`[Autopilot] Auto-scraped ${scrapeResult.productsAdded} products, confidence: ${scrapeResult.confidence}%`);
+
+          // Re-fetch the data now that we've scraped
+          if (scrapeResult.confidence >= 30) {
+            marketplaceData = await getOptimizedKeywordsForNiche(selectedNicheForMarketplace);
+            console.log(`[Autopilot] Marketplace data now available after auto-scrape`);
+          } else {
+            marketplaceData = null;
+          }
+        } else if (scrapeResult.error) {
+          console.log(`[Autopilot] Auto-scrape failed: ${scrapeResult.error}`);
+          marketplaceData = null;
+        } else {
+          marketplaceData = null; // Low confidence, don't use
+        }
       }
     }
   } catch (marketplaceError) {

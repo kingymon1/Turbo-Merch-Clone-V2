@@ -1896,8 +1896,9 @@ export const generateListingVariation = async (
         designText: parsed.designText || sourceListing.designText,
     };
 
-    // Enforce compliance constraints
-    return sanitizeListing(listing);
+    // NOTE: Sanitization removed - was stripping too many useful words
+    // Will be re-added later in revised format
+    return listing;
 };
 
 export const generateListing = async (trend: TrendData): Promise<GeneratedListing> => {
@@ -2044,8 +2045,9 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
         designText: parsed.designText || trend.designText || trend.topic?.split(' ').slice(0, 3).join(' ').toUpperCase() || 'DESIGN',
     };
 
-    // Enforce compliance constraints
-    return sanitizeListing(listing);
+    // NOTE: Sanitization removed - was stripping too many useful words
+    // Will be re-added later in revised format
+    return listing;
 };
 
 const optimizeDesignPrompt = async (subject: string, style: string, typographyStyle?: string, text?: string): Promise<string> => {
@@ -2448,6 +2450,37 @@ const createSimplePrompt = (
         }
     }
 
+    // Determine contrast colors based on shirt
+    const colorNote = shirtColor === 'white'
+        ? 'Use dark colors that contrast with white.'
+        : shirtColor === 'navy'
+            ? 'Use light colors that contrast with navy.'
+            : 'Use bright/white colors that contrast with black.';
+
+    // Extract niche/audience from subject if available (e.g., "Designed for fishing audience")
+    // This ensures the illustrated graphic is contextually relevant to the topic
+    let nicheContext = '';
+    let graphicInstruction = 'Add a relevant illustrated image/graphic in the middle of the design';
+    if (subject) {
+        const nicheMatch = subject.match(/Designed for ([^.]+) audience/i);
+        if (nicheMatch) {
+            const niche = nicheMatch[1].trim();
+            nicheContext = `\n- IMPORTANT: This design is for ${niche} - the graphic MUST clearly relate to ${niche}`;
+            graphicInstruction = `Add an illustrated ${niche}-themed image/graphic in the middle of the design`;
+        }
+    }
+
+    // Check if subject contains rich style direction from autopilot research
+    // If so, extract and use it as additional creative direction while keeping full prompt structure
+    let styleDirection = '';
+    if (subject && subject.includes('STYLE DIRECTION:')) {
+        // Extract the style direction from the subject
+        const match = subject.match(/STYLE DIRECTION:\s*([^\n]+)/);
+        if (match) {
+            styleDirection = `\n- Creative direction: ${match[1].trim()}`;
+        }
+    }
+
     // Determine style keywords
     const styleKeywords = style.toLowerCase();
     let styleDescription = 'bold typography and graphic effects';
@@ -2462,14 +2495,11 @@ const createSimplePrompt = (
         styleDescription = 'bold streetwear typography and urban graphics';
     } else if (styleKeywords.includes('neon') || styleKeywords.includes('cyber')) {
         styleDescription = 'neon glow effects and cyberpunk styling';
+    } else if (styleKeywords.includes('elegant') || styleKeywords.includes('script')) {
+        styleDescription = 'elegant script calligraphy';
+    } else if (styleKeywords.includes('playful') || styleKeywords.includes('cartoon')) {
+        styleDescription = 'playful cartoon-style design';
     }
-
-    // Determine contrast colors based on shirt
-    const colorNote = shirtColor === 'white'
-        ? 'Use dark colors that contrast with white.'
-        : shirtColor === 'navy'
-            ? 'Use light colors that contrast with navy.'
-            : 'Use bright/white colors that contrast with black.';
 
     return `Create a ${style} T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt - just the GRAPHIC that goes ON a shirt).
 
@@ -2478,9 +2508,9 @@ ${styleDescription} ${textInstruction}.
 DESIGN REQUIREMENTS:
 - This is a WEARABLE ART graphic for printing on a ${shirtColor} t-shirt
 - Make it in a ${style.toLowerCase()} style
-- Add a relevant illustrated image/graphic in the middle of the design
+- ${graphicInstruction}
 - Use the entire 4500x5400px canvas
-- ${colorNote}
+- ${colorNote}${nicheContext}${styleDirection}
 - Output ONLY the graphic design artwork on a solid black background
 - NO t-shirt mockups, NO photos of shirts, NO fabric textures`.trim();
 };

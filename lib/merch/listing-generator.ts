@@ -7,8 +7,8 @@
  * Phase 7A Enhancement: Now integrates marketplace intelligence to inject
  * proven keywords from successful MBA products into listing generation.
  *
- * Phase 7B Enhancement: Now validates and sanitizes all generated listings
- * using the merch-specific validation system.
+ * NOTE: Phase 7B validation removed - was stripping too many useful words.
+ * Will be re-added later in revised format.
  */
 
 import { TrendData, GeneratedListing } from '@/types';
@@ -18,10 +18,12 @@ import {
   OptimizedKeywords,
   isDatabaseConfigured,
 } from '@/services/marketplaceLearning';
-import {
-  validateMerchListing,
-  type MerchValidationResult,
-} from './validation';
+import { scrapeNicheOnDemand } from '@/services/marketplaceBootstrap';
+// NOTE: Validation import removed - will be re-added later
+// import {
+//   validateMerchListing,
+//   type MerchValidationResult,
+// } from './validation';
 
 export interface ListingResult {
   title: string;
@@ -32,12 +34,7 @@ export interface ListingResult {
   // Phase 7A: Track marketplace data usage
   marketplaceEnhanced?: boolean;
   marketplaceConfidence?: number;
-  // Phase 7B: Validation status
-  validation?: {
-    valid: boolean;
-    errors: string[];
-    warnings: string[];
-  };
+  // NOTE: Phase 7B validation property removed - will be re-added later
 }
 
 /**
@@ -59,16 +56,39 @@ export async function generateMerchListing(
   style?: string
 ): Promise<ListingResult> {
   // Phase 7A: Try to get marketplace intelligence for this niche
+  // Now with auto-scraping: if niche not in database, scrape it on-demand
   let marketplaceData: OptimizedKeywords | null = null;
   let marketplaceEnhanced = false;
 
   try {
     const dbConfigured = await isDatabaseConfigured();
     if (dbConfigured) {
+      // First try to get existing data
       marketplaceData = await getOptimizedKeywordsForNiche(niche);
+
       if (marketplaceData && marketplaceData.confidence >= 30) {
         marketplaceEnhanced = true;
         console.log(`[ListingGenerator] Using marketplace data for "${niche}" (confidence: ${marketplaceData.confidence}%)`);
+      } else {
+        // AUTO-SCRAPE: No good data exists, try to scrape this niche on-demand
+        console.log(`[ListingGenerator] No marketplace data for "${niche}", triggering auto-scrape...`);
+
+        const scrapeResult = await scrapeNicheOnDemand(niche);
+
+        if (scrapeResult.success && !scrapeResult.alreadyHadData) {
+          console.log(`[ListingGenerator] Auto-scraped ${scrapeResult.productsAdded} products, confidence: ${scrapeResult.confidence}%`);
+
+          // Re-fetch the data now that we've scraped
+          if (scrapeResult.confidence >= 30) {
+            marketplaceData = await getOptimizedKeywordsForNiche(niche);
+            if (marketplaceData) {
+              marketplaceEnhanced = true;
+              console.log(`[ListingGenerator] Marketplace data now available after auto-scrape`);
+            }
+          }
+        } else if (scrapeResult.error) {
+          console.log(`[ListingGenerator] Auto-scrape failed: ${scrapeResult.error}`);
+        }
       }
     }
   } catch (error) {
@@ -107,39 +127,16 @@ export async function generateMerchListing(
     // Enhance bullets with marketplace insights if available
     const bullets = buildEnhancedBullets(listing, niche, tone, marketplaceData);
 
-    // Phase 7B: Validate and sanitize the generated listing
-    const rawListing = {
+    // NOTE: Phase 7B validation removed - was stripping too many useful words
+    // Will be re-added later in revised format
+    return {
       title: listing.title,
-      brand: listing.brand || '',
       bullets: bullets.slice(0, 2), // Merch only uses 2 bullets
       description: listing.description,
       keywords: enhanceKeywordsWithMarketplace(listing.keywords || [], marketplaceData),
-    };
-
-    const validationResult = validateMerchListing(rawListing);
-
-    // Log validation issues for debugging
-    if (!validationResult.valid) {
-      console.warn('[ListingGenerator] Validation errors:', validationResult.errors);
-    }
-    if (validationResult.warnings.length > 0) {
-      console.log('[ListingGenerator] Validation warnings:', validationResult.warnings);
-    }
-
-    // Return the cleaned listing with validation status
-    return {
-      title: validationResult.cleanedListing.title,
-      bullets: validationResult.cleanedListing.bullets,
-      description: validationResult.cleanedListing.description,
-      keywords: validationResult.cleanedListing.keywords,
-      brand: validationResult.cleanedListing.brand,
+      brand: listing.brand || '',
       marketplaceEnhanced,
       marketplaceConfidence: marketplaceData?.confidence,
-      validation: {
-        valid: validationResult.valid,
-        errors: validationResult.errors,
-        warnings: validationResult.warnings,
-      },
     };
   } catch (error) {
     console.error('[ListingGenerator] Error generating listing:', error);
@@ -147,27 +144,14 @@ export async function generateMerchListing(
     // Fallback to a basic listing if Gemini fails
     const fallback = generateFallbackListing(phrase, niche, tone);
 
-    // Also validate the fallback listing
-    const fallbackValidation = validateMerchListing({
+    // NOTE: Validation removed - will be re-added later in revised format
+    return {
       title: fallback.title,
-      brand: '',
       bullets: fallback.bullets.slice(0, 2),
       description: fallback.description,
       keywords: fallback.keywords,
-    });
-
-    return {
-      title: fallbackValidation.cleanedListing.title,
-      bullets: fallbackValidation.cleanedListing.bullets,
-      description: fallbackValidation.cleanedListing.description,
-      keywords: fallbackValidation.cleanedListing.keywords,
-      brand: fallbackValidation.cleanedListing.brand,
+      brand: '',
       marketplaceEnhanced: false,
-      validation: {
-        valid: fallbackValidation.valid,
-        errors: fallbackValidation.errors,
-        warnings: fallbackValidation.warnings,
-      },
     };
   }
 }

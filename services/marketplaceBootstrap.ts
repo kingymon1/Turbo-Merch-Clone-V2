@@ -461,6 +461,146 @@ export const getBootstrapStatus = async (): Promise<{
 };
 
 // ============================================================================
+// ON-DEMAND SCRAPING - Auto-scrape new niches during autopilot
+// ============================================================================
+
+/**
+ * Scrape a niche on-demand when autopilot encounters an unknown niche.
+ * This is a lightweight version of bootstrap - gets just enough data to be useful.
+ *
+ * @param niche - The niche to scrape
+ * @param minConfidence - Minimum confidence to consider existing data sufficient (default: 30)
+ * @returns Object with success status and confidence level
+ */
+export const scrapeNicheOnDemand = async (
+  niche: string
+): Promise<{
+  success: boolean;
+  alreadyHadData: boolean;
+  confidence: number;
+  productsAdded: number;
+  error?: string;
+}> => {
+  console.log(`[AUTO-SCRAPE] Checking niche: "${niche}"`);
+
+  // Check if API is configured
+  if (!isApiConfigured()) {
+    console.log('[AUTO-SCRAPE] Decodo API not configured, skipping');
+    return {
+      success: false,
+      alreadyHadData: false,
+      confidence: 0,
+      productsAdded: 0,
+      error: 'Decodo API not configured',
+    };
+  }
+
+  // Check if database is configured
+  if (!(await isDatabaseConfigured())) {
+    console.log('[AUTO-SCRAPE] Database not configured, skipping');
+    return {
+      success: false,
+      alreadyHadData: false,
+      confidence: 0,
+      productsAdded: 0,
+      error: 'Database not configured',
+    };
+  }
+
+  // Check existing data
+  const existingData = await getOptimizedKeywordsForNiche(niche);
+  if (existingData && existingData.confidence >= 30) {
+    console.log(`[AUTO-SCRAPE] "${niche}" already has good data (${existingData.confidence}% confidence)`);
+    return {
+      success: true,
+      alreadyHadData: true,
+      confidence: existingData.confidence,
+      productsAdded: 0,
+    };
+  }
+
+  console.log(`[AUTO-SCRAPE] Scraping new data for "${niche}"...`);
+
+  try {
+    // Quick scrape - just 10 products with search-only MBA detection (fast)
+    const searchResult = await searchAmazonWithMbaDetection(niche, {
+      mbaSampleSize: 3,
+      skipDetailFetch: true, // Use search-based MBA detection only (faster)
+    });
+
+    if (!searchResult.success || searchResult.products.length === 0) {
+      console.log(`[AUTO-SCRAPE] No products found for "${niche}"`);
+      return {
+        success: false,
+        alreadyHadData: false,
+        confidence: existingData?.confidence ?? 0,
+        productsAdded: 0,
+        error: searchResult.error || 'No products found',
+      };
+    }
+
+    // Store products (limit to 10 for quick scrape)
+    const productsToStore = searchResult.products.slice(0, 10);
+    let storedCount = 0;
+
+    for (const product of productsToStore) {
+      try {
+        const enhanced = enhanceProductWithAnalysis(product);
+        await storeMarketplaceProduct({
+          source: 'amazon',
+          externalId: enhanced.asin || enhanced.id,
+          title: enhanced.title,
+          price: enhanced.price,
+          url: enhanced.url,
+          reviewCount: enhanced.reviewCount,
+          avgRating: enhanced.avgRating,
+          salesRank: enhanced.salesRank,
+          category: enhanced.category,
+          seller: enhanced.seller,
+          imageUrl: enhanced.imageUrl,
+          niche: niche.toLowerCase(),
+          isMerchByAmazon: enhanced.isMerchByAmazon,
+          titleCharCount: enhanced.titleCharCount,
+          primaryKeywords: enhanced.primaryKeywords,
+          keywordRepetitions: enhanced.keywordRepetitions,
+          designTextInTitle: enhanced.designTextInTitle,
+          brandStyle: enhanced.brandStyle,
+          brandName: enhanced.brandName,
+        });
+        storedCount++;
+      } catch {
+        // Continue with other products
+      }
+    }
+
+    // Update niche aggregations
+    await updateNicheMarketData(niche.toLowerCase());
+
+    // Get updated confidence
+    const updatedData = await getOptimizedKeywordsForNiche(niche);
+    const newConfidence = updatedData?.confidence ?? 0;
+
+    console.log(`[AUTO-SCRAPE] "${niche}": Added ${storedCount} products, confidence now ${newConfidence}%`);
+
+    return {
+      success: storedCount > 0,
+      alreadyHadData: false,
+      confidence: newConfidence,
+      productsAdded: storedCount,
+    };
+  } catch (error) {
+    console.error(`[AUTO-SCRAPE] Error scraping "${niche}":`, error);
+    return {
+      success: false,
+      alreadyHadData: false,
+      confidence: existingData?.confidence ?? 0,
+      productsAdded: 0,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -469,4 +609,5 @@ export default {
   bootstrapMarketplace,
   bootstrapQuick,
   getBootstrapStatus,
+  scrapeNicheOnDemand,
 };
