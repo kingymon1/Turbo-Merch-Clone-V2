@@ -505,23 +505,75 @@ const parseAmazonSearchResults = (response: unknown, query: string): Marketplace
     // Map to results variable for compatibility
     const results = products;
 
-    return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => ({
-      id: `amazon-${query}-${index}`,
-      source: 'amazon' as const,
-      title: String(item.title || ''),
-      price: parseFloat(String(item.price || item.price_raw || '0').replace(/[^0-9.]/g, '')) || 0,
-      currency: 'USD',
-      url: String(item.url || item.link || ''),
-      asin: String(item.asin || ''),
-      reviewCount: parseInt(String(item.reviews_count || item.rating_count || '0')) || 0,
-      avgRating: parseFloat(String(item.rating || item.stars || '0')) || 0,
-      salesRank: item.sales_rank ? parseInt(String(item.sales_rank)) : undefined,
-      // Extract seller/brand and category for MBA detection
-      seller: String(item.seller || item.brand || item.merchant || item.sold_by || ''),
-      category: String(item.category || item.department || ''),
-      imageUrl: String(item.image || item.thumbnail || ''),
-      scrapedAt: new Date(),
-    }));
+    // Log ALL available fields from first few products for debugging
+    if (results.length > 0) {
+      console.log(`[MARKETPLACE] Available fields in search results:`, Object.keys(results[0]));
+      // Log seller-related fields specifically
+      const sampleProduct = results[0] as Record<string, unknown>;
+      console.log(`[MARKETPLACE] Seller-related fields:`, {
+        seller: sampleProduct.seller,
+        brand: sampleProduct.brand,
+        merchant: sampleProduct.merchant,
+        sold_by: sampleProduct.sold_by,
+        manufacturer: sampleProduct.manufacturer,
+        byline: sampleProduct.byline,
+        bylineInfo: sampleProduct.byline_info,
+        fulfillment: sampleProduct.fulfillment,
+        prime: sampleProduct.prime,
+        amazonChoice: sampleProduct.amazon_choice,
+        bestSeller: sampleProduct.best_seller,
+      });
+    }
+
+    return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => {
+      // Extract ALL possible seller/brand fields
+      const sellerFields = [
+        item.seller,
+        item.brand,
+        item.merchant,
+        item.sold_by,
+        item.manufacturer,
+        item.byline,
+        typeof item.byline_info === 'object' ? (item.byline_info as Record<string, unknown>)?.text : null,
+      ].filter(Boolean).map(String);
+
+      const sellerText = sellerFields.join(' ').toLowerCase();
+
+      // Detect MBA from search results
+      // MBA products typically have:
+      // - seller/brand as "Amazon.com" (not third-party)
+      // - OR brand contains Amazon-related terms
+      // - OR no brand (generic listings)
+      const isMbaFromSearch =
+        sellerText.includes('amazon.com') ||
+        sellerText.includes('merch by amazon') ||
+        sellerText.includes('amazon merch') ||
+        sellerText.includes('amazon.com services');
+
+      if (index < 5) {
+        console.log(`[MARKETPLACE] Product ${index}: seller="${sellerFields[0] || 'N/A'}", brand="${item.brand || 'N/A'}", isMBA=${isMbaFromSearch}`);
+      }
+
+      return {
+        id: `amazon-${query}-${index}`,
+        source: 'amazon' as const,
+        title: String(item.title || ''),
+        price: parseFloat(String(item.price || item.price_raw || '0').replace(/[^0-9.]/g, '')) || 0,
+        currency: 'USD',
+        url: String(item.url || item.link || ''),
+        asin: String(item.asin || ''),
+        reviewCount: parseInt(String(item.reviews_count || item.rating_count || '0')) || 0,
+        avgRating: parseFloat(String(item.rating || item.stars || '0')) || 0,
+        salesRank: item.sales_rank ? parseInt(String(item.sales_rank)) : undefined,
+        // Extract seller/brand for storage
+        seller: sellerFields[0] || '',
+        category: String(item.category || item.department || ''),
+        imageUrl: String(item.image || item.thumbnail || ''),
+        // MBA detection from search results (preliminary - product detail fetch can override)
+        isMerchByAmazon: isMbaFromSearch,
+        scrapedAt: new Date(),
+      };
+    });
   } catch (error) {
     console.error('[MARKETPLACE] Error parsing Amazon results:', error);
     return [];
@@ -801,12 +853,16 @@ export const fetchMbaDetectionForProducts = async (
 };
 
 /**
- * Enhanced search that includes MBA detection via product detail fetching
+ * Enhanced search that includes MBA detection
  *
  * This performs:
- * 1. Normal Amazon search to get product listings
- * 2. Fetches product details for sample to detect MBA
- * 3. Returns enriched results with accurate MBA flags
+ * 1. Normal Amazon search to get product listings (includes preliminary MBA detection from search data)
+ * 2. Optionally fetches product details for sample to confirm/enhance MBA detection
+ * 3. Returns enriched results with MBA flags from both sources
+ *
+ * MBA detection strategy:
+ * - Primary: Detect from search results (seller/brand fields) - always works
+ * - Secondary: Fetch product details for more reliable detection - may fail with rate limits
  */
 export const searchAmazonWithMbaDetection = async (
   query: string,
@@ -815,39 +871,62 @@ export const searchAmazonWithMbaDetection = async (
     page?: number;
     category?: string;
     mbaSampleSize?: number;
+    skipDetailFetch?: boolean; // Skip product detail fetches (use search-only MBA detection)
   } = {}
-): Promise<MarketplaceSearchResult & { mbaStats: { checked: number; found: number } }> => {
-  const { mbaSampleSize = 5, ...searchOptions } = options;
+): Promise<MarketplaceSearchResult & { mbaStats: { checked: number; found: number; fromSearch: number } }> => {
+  const { mbaSampleSize = 5, skipDetailFetch = false, ...searchOptions } = options;
 
-  // Step 1: Normal search
+  // Step 1: Normal search (now includes preliminary MBA detection from search results)
   const searchResult = await searchAmazon(query, searchOptions);
 
   if (!searchResult.success || searchResult.products.length === 0) {
     return {
       ...searchResult,
-      mbaStats: { checked: 0, found: 0 },
+      mbaStats: { checked: 0, found: 0, fromSearch: 0 },
     };
   }
 
-  console.log(`[MARKETPLACE] Search found ${searchResult.products.length} products, now detecting MBA...`);
+  // Count MBA products detected from search results (primary method)
+  const mbaFromSearch = searchResult.products.filter(p => p.isMerchByAmazon).length;
+  console.log(`[MARKETPLACE] Search found ${searchResult.products.length} products, ${mbaFromSearch} detected as MBA from search data`);
 
-  // Step 2: Fetch product details for sample to detect MBA
+  // If we already found MBA products from search OR skipDetailFetch is true, don't do detail fetches
+  if (mbaFromSearch > 0 || skipDetailFetch) {
+    console.log(`[MARKETPLACE] Using search-based MBA detection (${mbaFromSearch} MBA products)`);
+    return {
+      ...searchResult,
+      mbaStats: {
+        checked: searchResult.products.length,
+        found: mbaFromSearch,
+        fromSearch: mbaFromSearch,
+      },
+    };
+  }
+
+  // Step 2: Try to fetch product details for more reliable MBA detection
+  // This is a secondary method - may fail with rate limits
+  console.log(`[MARKETPLACE] No MBA from search data, trying product detail fetches...`);
+
   const mbaDetection = await fetchMbaDetectionForProducts(searchResult.products, mbaSampleSize);
 
-  // Step 3: Update products with MBA detection results
+  // Step 3: Update products with MBA detection results from detail fetches
   const enrichedProducts = searchResult.products.map(product => {
+    // Use detail fetch result if available, otherwise keep search-based detection
     if (product.asin && mbaDetection.mbaAsins.has(product.asin)) {
       return { ...product, isMerchByAmazon: true };
     }
     return product;
   });
 
+  const totalMba = enrichedProducts.filter(p => p.isMerchByAmazon).length;
+
   return {
     ...searchResult,
     products: enrichedProducts,
     mbaStats: {
       checked: mbaDetection.checkedCount,
-      found: mbaDetection.mbaCount,
+      found: totalMba,
+      fromSearch: mbaFromSearch,
     },
   };
 };
