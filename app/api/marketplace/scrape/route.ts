@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchAmazon, searchEtsy, isApiConfigured } from '@/services/marketplaceIntelligence';
+import { searchAmazon, searchEtsy, isApiConfigured, enhanceProductWithAnalysis } from '@/services/marketplaceIntelligence';
 import { storeMarketplaceProduct, updateNicheMarketData, isDatabaseConfigured } from '@/services/marketplaceLearning';
 
 // Increase timeout for scraping
@@ -45,9 +45,10 @@ export async function POST(request: NextRequest) {
 
     const results = {
       niche,
-      amazon: { success: false, count: 0, error: null as string | null },
+      amazon: { success: false, count: 0, mbaCount: 0, error: null as string | null },
       etsy: { success: false, count: 0, error: null as string | null },
       stored: 0,
+      mbaDetected: 0,
       timestamp: new Date().toISOString(),
     };
 
@@ -59,21 +60,37 @@ export async function POST(request: NextRequest) {
           results.amazon.success = true;
           results.amazon.count = amazonResult.products.length;
 
-          // Store products for learning
+          // Store products for learning (enhanced with MBA detection and keyword analysis)
           for (const product of amazonResult.products) {
+            const enhanced = enhanceProductWithAnalysis(product);
+
+            // Track MBA products
+            if (enhanced.isMerchByAmazon) {
+              results.amazon.mbaCount++;
+              results.mbaDetected++;
+            }
+
             await storeMarketplaceProduct({
               source: 'amazon',
-              externalId: product.asin || product.id,
-              title: product.title,
-              price: product.price,
-              url: product.url,
-              reviewCount: product.reviewCount,
-              avgRating: product.avgRating,
-              salesRank: product.salesRank,
-              category: product.category,
-              seller: product.seller,
-              imageUrl: product.imageUrl,
+              externalId: enhanced.asin || enhanced.id,
+              title: enhanced.title,
+              price: enhanced.price,
+              url: enhanced.url,
+              reviewCount: enhanced.reviewCount,
+              avgRating: enhanced.avgRating,
+              salesRank: enhanced.salesRank,
+              category: enhanced.category,
+              seller: enhanced.seller,
+              imageUrl: enhanced.imageUrl,
               niche: niche,
+              // Enhanced fields for MBA analysis
+              isMerchByAmazon: enhanced.isMerchByAmazon,
+              titleCharCount: enhanced.titleCharCount,
+              primaryKeywords: enhanced.primaryKeywords,
+              keywordRepetitions: enhanced.keywordRepetitions,
+              designTextInTitle: enhanced.designTextInTitle,
+              brandStyle: enhanced.brandStyle,
+              brandName: enhanced.brandName,
             });
             results.stored++;
           }
@@ -93,19 +110,27 @@ export async function POST(request: NextRequest) {
           results.etsy.success = true;
           results.etsy.count = etsyResult.products.length;
 
-          // Store products for learning
+          // Store products for learning (enhanced with keyword analysis)
           for (const product of etsyResult.products) {
+            const enhanced = enhanceProductWithAnalysis(product);
             await storeMarketplaceProduct({
               source: 'etsy',
-              externalId: product.id,
-              title: product.title,
-              price: product.price,
-              url: product.url,
-              reviewCount: product.reviewCount,
-              avgRating: product.avgRating,
-              seller: product.seller,
-              imageUrl: product.imageUrl,
+              externalId: enhanced.id,
+              title: enhanced.title,
+              price: enhanced.price,
+              url: enhanced.url,
+              reviewCount: enhanced.reviewCount,
+              avgRating: enhanced.avgRating,
+              seller: enhanced.seller,
+              imageUrl: enhanced.imageUrl,
               niche: niche,
+              // Enhanced fields
+              titleCharCount: enhanced.titleCharCount,
+              primaryKeywords: enhanced.primaryKeywords,
+              keywordRepetitions: enhanced.keywordRepetitions,
+              designTextInTitle: enhanced.designTextInTitle,
+              brandStyle: enhanced.brandStyle,
+              brandName: enhanced.brandName,
             });
             results.stored++;
           }
@@ -122,7 +147,7 @@ export async function POST(request: NextRequest) {
       await updateNicheMarketData(niche);
     }
 
-    console.log(`[SCRAPE] Complete: ${results.stored} products stored`);
+    console.log(`[SCRAPE] Complete: ${results.stored} products stored, ${results.mbaDetected} MBA products detected`);
 
     return NextResponse.json({
       success: results.stored > 0,
