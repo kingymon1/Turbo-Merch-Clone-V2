@@ -18,6 +18,7 @@ import {
   OptimizedKeywords,
   isDatabaseConfigured,
 } from '@/services/marketplaceLearning';
+import { scrapeNicheOnDemand } from '@/services/marketplaceBootstrap';
 // NOTE: Validation import removed - will be re-added later
 // import {
 //   validateMerchListing,
@@ -55,16 +56,39 @@ export async function generateMerchListing(
   style?: string
 ): Promise<ListingResult> {
   // Phase 7A: Try to get marketplace intelligence for this niche
+  // Now with auto-scraping: if niche not in database, scrape it on-demand
   let marketplaceData: OptimizedKeywords | null = null;
   let marketplaceEnhanced = false;
 
   try {
     const dbConfigured = await isDatabaseConfigured();
     if (dbConfigured) {
+      // First try to get existing data
       marketplaceData = await getOptimizedKeywordsForNiche(niche);
+
       if (marketplaceData && marketplaceData.confidence >= 30) {
         marketplaceEnhanced = true;
         console.log(`[ListingGenerator] Using marketplace data for "${niche}" (confidence: ${marketplaceData.confidence}%)`);
+      } else {
+        // AUTO-SCRAPE: No good data exists, try to scrape this niche on-demand
+        console.log(`[ListingGenerator] No marketplace data for "${niche}", triggering auto-scrape...`);
+
+        const scrapeResult = await scrapeNicheOnDemand(niche);
+
+        if (scrapeResult.success && !scrapeResult.alreadyHadData) {
+          console.log(`[ListingGenerator] Auto-scraped ${scrapeResult.productsAdded} products, confidence: ${scrapeResult.confidence}%`);
+
+          // Re-fetch the data now that we've scraped
+          if (scrapeResult.confidence >= 30) {
+            marketplaceData = await getOptimizedKeywordsForNiche(niche);
+            if (marketplaceData) {
+              marketplaceEnhanced = true;
+              console.log(`[ListingGenerator] Marketplace data now available after auto-scrape`);
+            }
+          }
+        } else if (scrapeResult.error) {
+          console.log(`[ListingGenerator] Auto-scrape failed: ${scrapeResult.error}`);
+        }
       }
     }
   } catch (error) {
