@@ -1,7 +1,7 @@
 # Merch Generator Architecture
 
 > **Last Updated:** December 2024
-> **Version:** Phase 7A Complete
+> **Version:** Phase 7B Complete
 
 ---
 
@@ -16,6 +16,7 @@
 7. [API Endpoints](#7-api-endpoints)
 8. [Configuration](#8-configuration)
 9. [Marketplace Intelligence Integration (Phase 7A)](#9-marketplace-intelligence-integration-phase-7a)
+10. [Merch Validation System (Phase 7B)](#10-merch-validation-system-phase-7b)
 
 ---
 
@@ -452,11 +453,17 @@ lib/merch/
 │   ├── trend-collector.ts    # Data collection
 │   └── niche-analyzer.ts     # Niche analysis
 │
-└── learning/                 # Phase 6: Learning
-    ├── index.ts
-    ├── insight-extractor.ts  # Pattern extraction
-    ├── insight-validator.ts  # Validation
-    └── insight-applier.ts    # Application logic
+├── learning/                 # Phase 6: Learning
+│   ├── index.ts
+│   ├── insight-extractor.ts  # Pattern extraction
+│   ├── insight-validator.ts  # Validation
+│   └── insight-applier.ts    # Application logic
+│
+└── validation/               # Phase 7B: Validation
+    ├── index.ts              # Barrel export
+    ├── banned-words.ts       # 200+ banned words
+    ├── ascii-cleaner.ts      # Unicode → ASCII
+    └── listing-validator.ts  # Main validator
 ```
 
 ---
@@ -706,3 +713,172 @@ interface InsightGuidance {
   appliedInsights: AppliedInsight[];
 }
 ```
+
+---
+
+## 10. Merch Validation System (Phase 7B)
+
+### Overview
+
+Phase 7B adds a dedicated validation layer for Amazon Merch on Demand listings. This is a **separate system** from the existing `services/compliance.ts` to avoid migration risks and provide merch-specific validation.
+
+### Why Separate From compliance.ts?
+
+| Reason | Details |
+|--------|---------|
+| **Different limits** | Merch: 500 char description. General: 2000 char |
+| **Exactly 2 bullets** | Merch requirement vs flexible |
+| **More banned words** | 200+ merch-specific vs 70+ general |
+| **No migration risk** | Existing integrations unchanged |
+| **Better testing** | Can test in isolation |
+
+### File Structure
+
+```
+lib/merch/validation/
+├── index.ts              # Barrel export
+├── banned-words.ts       # 200+ banned words by category
+├── ascii-cleaner.ts      # Unicode → ASCII conversion
+└── listing-validator.ts  # Main validation logic
+```
+
+### Character Limits (Merch-Specific)
+
+| Field | Min | Max | Notes |
+|-------|-----|-----|-------|
+| Title | 40 | 60 | No product type words |
+| Brand | 1 | 50 | Unique micro-brand |
+| Bullet | 180 | 256 | Feature/benefit focused |
+| Description | 100 | 500 | Merch limit (not 2000) |
+
+### Banned Words Categories
+
+| Category | Count | Examples |
+|----------|-------|----------|
+| Apparel | 28 | design, shirt, gift, merch |
+| Health/Medical | 56 | cure, cancer, anxiety |
+| Promotional | 43 | best seller, discount, sale |
+| Quality Claims | 41 | certified, proven, premium |
+| Sales Pressure | 38 | buy now, limited time |
+| Trademarks | 80+ | Nike, Disney, Pokemon |
+| Service Promises | 27 | free shipping, guarantee |
+| Material Claims | 19 | organic, eco friendly |
+| Inappropriate | 44 | explicit, violence, drugs |
+
+### Validation Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│           PHASE 7B VALIDATION FLOW                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  1. PRE-VALIDATION (Autopilot)                                  │
+│     ├── extractDesignConcept() cleans phrase                    │
+│     ├── findBannedWords() checks phrase/niche                   │
+│     └── cleanToAscii() normalizes text                          │
+│                                                                  │
+│  2. GENERATION                                                   │
+│     ├── Gemini generates listing content                        │
+│     └── Raw listing may contain banned words/Unicode            │
+│                                                                  │
+│  3. POST-VALIDATION (Listing Generator)                         │
+│     ├── validateMerchListing() runs all checks                  │
+│     ├── Removes banned words automatically                      │
+│     ├── Truncates at word boundaries                            │
+│     └── Returns cleaned listing + validation status             │
+│                                                                  │
+│  4. RESULT                                                       │
+│     ├── cleanedListing: Ready for Amazon                        │
+│     ├── errors: Blocking issues found                           │
+│     ├── warnings: Non-blocking suggestions                      │
+│     └── stats: What was changed                                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Integration Points
+
+```typescript
+// listing-generator.ts
+import { validateMerchListing } from './validation';
+
+const rawListing = {
+  title: listing.title,
+  brand: listing.brand,
+  bullets: bullets.slice(0, 2),  // Merch: exactly 2 bullets
+  description: listing.description,
+};
+
+const result = validateMerchListing(rawListing);
+
+return {
+  ...result.cleanedListing,
+  validation: {
+    valid: result.valid,
+    errors: result.errors,
+    warnings: result.warnings,
+  },
+};
+```
+
+```typescript
+// autopilot-generator.ts
+import { cleanToAscii, findBannedWords } from './validation';
+
+let phrase = cleanToAscii(rawPhrase);
+const banned = findBannedWords(phrase);
+
+if (banned.length > 0) {
+  console.log(`[Autopilot] Removing banned words: ${banned.join(', ')}`);
+  // Remove banned words before generation
+}
+```
+
+### Testing Endpoint
+
+```bash
+# POST /api/merch/validate - Test a listing
+curl -X POST http://localhost:3000/api/merch/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Coffee Lover Morning Brew Caffeine Espresso Bean",
+    "brand": "Urban Brew Collective",
+    "bullets": ["For true coffee enthusiasts...", "The perfect way..."],
+    "description": "Show your love for coffee with this bold design..."
+  }'
+
+# GET /api/merch/validate - Get system info
+curl http://localhost:3000/api/merch/validate
+```
+
+### Relationship to compliance.ts
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                 services/compliance.ts                           │
+│               (General Compliance - UNCHANGED)                   │
+│                                                                  │
+│  Used by: geminiService.ts, trend-lab API                       │
+│  Features: 70+ banned words, 2000 char desc limit               │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                     (Runs independently)
+                              │
+┌─────────────────────────────────────────────────────────────────┐
+│                lib/merch/validation/                             │
+│            (Merch-Specific - Phase 7B NEW)                       │
+│                                                                  │
+│  Used by: listing-generator.ts, autopilot-generator.ts          │
+│  Features: 200+ banned words, 500 char desc limit, 2 bullets    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+Both systems run independently. The merch validation system provides specialized validation for Amazon Merch on Demand requirements.
+
+### Documentation
+
+See `docs/merch-generator/MERCH_VALIDATION.md` for complete details on:
+- All banned word categories
+- ASCII conversion rules
+- Usage examples
+- API endpoint documentation
