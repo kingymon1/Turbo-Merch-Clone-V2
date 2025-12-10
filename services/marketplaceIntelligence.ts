@@ -100,7 +100,7 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // API Configuration
 const DECODO_API_ENDPOINT = 'https://scraper-api.decodo.com/v2/scrape';
-const API_TIMEOUT_MS = 30000; // 30 seconds
+const API_TIMEOUT_MS = 45000; // 45 seconds (increased for slow API responses)
 
 /**
  * Check if Decodo API is configured and available
@@ -122,47 +122,103 @@ const getAuthHeader = (): string => {
 };
 
 /**
- * Make a request to Decodo API with timeout and error handling
+ * Make a request to Decodo API with timeout, error handling, and retry logic
  */
-const makeDecodoRequest = async (payload: Record<string, unknown>): Promise<unknown> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+const makeDecodoRequest = async (payload: Record<string, unknown>, retries = 4): Promise<unknown> => {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
-  try {
-    console.log(`[MARKETPLACE] Decodo request payload:`, JSON.stringify(payload));
+    try {
+      console.log(`[MARKETPLACE] Decodo request (attempt ${attempt}/${retries}):`, JSON.stringify(payload));
 
-    const response = await fetch(DECODO_API_ENDPOINT, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': getAuthHeader(),
-      },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    });
+      const response = await fetch(DECODO_API_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Authorization': getAuthHeader(),
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
 
-    clearTimeout(timeoutId);
+      clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      console.error(`[MARKETPLACE] Decodo API error: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        console.error(`[MARKETPLACE] Decodo API error: ${response.status} ${response.statusText}`);
+        if (attempt < retries) {
+          console.log(`[MARKETPLACE] Retrying in ${attempt * 2}s...`);
+          await new Promise(r => setTimeout(r, attempt * 2000));
+          continue;
+        }
+        return null;
+      }
+
+      const jsonResponse = await response.json();
+      console.log(`[MARKETPLACE] Decodo raw response keys:`, Object.keys(jsonResponse));
+
+      // Check for Decodo-specific error codes in response
+      // Status 12000 = rate limit or temporary error
+      if (Array.isArray(jsonResponse.results) && jsonResponse.results.length > 0) {
+        const firstResult = jsonResponse.results[0] as Record<string, unknown>;
+        const content = firstResult.content as Record<string, unknown>;
+
+        // Convert status_code to number (API may return string or number)
+        const statusCode = content ? Number(content.status_code) : 0;
+
+        if (content && statusCode && statusCode !== 200) {
+          console.error(`[MARKETPLACE] Decodo returned status ${statusCode} (type: ${typeof content.status_code})`);
+
+          // Retry on rate limit or temporary errors (12000, 429, etc)
+          // Use longer delays to give API time to recover
+          if (statusCode === 12000 || statusCode === 429 || statusCode >= 500) {
+            if (attempt < retries) {
+              const waitTime = attempt * 5000; // 5s, 10s, 15s
+              console.log(`[MARKETPLACE] Rate limited/error, retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
+              await new Promise(r => setTimeout(r, waitTime));
+              continue;
+            }
+            console.error(`[MARKETPLACE] All ${retries} retry attempts failed with status ${statusCode}`);
+          }
+          return null;
+        }
+
+        // Check if results.content.results is null (no data)
+        if (content && content.results === null) {
+          console.error(`[MARKETPLACE] Decodo returned null results (status: ${statusCode})`);
+          if (attempt < retries) {
+            const waitTime = attempt * 4000; // 4s, 8s, 12s
+            console.log(`[MARKETPLACE] Empty results, retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
+            await new Promise(r => setTimeout(r, waitTime));
+            continue;
+          }
+          console.error(`[MARKETPLACE] All ${retries} retry attempts returned null results`);
+          return null;
+        }
+      }
+
+      console.log(`[MARKETPLACE] Decodo response structure:`, JSON.stringify(jsonResponse, null, 2).slice(0, 2000));
+      return jsonResponse;
+
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.error('[MARKETPLACE] Decodo API request timed out');
+      } else {
+        console.error('[MARKETPLACE] Decodo API request failed:', error);
+      }
+
+      if (attempt < retries) {
+        console.log(`[MARKETPLACE] Retrying in ${attempt * 2}s...`);
+        await new Promise(r => setTimeout(r, attempt * 2000));
+        continue;
+      }
       return null;
     }
-
-    const jsonResponse = await response.json();
-    console.log(`[MARKETPLACE] Decodo raw response keys:`, Object.keys(jsonResponse));
-    console.log(`[MARKETPLACE] Decodo response structure:`, JSON.stringify(jsonResponse, null, 2).slice(0, 2000));
-
-    return jsonResponse;
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error instanceof Error && error.name === 'AbortError') {
-      console.error('[MARKETPLACE] Decodo API request timed out');
-    } else {
-      console.error('[MARKETPLACE] Decodo API request failed:', error);
-    }
-    return null;
   }
+
+  return null;
 };
 
 /**
