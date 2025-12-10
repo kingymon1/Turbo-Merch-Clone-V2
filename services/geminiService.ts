@@ -1896,8 +1896,9 @@ export const generateListingVariation = async (
         designText: parsed.designText || sourceListing.designText,
     };
 
-    // Enforce compliance constraints
-    return sanitizeListing(listing);
+    // NOTE: Sanitization removed - was stripping too many useful words
+    // Will be re-added later in revised format
+    return listing;
 };
 
 export const generateListing = async (trend: TrendData): Promise<GeneratedListing> => {
@@ -2044,8 +2045,9 @@ export const generateListing = async (trend: TrendData): Promise<GeneratedListin
         designText: parsed.designText || trend.designText || trend.topic?.split(' ').slice(0, 3).join(' ').toUpperCase() || 'DESIGN',
     };
 
-    // Enforce compliance constraints
-    return sanitizeListing(listing);
+    // NOTE: Sanitization removed - was stripping too many useful words
+    // Will be re-added later in revised format
+    return listing;
 };
 
 const optimizeDesignPrompt = async (subject: string, style: string, typographyStyle?: string, text?: string): Promise<string> => {
