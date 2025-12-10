@@ -479,22 +479,37 @@ const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
     // Debug: Log full response structure to understand where MBA tag appears
     console.log(`[MARKETPLACE] Amazon product response keys:`, Object.keys(data));
 
-    // Decodo returns: { results: [{ content: { ... } }] } for product details
+    // Decodo returns: { results: [{ content: { results: { ...product } } }] }
+    // Note: Product data is at results[0].content.results (not results[0].content)
     let product: Record<string, unknown> = {};
 
-    // Path 1: Nested structure - results[0].content
+    // Path 1: Deeply nested structure - results[0].content.results
     if (Array.isArray(data.results) && data.results.length > 0) {
       const wrapper = data.results[0] as Record<string, unknown>;
       if (wrapper.content && typeof wrapper.content === 'object') {
-        product = wrapper.content as Record<string, unknown>;
-        console.log(`[MARKETPLACE] Found product at results[0].content`);
+        const content = wrapper.content as Record<string, unknown>;
+        // Product data is inside content.results
+        if (content.results && typeof content.results === 'object') {
+          product = content.results as Record<string, unknown>;
+          console.log(`[MARKETPLACE] Found product at results[0].content.results`);
+        } else if (content.title) {
+          // Fallback: product directly in content
+          product = content;
+          console.log(`[MARKETPLACE] Found product at results[0].content`);
+        }
       }
     }
 
-    // Path 2: Direct content
+    // Path 2: Direct content.results
     if (!product.title && data.content && typeof data.content === 'object') {
-      product = data.content as Record<string, unknown>;
-      console.log(`[MARKETPLACE] Found product at data.content`);
+      const content = data.content as Record<string, unknown>;
+      if (content.results && typeof content.results === 'object') {
+        product = content.results as Record<string, unknown>;
+        console.log(`[MARKETPLACE] Found product at data.content.results`);
+      } else if (content.title) {
+        product = content;
+        console.log(`[MARKETPLACE] Found product at data.content`);
+      }
     }
 
     // Path 3: Direct response
@@ -508,28 +523,27 @@ const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
       return null;
     }
 
-    // Extract seller info - MBA tag appears here as "Amazon Merch on Demand"
-    // The seller field might be nested or have different names
-    const sellerInfo = String(
-      product.seller ||
-      product.sold_by ||
-      product.merchant ||
-      product.brand ||
-      (product.seller_info as Record<string, unknown>)?.name ||
-      ''
-    );
+    // Extract seller info from buybox array - MBA tag appears as seller_name
+    // Structure: buybox: [{ seller_name: "Amazon Merch on Demand", ships_from_name: "..." }]
+    let sellerName = '';
+    let shipsFrom = '';
 
-    // Also check for "fulfilled by" or "shipped from" fields where MBA info might appear
-    const fulfilledBy = String(product.fulfilled_by || product.ships_from || '');
-    const soldBy = String(product.sold_by || '');
+    if (Array.isArray(product.buybox) && product.buybox.length > 0) {
+      const buybox = product.buybox[0] as Record<string, unknown>;
+      sellerName = String(buybox.seller_name || '');
+      shipsFrom = String(buybox.ships_from_name || '');
+      console.log(`[MARKETPLACE] Buybox seller_name: "${sellerName}"`);
+      console.log(`[MARKETPLACE] Buybox ships_from_name: "${shipsFrom}"`);
+    }
+
+    // Also check top-level brand/seller fields as fallback
+    const brandInfo = String(product.brand || '');
 
     // Combine all seller-related info for MBA detection
-    const allSellerText = [sellerInfo, fulfilledBy, soldBy].join(' ');
+    const allSellerText = [sellerName, shipsFrom, brandInfo].join(' ');
 
     console.log(`[MARKETPLACE] Product ASIN: ${product.asin}`);
-    console.log(`[MARKETPLACE] Seller info: "${sellerInfo}"`);
-    console.log(`[MARKETPLACE] Fulfilled by: "${fulfilledBy}"`);
-    console.log(`[MARKETPLACE] Sold by: "${soldBy}"`);
+    console.log(`[MARKETPLACE] Brand: "${brandInfo}"`);
     console.log(`[MARKETPLACE] All seller text: "${allSellerText}"`);
 
     // Check for MBA in any seller-related field
@@ -551,8 +565,8 @@ const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
       avgRating: parseFloat(String(product.rating || product.stars || '0')) || 0,
       salesRank: product.sales_rank ? parseInt(String(product.sales_rank)) : undefined,
       category: String(product.category || product.department || ''),
-      seller: allSellerText, // Use combined seller info
-      imageUrl: String(product.image || product.thumbnail || ''),
+      seller: sellerName || brandInfo, // Use seller_name from buybox, fallback to brand
+      imageUrl: Array.isArray(product.images) ? String(product.images[0] || '') : String(product.image || product.thumbnail || ''),
       isMerchByAmazon: isMba, // Set MBA flag based on seller info
       scrapedAt: new Date(),
     };
