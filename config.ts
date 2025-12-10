@@ -39,11 +39,11 @@ export const SUBSCRIPTION_CONFIG = {
 };
 
 // AI Model Configuration
-// Text: Using stable Gemini 2.0 Flash for fast, reliable text generation
+// Text: Gemini 3 Pro for high-quality listing text generation
 // Image: Gemini 3 Pro Image (Preview) - Required for advanced image generation
 export const AI_CONFIG = {
   models: {
-    text: 'gemini-2.0-flash',
+    text: 'gemini-3-pro',
     image: 'gemini-3-pro-image-preview'
   },
   // Request timeouts in milliseconds
