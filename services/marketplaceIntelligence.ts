@@ -440,7 +440,8 @@ const parseAmazonSearchResults = (response: unknown, query: string): Marketplace
     console.log(`[MARKETPLACE] Total products found: ${products.length}`);
 
     if (products.length > 0) {
-      console.log(`[MARKETPLACE] First product sample:`, JSON.stringify(products[0]).slice(0, 500));
+      // Log full first product to see ALL available fields for MBA detection
+      console.log(`[MARKETPLACE] First product FULL:`, JSON.stringify(products[0], null, 2));
     } else {
       console.log(`[MARKETPLACE] No products found. Response structure:`, JSON.stringify(data).slice(0, 1000));
     }
@@ -1281,10 +1282,17 @@ export const isGraphicTee = (title: string): boolean => {
 };
 
 /**
- * Detect if product is likely from Merch by Amazon
- * Checks for common MBA indicators in listing data
+ * Detect if product is from Merch by Amazon
  *
- * Enhanced to work better with search results which may have limited seller data.
+ * The ONLY reliable indicator is the "Amazon Merch on Demand" tag that appears
+ * on MBA product pages underneath the price. This text may appear in:
+ * - seller field
+ * - brand field
+ * - category field
+ * - or other metadata returned by the API
+ *
+ * NOTE: Price ranges and brand patterns like "Solid Colors" are NOT reliable
+ * indicators and should not be used.
  */
 export const detectMerchByAmazon = (product: {
   seller?: string;
@@ -1292,62 +1300,24 @@ export const detectMerchByAmazon = (product: {
   title?: string;
   url?: string;
 }): boolean => {
-  const seller = product.seller?.toLowerCase() || '';
-  const title = product.title?.toLowerCase() || '';
-  const category = product.category?.toLowerCase() || '';
-  const checkText = `${seller} ${category} ${title}`;
+  // Combine all available text fields to search for the MBA tag
+  const searchText = [
+    product.seller || '',
+    product.category || '',
+    product.title || '',
+  ].join(' ').toLowerCase();
 
-  // Direct MBA brand indicators
+  // The ONLY reliable indicator - the actual MBA tag text
   const mbaIndicators = [
     'amazon merch on demand',
     'merch by amazon',
-    'amazon.com services llc',
-    'solid colors',
-    'heather colors',
+    'amazon.com services llc',  // Sometimes appears as seller for MBA products
   ];
 
   for (const indicator of mbaIndicators) {
-    if (checkText.includes(indicator)) {
+    if (searchText.includes(indicator)) {
       return true;
     }
-  }
-
-  // Title-based heuristics for MBA products
-  // MBA listings often have specific patterns
-  const mbaTitlePatterns = [
-    /funny\s+\w+\s+(shirt|tee|t-shirt)/i,       // "Funny X Shirt"
-    /\w+\s+gift\s+(for|idea)/i,                  // "X Gift For/Idea"
-    /\w+\s+lover\s+(shirt|tee|gift)/i,           // "X Lover Shirt"
-    /\w+\s+(mom|dad|grandpa|grandma)\s+shirt/i,  // "X Mom Shirt"
-  ];
-
-  for (const pattern of mbaTitlePatterns) {
-    if (pattern.test(title)) {
-      // Title matches MBA pattern - likely MBA product
-      return true;
-    }
-  }
-
-  // Brand-based heuristics
-  // MBA sellers often have generic/keyword-based brand names
-  if (seller) {
-    // Check for keyword-stuffed brand names (common MBA pattern)
-    const wordCount = seller.split(/\s+/).length;
-    const hasKeywordBrand = wordCount >= 2 && /\b(gift|shirt|tee|funny|design|apparel)\b/i.test(seller);
-    if (hasKeywordBrand) {
-      return true;
-    }
-
-    // CamelCase brand names are common for MBA sellers (e.g., "NurseGiftsDesigns")
-    const camelCasePattern = /^[A-Z][a-z]+[A-Z][a-z]+/;
-    if (camelCasePattern.test(product.seller || '')) {
-      return true;
-    }
-  }
-
-  // URL-based detection
-  if (product.url?.includes('/dp/') && seller.includes('solid colors')) {
-    return true;
   }
 
   return false;
