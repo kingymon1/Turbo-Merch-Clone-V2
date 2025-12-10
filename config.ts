@@ -39,11 +39,11 @@ export const SUBSCRIPTION_CONFIG = {
 };
 
 // AI Model Configuration
-// Text: Gemini 3 Pro for high-quality listing text generation
+// Text: Gemini 3 Pro Preview for high-quality listing text generation
 // Image: Gemini 3 Pro Image (Preview) - Required for advanced image generation
 export const AI_CONFIG = {
   models: {
-    text: 'gemini-3-pro',
+    text: 'gemini-3-pro-preview',
     image: 'gemini-3-pro-image-preview'
   },
   // Request timeouts in milliseconds
