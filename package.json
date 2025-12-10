@@ -11,7 +11,10 @@
     "lint": "next lint",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "bootstrap:status": "tsx scripts/bootstrap-marketplace.ts --status",
+    "bootstrap:quick": "tsx scripts/bootstrap-marketplace.ts --quick",
+    "bootstrap:full": "tsx scripts/bootstrap-marketplace.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.937.0",
