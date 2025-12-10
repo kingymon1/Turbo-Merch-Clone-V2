@@ -192,10 +192,47 @@ export async function POST(request: NextRequest) {
  * GET /api/marketplace/scrape
  *
  * Get scraping status and configuration
+ * Use ?test=true to run a quick API health check
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const apiConfigured = isApiConfigured();
   const dbConfigured = await isDatabaseConfigured();
+
+  // Check for test parameter
+  const testMode = request.nextUrl.searchParams.get('test') === 'true';
+
+  if (testMode && apiConfigured) {
+    // Run a simple API test with a basic query
+    console.log('[SCRAPE] Running API health check...');
+
+    try {
+      const { searchAmazon } = await import('@/services/marketplaceIntelligence');
+      const testResult = await searchAmazon('t-shirt', { page: 1 });
+
+      return NextResponse.json({
+        status: 'test_complete',
+        apiTest: {
+          success: testResult.success,
+          productsFound: testResult.products.length,
+          error: testResult.error || null,
+          timestamp: new Date().toISOString(),
+        },
+        decodoApi: 'configured',
+        database: dbConfigured ? 'connected' : 'not configured',
+      });
+    } catch (testError) {
+      return NextResponse.json({
+        status: 'test_failed',
+        apiTest: {
+          success: false,
+          error: testError instanceof Error ? testError.message : 'Unknown error',
+          timestamp: new Date().toISOString(),
+        },
+        decodoApi: 'configured (but failing)',
+        database: dbConfigured ? 'connected' : 'not configured',
+      });
+    }
+  }
 
   return NextResponse.json({
     status: apiConfigured && dbConfigured ? 'ready' : 'not_configured',
@@ -211,5 +248,6 @@ export async function GET() {
       'dog lover shirt',
       'coffee shirt',
     ],
+    testUrl: '/api/marketplace/scrape?test=true',
   });
 }
