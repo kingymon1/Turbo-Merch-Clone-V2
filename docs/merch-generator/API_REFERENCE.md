@@ -1,7 +1,7 @@
 # Merch Generator API Reference
 
 > **Last Updated:** December 2024
-> **Version:** Phase 6 Complete
+> **Version:** Phase 7B Complete
 
 ---
 
@@ -508,6 +508,96 @@ Delete an insight.
 ### GET /api/marketplace/keywords
 
 Get endpoint information and usage examples.
+
+---
+
+### POST /api/merch/validate
+
+**Phase 7B** - Validate a merch listing against Amazon Merch compliance rules.
+
+**Request Body:**
+```json
+{
+  "title": "Coffee Lover Morning Brew Caffeine Addict Espresso",
+  "brand": "Urban Brew Collective",
+  "bullets": [
+    "For true coffee enthusiasts who appreciate the art of brewing...",
+    "The perfect way to express your morning ritual devotion..."
+  ],
+  "description": "Show your love for coffee with this bold typographic design...",
+  "keywords": ["coffee", "espresso", "morning"]
+}
+```
+
+**Response (Valid):**
+```json
+{
+  "success": true,
+  "validation": {
+    "valid": true,
+    "errors": [],
+    "warnings": ["Title is short: 45 chars (recommended: 50+)"],
+    "cleanedListing": {
+      "title": "Coffee Lover Morning Brew Caffeine Addict Espresso",
+      "brand": "Urban Brew Collective",
+      "bullets": ["...", "..."],
+      "description": "...",
+      "keywords": ["coffee", "espresso", "morning"]
+    },
+    "stats": {
+      "bannedWordsRemoved": 0,
+      "charactersChanged": 0,
+      "fieldsTruncated": []
+    }
+  }
+}
+```
+
+**Response (Invalid):**
+```json
+{
+  "success": true,
+  "validation": {
+    "valid": false,
+    "errors": [
+      "Title too long: 75 chars (max: 60)",
+      "Title contains banned words: gift, shirt"
+    ],
+    "warnings": ["Title: Unicode/emojis removed"],
+    "cleanedListing": { ... },
+    "stats": {
+      "bannedWordsRemoved": 2,
+      "charactersChanged": 15,
+      "fieldsTruncated": ["title"]
+    }
+  }
+}
+```
+
+---
+
+### GET /api/merch/validate
+
+Get validation system information including character limits and banned word count.
+
+**Response:**
+```json
+{
+  "success": true,
+  "info": {
+    "limits": {
+      "title": { "min": 40, "max": 60 },
+      "brand": { "min": 1, "max": 50 },
+      "bullet": { "min": 180, "max": 256 },
+      "description": { "min": 100, "max": 500 },
+      "bulletCount": 2
+    },
+    "bannedWordCount": 256,
+    "description": "Amazon Merch on Demand listing validation system",
+    "version": "1.0.0"
+  }
+}
+```
 
 ---
 

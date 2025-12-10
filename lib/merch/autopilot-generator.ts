@@ -32,6 +32,11 @@ import {
   OptimizedKeywords,
   isDatabaseConfigured,
 } from '@/services/marketplaceLearning';
+import {
+  preValidateInput,
+  findBannedWords,
+  cleanToAscii,
+} from './validation';
 
 // Track applied insights for logging
 // Maps from InsightApplication (from insight-applier) to simplified format for storage
@@ -129,6 +134,7 @@ function selectNicheForRisk(riskLevel: number): string {
 /**
  * Extract the best design concept from trend data
  * Phase 6: Now accepts insight guidance to influence style/tone selection
+ * Phase 7B: Now validates and cleans phrase for compliance
  */
 function extractDesignConcept(
   trend: TrendData,
@@ -141,9 +147,22 @@ function extractDesignConcept(
   } | null
 ): DesignConcept {
   // Use designText if available, otherwise extract from topic
-  const phrase = trend.designText ||
+  let rawPhrase = trend.designText ||
                  trend.topic.split(' ').slice(0, 5).join(' ').toUpperCase() ||
                  trend.topic;
+
+  // Phase 7B: Clean phrase to ASCII and check for banned words
+  let phrase = cleanToAscii(rawPhrase);
+  const bannedInPhrase = findBannedWords(phrase);
+
+  if (bannedInPhrase.length > 0) {
+    console.log(`[Autopilot] Phrase contains banned words: ${bannedInPhrase.join(', ')}`);
+    // Remove banned words from phrase
+    for (const banned of bannedInPhrase) {
+      const regex = new RegExp(`\\b${banned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+      phrase = phrase.replace(regex, '').replace(/\s+/g, ' ').trim();
+    }
+  }
 
   // Phase 6: Use insight-recommended style if available, otherwise infer from trend
   let style = insightGuidance?.recommendedStyles[0] || 'Bold Modern';
@@ -180,9 +199,13 @@ function extractDesignConcept(
     }
   }
 
+  // Phase 7B: Clean niche as well
+  const rawNiche = trend.audienceProfile || trend.topic.split(' ')[0] || 'general';
+  const niche = cleanToAscii(rawNiche);
+
   return {
     phrase,
-    niche: trend.audienceProfile || trend.topic.split(' ')[0] || 'general',
+    niche,
     style,
     tone,
     visualStyle: trend.visualStyle,
@@ -408,6 +431,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
  * Generate a fallback concept when trend research fails
  * Phase 6: Now uses insight guidance to improve fallback quality
  * Phase 7A: Now uses marketplace data for keywords
+ * Phase 7B: Now cleans all text for compliance
  */
 function generateFallbackConcept(
   riskLevel: number,
@@ -439,7 +463,11 @@ function generateFallbackConcept(
   };
 
   const phrases = fallbackPhrases[niche] || fallbackPhrases.default;
-  const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+  const rawPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+
+  // Phase 7B: Clean phrase and niche
+  const phrase = cleanToAscii(rawPhrase);
+  const cleanedNiche = cleanToAscii(niche.split(' ')[0]);
 
   // Phase 6: Use insight-recommended style/tone if available
   const style = insightGuidance?.recommendedStyles[0] ||
@@ -448,7 +476,7 @@ function generateFallbackConcept(
 
   const concept: DesignConcept = {
     phrase,
-    niche: niche.split(' ')[0],
+    niche: cleanedNiche,
     style,
     tone,
   };

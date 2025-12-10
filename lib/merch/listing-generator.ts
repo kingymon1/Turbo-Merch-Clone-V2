@@ -6,6 +6,9 @@
  *
  * Phase 7A Enhancement: Now integrates marketplace intelligence to inject
  * proven keywords from successful MBA products into listing generation.
+ *
+ * Phase 7B Enhancement: Now validates and sanitizes all generated listings
+ * using the merch-specific validation system.
  */
 
 import { TrendData, GeneratedListing } from '@/types';
@@ -15,6 +18,10 @@ import {
   OptimizedKeywords,
   isDatabaseConfigured,
 } from '@/services/marketplaceLearning';
+import {
+  validateMerchListing,
+  type MerchValidationResult,
+} from './validation';
 
 export interface ListingResult {
   title: string;
@@ -25,6 +32,12 @@ export interface ListingResult {
   // Phase 7A: Track marketplace data usage
   marketplaceEnhanced?: boolean;
   marketplaceConfidence?: number;
+  // Phase 7B: Validation status
+  validation?: {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  };
 }
 
 /**
@@ -94,22 +107,67 @@ export async function generateMerchListing(
     // Enhance bullets with marketplace insights if available
     const bullets = buildEnhancedBullets(listing, niche, tone, marketplaceData);
 
-    return {
+    // Phase 7B: Validate and sanitize the generated listing
+    const rawListing = {
       title: listing.title,
-      bullets,
+      brand: listing.brand || '',
+      bullets: bullets.slice(0, 2), // Merch only uses 2 bullets
       description: listing.description,
       keywords: enhanceKeywordsWithMarketplace(listing.keywords || [], marketplaceData),
-      brand: listing.brand,
+    };
+
+    const validationResult = validateMerchListing(rawListing);
+
+    // Log validation issues for debugging
+    if (!validationResult.valid) {
+      console.warn('[ListingGenerator] Validation errors:', validationResult.errors);
+    }
+    if (validationResult.warnings.length > 0) {
+      console.log('[ListingGenerator] Validation warnings:', validationResult.warnings);
+    }
+
+    // Return the cleaned listing with validation status
+    return {
+      title: validationResult.cleanedListing.title,
+      bullets: validationResult.cleanedListing.bullets,
+      description: validationResult.cleanedListing.description,
+      keywords: validationResult.cleanedListing.keywords,
+      brand: validationResult.cleanedListing.brand,
       marketplaceEnhanced,
       marketplaceConfidence: marketplaceData?.confidence,
+      validation: {
+        valid: validationResult.valid,
+        errors: validationResult.errors,
+        warnings: validationResult.warnings,
+      },
     };
   } catch (error) {
     console.error('[ListingGenerator] Error generating listing:', error);
 
     // Fallback to a basic listing if Gemini fails
+    const fallback = generateFallbackListing(phrase, niche, tone);
+
+    // Also validate the fallback listing
+    const fallbackValidation = validateMerchListing({
+      title: fallback.title,
+      brand: '',
+      bullets: fallback.bullets.slice(0, 2),
+      description: fallback.description,
+      keywords: fallback.keywords,
+    });
+
     return {
-      ...generateFallbackListing(phrase, niche, tone),
+      title: fallbackValidation.cleanedListing.title,
+      bullets: fallbackValidation.cleanedListing.bullets,
+      description: fallbackValidation.cleanedListing.description,
+      keywords: fallbackValidation.cleanedListing.keywords,
+      brand: fallbackValidation.cleanedListing.brand,
       marketplaceEnhanced: false,
+      validation: {
+        valid: fallbackValidation.valid,
+        errors: fallbackValidation.errors,
+        warnings: fallbackValidation.warnings,
+      },
     };
   }
 }
