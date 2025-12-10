@@ -159,41 +159,49 @@ const makeDecodoRequest = async (payload: Record<string, unknown>, retries = 4):
       console.log(`[MARKETPLACE] Decodo raw response keys:`, Object.keys(jsonResponse));
 
       // Check for Decodo-specific error codes in response
-      // Status 12000 = rate limit or temporary error
+      // Note: status_code 12000 may actually mean SUCCESS in some scraping APIs
+      // We need to check the actual content, not just the status code
       if (Array.isArray(jsonResponse.results) && jsonResponse.results.length > 0) {
         const firstResult = jsonResponse.results[0] as Record<string, unknown>;
         const content = firstResult.content as Record<string, unknown>;
 
+        // Log FULL response structure for debugging
+        console.log(`[MARKETPLACE] Full response content:`, JSON.stringify(content, null, 2).slice(0, 3000));
+
         // Convert status_code to number (API may return string or number)
         const statusCode = content ? Number(content.status_code) : 0;
+        console.log(`[MARKETPLACE] Status code: ${statusCode}, content.results type: ${typeof content?.results}`);
 
-        if (content && statusCode && statusCode !== 200) {
-          console.error(`[MARKETPLACE] Decodo returned status ${statusCode} (type: ${typeof content.status_code})`);
-
-          // Retry on rate limit or temporary errors (12000, 429, etc)
-          // Use longer delays to give API time to recover
-          if (statusCode === 12000 || statusCode === 429 || statusCode >= 500) {
-            if (attempt < retries) {
-              const waitTime = attempt * 5000; // 5s, 10s, 15s
-              console.log(`[MARKETPLACE] Rate limited/error, retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
-              await new Promise(r => setTimeout(r, waitTime));
-              continue;
-            }
-            console.error(`[MARKETPLACE] All ${retries} retry attempts failed with status ${statusCode}`);
-          }
-          return null;
-        }
-
-        // Check if results.content.results is null (no data)
-        if (content && content.results === null) {
+        // Check if we have actual results data (regardless of status code)
+        // Status 12000 may mean "successfully parsed" not "error"
+        if (content && content.results && typeof content.results === 'object') {
+          console.log(`[MARKETPLACE] Found results in content.results, proceeding...`);
+          // Data exists, continue processing
+        } else if (content && content.results === null) {
+          // Results is explicitly null - this is the real error
           console.error(`[MARKETPLACE] Decodo returned null results (status: ${statusCode})`);
+
+          // Check if there's data elsewhere in the response
+          console.log(`[MARKETPLACE] Content keys:`, Object.keys(content || {}));
+          console.log(`[MARKETPLACE] First result keys:`, Object.keys(firstResult || {}));
+
           if (attempt < retries) {
-            const waitTime = attempt * 4000; // 4s, 8s, 12s
+            const waitTime = attempt * 4000;
             console.log(`[MARKETPLACE] Empty results, retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
             await new Promise(r => setTimeout(r, waitTime));
             continue;
           }
           console.error(`[MARKETPLACE] All ${retries} retry attempts returned null results`);
+          return null;
+        } else if (statusCode === 429 || statusCode >= 500) {
+          // Only treat HTTP-style errors as actual errors
+          console.error(`[MARKETPLACE] HTTP error status ${statusCode}`);
+          if (attempt < retries) {
+            const waitTime = attempt * 5000;
+            console.log(`[MARKETPLACE] Retrying in ${waitTime / 1000}s (attempt ${attempt}/${retries})...`);
+            await new Promise(r => setTimeout(r, waitTime));
+            continue;
+          }
           return null;
         }
       }
