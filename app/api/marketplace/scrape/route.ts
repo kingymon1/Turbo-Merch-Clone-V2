@@ -1,19 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchAmazon, searchEtsy, isApiConfigured, enhanceProductWithAnalysis } from '@/services/marketplaceIntelligence';
+import {
+  searchAmazonWithMbaDetection,
+  searchEtsy,
+  isApiConfigured,
+  enhanceProductWithAnalysis,
+} from '@/services/marketplaceIntelligence';
 import { storeMarketplaceProduct, updateNicheMarketData, isDatabaseConfigured } from '@/services/marketplaceLearning';
 
-// Increase timeout for scraping
-export const maxDuration = 120;
+// Increase timeout for scraping (MBA detection adds ~10-15s for product detail fetches)
+export const maxDuration = 180;
 
 /**
  * POST /api/marketplace/scrape
  *
- * Trigger marketplace scraping for t-shirt designs
+ * Trigger marketplace scraping for t-shirt designs with hybrid MBA detection.
+ *
+ * The scraper uses a two-step approach for reliable MBA detection:
+ * 1. Search Amazon for products (gets ASINs)
+ * 2. Fetch product details for a sample to detect "Amazon Merch on Demand" tag
  *
  * Body:
  * - niche?: string - Specific niche to scrape (default: best sellers)
  * - sources?: ('amazon' | 'etsy')[] - Which marketplaces (default: both)
  * - limit?: number - Max products per source (default: 50)
+ * - mbaSampleSize?: number - How many products to check for MBA (default: 5)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -39,32 +49,48 @@ export async function POST(request: NextRequest) {
       niche = 'graphic tshirt best seller',
       sources = ['amazon', 'etsy'],
       limit = 50,
+      mbaSampleSize = 5, // How many products to fetch details for MBA detection
     } = body;
 
     console.log(`[SCRAPE] Starting scrape for "${niche}" from ${sources.join(', ')}`);
+    console.log(`[SCRAPE] MBA detection: will check ${mbaSampleSize} products via product detail fetch`);
 
     const results = {
       niche,
-      amazon: { success: false, count: 0, mbaCount: 0, error: null as string | null },
+      amazon: {
+        success: false,
+        count: 0,
+        mbaCount: 0,
+        mbaChecked: 0,
+        error: null as string | null,
+      },
       etsy: { success: false, count: 0, error: null as string | null },
       stored: 0,
       mbaDetected: 0,
       timestamp: new Date().toISOString(),
     };
 
-    // Scrape Amazon
+    // Scrape Amazon with hybrid MBA detection
     if (sources.includes('amazon')) {
       try {
-        const amazonResult = await searchAmazon(niche, limit);
+        // Use hybrid search that fetches product details for MBA detection
+        const amazonResult = await searchAmazonWithMbaDetection(niche, {
+          mbaSampleSize,
+        });
+
         if (amazonResult.success && amazonResult.products.length > 0) {
           results.amazon.success = true;
           results.amazon.count = amazonResult.products.length;
+          results.amazon.mbaChecked = amazonResult.mbaStats.checked;
+
+          console.log(`[SCRAPE] Amazon search returned ${amazonResult.products.length} products`);
+          console.log(`[SCRAPE] MBA detection: ${amazonResult.mbaStats.found}/${amazonResult.mbaStats.checked} products are MBA`);
 
           // Store products for learning (enhanced with MBA detection and keyword analysis)
           for (const product of amazonResult.products) {
             const enhanced = enhanceProductWithAnalysis(product);
 
-            // Track MBA products
+            // Track MBA products (from hybrid detection)
             if (enhanced.isMerchByAmazon) {
               results.amazon.mbaCount++;
               results.mbaDetected++;

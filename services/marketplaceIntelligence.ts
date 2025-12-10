@@ -475,9 +475,69 @@ const parseAmazonSearchResults = (response: unknown, query: string): Marketplace
 const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
   try {
     const data = response as Record<string, unknown>;
-    const product = data.content as Record<string, unknown> || data;
 
-    if (!product.title) return null;
+    // Debug: Log full response structure to understand where MBA tag appears
+    console.log(`[MARKETPLACE] Amazon product response keys:`, Object.keys(data));
+
+    // Decodo returns: { results: [{ content: { ... } }] } for product details
+    let product: Record<string, unknown> = {};
+
+    // Path 1: Nested structure - results[0].content
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      const wrapper = data.results[0] as Record<string, unknown>;
+      if (wrapper.content && typeof wrapper.content === 'object') {
+        product = wrapper.content as Record<string, unknown>;
+        console.log(`[MARKETPLACE] Found product at results[0].content`);
+      }
+    }
+
+    // Path 2: Direct content
+    if (!product.title && data.content && typeof data.content === 'object') {
+      product = data.content as Record<string, unknown>;
+      console.log(`[MARKETPLACE] Found product at data.content`);
+    }
+
+    // Path 3: Direct response
+    if (!product.title && data.title) {
+      product = data;
+      console.log(`[MARKETPLACE] Found product at root level`);
+    }
+
+    if (!product.title) {
+      console.log(`[MARKETPLACE] No title found. Response structure:`, JSON.stringify(data).slice(0, 1000));
+      return null;
+    }
+
+    // Extract seller info - MBA tag appears here as "Amazon Merch on Demand"
+    // The seller field might be nested or have different names
+    const sellerInfo = String(
+      product.seller ||
+      product.sold_by ||
+      product.merchant ||
+      product.brand ||
+      (product.seller_info as Record<string, unknown>)?.name ||
+      ''
+    );
+
+    // Also check for "fulfilled by" or "shipped from" fields where MBA info might appear
+    const fulfilledBy = String(product.fulfilled_by || product.ships_from || '');
+    const soldBy = String(product.sold_by || '');
+
+    // Combine all seller-related info for MBA detection
+    const allSellerText = [sellerInfo, fulfilledBy, soldBy].join(' ');
+
+    console.log(`[MARKETPLACE] Product ASIN: ${product.asin}`);
+    console.log(`[MARKETPLACE] Seller info: "${sellerInfo}"`);
+    console.log(`[MARKETPLACE] Fulfilled by: "${fulfilledBy}"`);
+    console.log(`[MARKETPLACE] Sold by: "${soldBy}"`);
+    console.log(`[MARKETPLACE] All seller text: "${allSellerText}"`);
+
+    // Check for MBA in any seller-related field
+    const isMba = allSellerText.toLowerCase().includes('amazon merch on demand') ||
+                  allSellerText.toLowerCase().includes('merch by amazon') ||
+                  allSellerText.toLowerCase().includes('amazon.com services llc');
+
+    console.log(`[MARKETPLACE] MBA detected: ${isMba}`);
 
     return {
       id: `amazon-${product.asin || 'unknown'}`,
@@ -487,12 +547,13 @@ const parseAmazonProduct = (response: unknown): MarketplaceProduct | null => {
       currency: 'USD',
       url: String(product.url || ''),
       asin: String(product.asin || ''),
-      reviewCount: parseInt(String(product.reviews_count || '0')) || 0,
-      avgRating: parseFloat(String(product.rating || '0')) || 0,
+      reviewCount: parseInt(String(product.reviews_count || product.rating_count || '0')) || 0,
+      avgRating: parseFloat(String(product.rating || product.stars || '0')) || 0,
       salesRank: product.sales_rank ? parseInt(String(product.sales_rank)) : undefined,
-      category: String(product.category || ''),
-      seller: String(product.seller || ''),
-      imageUrl: String(product.image || ''),
+      category: String(product.category || product.department || ''),
+      seller: allSellerText, // Use combined seller info
+      imageUrl: String(product.image || product.thumbnail || ''),
+      isMerchByAmazon: isMba, // Set MBA flag based on seller info
       scrapedAt: new Date(),
     };
   } catch (error) {
@@ -576,6 +637,145 @@ const parseEtsySearchResults = (response: unknown, query: string): MarketplacePr
     console.error('[MARKETPLACE] Error parsing Etsy results:', error);
     return [];
   }
+};
+
+// ============================================================================
+// HYBRID MBA DETECTION - Fetch product details to reliably detect MBA
+// ============================================================================
+
+/**
+ * Fetch product details for a sample of ASINs to detect MBA products
+ *
+ * The "Amazon Merch on Demand" tag only appears on product detail pages,
+ * not in search results. This function fetches details for a sample of
+ * products to reliably detect which ones are MBA.
+ *
+ * @param products - Products from search results (must have ASINs)
+ * @param sampleSize - How many products to check (default: 5)
+ * @returns Map of ASIN -> isMBA boolean
+ */
+export const fetchMbaDetectionForProducts = async (
+  products: MarketplaceProduct[],
+  sampleSize: number = 5
+): Promise<{
+  mbaAsins: Set<string>;
+  checkedCount: number;
+  mbaCount: number;
+  mbaProducts: MarketplaceProduct[];
+}> => {
+  const result = {
+    mbaAsins: new Set<string>(),
+    checkedCount: 0,
+    mbaCount: 0,
+    mbaProducts: [] as MarketplaceProduct[],
+  };
+
+  if (!isApiConfigured()) {
+    console.log('[MARKETPLACE] API not configured - skipping MBA detection');
+    return result;
+  }
+
+  // Get products with ASINs
+  const productsWithAsins = products.filter(p => p.asin && p.asin.length > 0);
+
+  if (productsWithAsins.length === 0) {
+    console.log('[MARKETPLACE] No products with ASINs found - skipping MBA detection');
+    return result;
+  }
+
+  // Take a sample (prioritize products with more reviews as they're more likely MBA bestsellers)
+  const sortedByReviews = [...productsWithAsins].sort((a, b) => b.reviewCount - a.reviewCount);
+  const sample = sortedByReviews.slice(0, sampleSize);
+
+  console.log(`[MARKETPLACE] Fetching product details for ${sample.length} ASINs to detect MBA...`);
+
+  // Fetch product details in parallel (with small batches to avoid rate limiting)
+  const batchSize = 3;
+  for (let i = 0; i < sample.length; i += batchSize) {
+    const batch = sample.slice(i, i + batchSize);
+
+    const detailPromises = batch.map(async (product) => {
+      try {
+        const details = await getAmazonProduct(product.asin!);
+        result.checkedCount++;
+
+        if (details) {
+          console.log(`[MARKETPLACE] ASIN ${product.asin}: MBA=${details.isMerchByAmazon}, seller="${details.seller?.slice(0, 50)}..."`);
+
+          if (details.isMerchByAmazon) {
+            result.mbaAsins.add(product.asin!);
+            result.mbaCount++;
+            result.mbaProducts.push(details);
+          }
+        }
+      } catch (error) {
+        console.log(`[MARKETPLACE] Failed to fetch details for ${product.asin}: ${error}`);
+      }
+    });
+
+    await Promise.all(detailPromises);
+
+    // Small delay between batches to avoid rate limiting
+    if (i + batchSize < sample.length) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  console.log(`[MARKETPLACE] MBA detection complete: ${result.mbaCount}/${result.checkedCount} products are MBA`);
+
+  return result;
+};
+
+/**
+ * Enhanced search that includes MBA detection via product detail fetching
+ *
+ * This performs:
+ * 1. Normal Amazon search to get product listings
+ * 2. Fetches product details for sample to detect MBA
+ * 3. Returns enriched results with accurate MBA flags
+ */
+export const searchAmazonWithMbaDetection = async (
+  query: string,
+  options: {
+    locale?: string;
+    page?: number;
+    category?: string;
+    mbaSampleSize?: number;
+  } = {}
+): Promise<MarketplaceSearchResult & { mbaStats: { checked: number; found: number } }> => {
+  const { mbaSampleSize = 5, ...searchOptions } = options;
+
+  // Step 1: Normal search
+  const searchResult = await searchAmazon(query, searchOptions);
+
+  if (!searchResult.success || searchResult.products.length === 0) {
+    return {
+      ...searchResult,
+      mbaStats: { checked: 0, found: 0 },
+    };
+  }
+
+  console.log(`[MARKETPLACE] Search found ${searchResult.products.length} products, now detecting MBA...`);
+
+  // Step 2: Fetch product details for sample to detect MBA
+  const mbaDetection = await fetchMbaDetectionForProducts(searchResult.products, mbaSampleSize);
+
+  // Step 3: Update products with MBA detection results
+  const enrichedProducts = searchResult.products.map(product => {
+    if (product.asin && mbaDetection.mbaAsins.has(product.asin)) {
+      return { ...product, isMerchByAmazon: true };
+    }
+    return product;
+  });
+
+  return {
+    ...searchResult,
+    products: enrichedProducts,
+    mbaStats: {
+      checked: mbaDetection.checkedCount,
+      found: mbaDetection.mbaCount,
+    },
+  };
 };
 
 // ============================================================================
@@ -1506,4 +1706,7 @@ export default {
   enhanceProductWithAnalysis,
   filterGraphicTees,
   filterMerchByAmazon,
+  // Hybrid MBA detection
+  fetchMbaDetectionForProducts,
+  searchAmazonWithMbaDetection,
 };
