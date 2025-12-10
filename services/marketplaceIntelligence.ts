@@ -129,6 +129,8 @@ const makeDecodoRequest = async (payload: Record<string, unknown>): Promise<unkn
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
   try {
+    console.log(`[MARKETPLACE] Decodo request payload:`, JSON.stringify(payload));
+
     const response = await fetch(DECODO_API_ENDPOINT, {
       method: 'POST',
       headers: {
@@ -147,7 +149,11 @@ const makeDecodoRequest = async (payload: Record<string, unknown>): Promise<unkn
       return null;
     }
 
-    return await response.json();
+    const jsonResponse = await response.json();
+    console.log(`[MARKETPLACE] Decodo raw response keys:`, Object.keys(jsonResponse));
+    console.log(`[MARKETPLACE] Decodo response structure:`, JSON.stringify(jsonResponse, null, 2).slice(0, 2000));
+
+    return jsonResponse;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
@@ -363,9 +369,45 @@ export const searchEtsy = async (
 const parseAmazonSearchResults = (response: unknown, query: string): MarketplaceProduct[] => {
   try {
     const data = response as Record<string, unknown>;
-    const results = data.results as Record<string, unknown>[] ||
-                   (data.content as Record<string, unknown>)?.results as Record<string, unknown>[] ||
-                   [];
+
+    // Debug: Log what paths we're trying to find products in
+    console.log(`[MARKETPLACE] Parsing Amazon results. data.results exists:`, !!data.results);
+    console.log(`[MARKETPLACE] data.content exists:`, !!data.content);
+
+    // Try multiple paths to find the products array
+    let results: Record<string, unknown>[] = [];
+
+    if (Array.isArray(data.results)) {
+      results = data.results;
+      console.log(`[MARKETPLACE] Found results at data.results (${results.length} items)`);
+    } else if (data.content && typeof data.content === 'object') {
+      const content = data.content as Record<string, unknown>;
+      if (Array.isArray(content.results)) {
+        results = content.results;
+        console.log(`[MARKETPLACE] Found results at data.content.results (${results.length} items)`);
+      } else if (Array.isArray(content.organic)) {
+        // Decodo often uses 'organic' for search results
+        results = content.organic;
+        console.log(`[MARKETPLACE] Found results at data.content.organic (${results.length} items)`);
+      } else if (Array.isArray(content.products)) {
+        results = content.products;
+        console.log(`[MARKETPLACE] Found results at data.content.products (${results.length} items)`);
+      } else {
+        console.log(`[MARKETPLACE] data.content keys:`, Object.keys(content));
+      }
+    } else if (Array.isArray(data.organic)) {
+      results = data.organic;
+      console.log(`[MARKETPLACE] Found results at data.organic (${results.length} items)`);
+    } else if (Array.isArray(data.products)) {
+      results = data.products;
+      console.log(`[MARKETPLACE] Found results at data.products (${results.length} items)`);
+    } else {
+      console.log(`[MARKETPLACE] Could not find products array. Top-level keys:`, Object.keys(data));
+    }
+
+    if (results.length > 0) {
+      console.log(`[MARKETPLACE] First result sample:`, JSON.stringify(results[0]).slice(0, 500));
+    }
 
     return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => ({
       id: `amazon-${query}-${index}`,
@@ -436,9 +478,43 @@ const parseAmazonReviews = (response: unknown): { reviews: string[]; avgRating: 
 const parseEtsySearchResults = (response: unknown, query: string): MarketplaceProduct[] => {
   try {
     const data = response as Record<string, unknown>;
-    const results = data.results as Record<string, unknown>[] ||
-                   (data.content as Record<string, unknown>)?.listings as Record<string, unknown>[] ||
-                   [];
+
+    // Debug: Log what paths we're trying to find products in
+    console.log(`[MARKETPLACE] Parsing Etsy results. data.results exists:`, !!data.results);
+    console.log(`[MARKETPLACE] data.content exists:`, !!data.content);
+
+    let results: Record<string, unknown>[] = [];
+
+    if (Array.isArray(data.results)) {
+      results = data.results;
+      console.log(`[MARKETPLACE] Etsy: Found results at data.results (${results.length} items)`);
+    } else if (data.content && typeof data.content === 'object') {
+      const content = data.content as Record<string, unknown>;
+      if (Array.isArray(content.listings)) {
+        results = content.listings;
+        console.log(`[MARKETPLACE] Etsy: Found results at data.content.listings (${results.length} items)`);
+      } else if (Array.isArray(content.results)) {
+        results = content.results;
+        console.log(`[MARKETPLACE] Etsy: Found results at data.content.results (${results.length} items)`);
+      } else if (Array.isArray(content.organic)) {
+        results = content.organic;
+        console.log(`[MARKETPLACE] Etsy: Found results at data.content.organic (${results.length} items)`);
+      } else {
+        console.log(`[MARKETPLACE] Etsy: data.content keys:`, Object.keys(content));
+      }
+    } else if (Array.isArray(data.listings)) {
+      results = data.listings;
+      console.log(`[MARKETPLACE] Etsy: Found results at data.listings (${results.length} items)`);
+    } else if (Array.isArray(data.organic)) {
+      results = data.organic;
+      console.log(`[MARKETPLACE] Etsy: Found results at data.organic (${results.length} items)`);
+    } else {
+      console.log(`[MARKETPLACE] Etsy: Could not find products array. Top-level keys:`, Object.keys(data));
+    }
+
+    if (results.length > 0) {
+      console.log(`[MARKETPLACE] Etsy: First result sample:`, JSON.stringify(results[0]).slice(0, 500));
+    }
 
     return results.slice(0, 20).map((item: Record<string, unknown>, index: number) => ({
       id: `etsy-${query}-${index}`,
