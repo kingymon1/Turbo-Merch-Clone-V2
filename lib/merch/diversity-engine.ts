@@ -90,6 +90,40 @@ const CONFIG = {
 };
 
 // ============================================================================
+// JSON SANITIZATION (Fix common AI JSON errors)
+// ============================================================================
+
+/**
+ * Sanitize JSON string to fix common AI-generated JSON issues
+ */
+function sanitizeJson(jsonString: string): string {
+  let sanitized = jsonString;
+
+  // Remove trailing commas before ] or }
+  sanitized = sanitized.replace(/,(\s*[\]}])/g, '$1');
+
+  // Fix single quotes to double quotes (but not inside strings)
+  // This is a simple approach - replace single-quoted keys/values
+  sanitized = sanitized.replace(/:\s*'([^']*)'/g, ': "$1"');
+  sanitized = sanitized.replace(/\[\s*'([^']*)'/g, '["$1"');
+  sanitized = sanitized.replace(/,\s*'([^']*)'/g, ', "$1"');
+
+  // Remove any control characters that might break JSON
+  sanitized = sanitized.replace(/[\x00-\x1F\x7F]/g, (char) => {
+    if (char === '\n' || char === '\r' || char === '\t') {
+      return char; // Keep these
+    }
+    return ''; // Remove other control chars
+  });
+
+  // Fix unescaped newlines inside strings (replace with space)
+  // This is tricky - we need to be inside a string value
+  sanitized = sanitized.replace(/"([^"]*)\n([^"]*)"/g, '"$1 $2"');
+
+  return sanitized;
+}
+
+// ============================================================================
 // GENERATION HISTORY TRACKING
 // ============================================================================
 
@@ -372,7 +406,9 @@ Examples of BAD generic niches: "sports fans", "food lovers", "music fans", "nat
       throw new Error('No JSON array in response');
     }
 
-    const niches = JSON.parse(jsonMatch[0]) as any[];
+    // Sanitize JSON before parsing (AI sometimes returns malformed JSON)
+    const sanitizedJson = sanitizeJson(jsonMatch[0]);
+    const niches = JSON.parse(sanitizedJson) as any[];
 
     return niches.map(n => ({
       niche: n.niche,
@@ -798,11 +834,16 @@ Only return the JSON, nothing else.`
 
     const textContent = response.content.find(c => c.type === 'text');
     if (textContent && textContent.type === 'text') {
-      const parsed = JSON.parse(textContent.text);
-      return {
-        phrase: parsed.phrase,
-        concept: parsed.concept
-      };
+      // Extract JSON object from response
+      const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const sanitized = sanitizeJson(jsonMatch[0]);
+        const parsed = JSON.parse(sanitized);
+        return {
+          phrase: parsed.phrase,
+          concept: parsed.concept
+        };
+      }
     }
   } catch (error) {
     console.warn('[Diversity] Cross-pollination failed:', error);
