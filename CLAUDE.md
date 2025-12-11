@@ -37,8 +37,11 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Use for**: Web search functionality
 
 ### Decodo API
-- **Location**: `docs/decodo-api/README.md`
-- **Use for**: Web scraping and data extraction
+- **Location**: `docs/decodo-api.md`
+- **Use for**: Web scraping, eCommerce data extraction, batch processing
+- **Key targets**: `amazon_product`, `google_search`, `universal`, `tiktok_post`
+- **Base URL**: `https://scraper-api.decodo.com/v2`
+- **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`
 
 ### Vectorizer AI
 - **Location**: `docs/vectorizer-ai/README.md`
@@ -94,3 +97,10 @@ npx prisma studio
 3. OpenAI SDK compatible - just change base URL to `https://api.x.ai/v1`
 4. For real-time search, use agentic tools (`web_search`, `x_search`)
 5. Image generation uses `grok-2-image` model at separate endpoint
+
+### Adding Decodo API Features
+1. Read `docs/decodo-api.md` for complete API documentation
+2. Use target templates (`amazon_product`, `google_search`) for best results
+3. Set `parse: true` to get structured JSON instead of raw HTML
+4. Use `markdown: true` when feeding results to LLMs (reduces tokens)
+5. For batch operations, use async endpoints with up to 3000 URLs/queries
