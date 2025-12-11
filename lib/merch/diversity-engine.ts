@@ -325,7 +325,7 @@ export async function discoverNiches(options: {
 
   try {
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 2000,
       messages: [{
         role: 'user',
@@ -710,7 +710,7 @@ async function generatePhraseForNiche(niche: string, riskLevel: number): Promise
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 200,
       messages: [{
         role: 'user',
@@ -776,7 +776,7 @@ export async function crossPollinateNiches(
     const client = new Anthropic({ apiKey });
 
     const response = await client.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5-20250929',
       max_tokens: 300,
       messages: [{
         role: 'user',
