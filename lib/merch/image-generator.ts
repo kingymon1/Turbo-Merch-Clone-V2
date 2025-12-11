@@ -242,11 +242,11 @@ CRITICAL QUALITY INSTRUCTIONS:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        model: 'gpt-image-1',  // Upgraded from dall-e-3 to latest flagship model
         prompt: enhancedPrompt,
         n: 1,
         size: '1024x1024',
-        quality: 'hd',  // Changed from 'standard' to 'hd' for better quality
+        quality: 'high',  // gpt-image-1 uses 'low'/'medium'/'high' (not 'standard'/'hd')
         response_format: 'url'
       })
     });
