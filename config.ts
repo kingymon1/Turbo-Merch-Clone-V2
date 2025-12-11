@@ -40,18 +40,13 @@ export const SUBSCRIPTION_CONFIG = {
 
 // AI Model Configuration
 // Text: Gemini 3 Pro Preview for high-quality listing text generation
-// Image: Multiple options for different quality/speed tradeoffs
+// Image: Gemini 3 Pro Image for advanced image generation
 export const AI_CONFIG = {
   models: {
     text: 'gemini-3-pro-preview',
-    // Default image model - Imagen 4 for high quality production use
-    image: 'imagen-4.0-generate-001',
-    // Alternative image models (can be selected in UI)
-    imageAlternatives: {
-      'imagen4': 'imagen-4.0-generate-001',        // High-quality (recommended)
-      'gemini3pro': 'gemini-3-pro-image-preview',  // Advanced preview model
-      'gemini25flash': 'gemini-2.5-flash-image'    // Faster, lower cost
-    }
+    // Image model - gemini-3-pro-image-preview works with generateContent API
+    // Note: imagen-4.0-generate-001 requires different endpoint (not generateContent)
+    image: 'gemini-3-pro-image-preview'
   },
   // Request timeouts in milliseconds
   timeouts: {
