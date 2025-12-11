@@ -4,10 +4,9 @@
  * Ensures only one instance of PrismaClient is created throughout the app
  * Prevents connection exhaustion in development (Next.js hot reload)
  *
- * NOTE: This file requires @prisma/client to be installed.
- * To use this module, run:
- *   npm install @prisma/client
- *   npm install -D prisma
+ * For Neon PostgreSQL in serverless environments, ensure your DATABASE_URL
+ * uses the pooled connection string (-pooler) with appropriate timeouts:
+ * ?connect_timeout=30&pool_timeout=30&sslmode=require
  */
 
 import { PrismaClient } from '@prisma/client';
@@ -18,7 +17,7 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   return new PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
   });
 }
 
