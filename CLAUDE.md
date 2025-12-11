@@ -41,7 +41,10 @@ When implementing or modifying API integrations, refer to these documentation fi
 
 ### Brave Search API
 - **Location**: `docs/brave-search-api-reference.md`
-- **Use for**: Web search functionality
+- **Use for**: Web search, news, images, videos, local search, AI summarization
+- **Key endpoints**: `/web/search`, `/news/search`, `/videos/search`, `/summarizer/search`
+- **Base URL**: `https://api.search.brave.com/res/v1`
+- **Env var**: `BRAVE_API_KEY`
 
 ### Decodo API
 - **Location**: `docs/decodo-api.md`
@@ -111,6 +114,13 @@ npx prisma studio
 3. Enable Google Search grounding with `tools: [{ google_search: {} }]`
 4. Use `responseMimeType: 'application/json'` with `responseSchema` for structured output
 5. Implement context caching for repeated prompts (significant cost savings)
+
+### Adding Brave Search API Features
+1. Read `docs/brave-search-api-reference.md` for complete API documentation
+2. Use `freshness` parameter (`pd`, `pw`, `pm`) for time-filtered results
+3. Enable `extra_snippets: true` for more context (Pro plans)
+4. Use `summary: true` + `/summarizer/search` endpoint for AI summaries
+5. Leverage Goggles for custom result re-ranking
 
 ### Adding Decodo API Features
 1. Read `docs/decodo-api.md` for complete API documentation
