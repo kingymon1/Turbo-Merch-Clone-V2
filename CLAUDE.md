@@ -11,7 +11,7 @@ Turbo Merch is an AI-powered merchandise platform that helps discover trends, ge
 - **Framework**: Next.js (App Router)
 - **Language**: TypeScript
 - **Database**: Prisma ORM
-- **AI Services**: Google Gemini, Grok, Perplexity
+- **AI Services**: Google Gemini, Grok, Perplexity, OpenAI
 - **Styling**: Tailwind CSS
 
 ## API Documentation References
@@ -60,6 +60,13 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://api.vectorizer.ai/api/v1`
 - **Env vars**: `VECTORIZER_API_ID`, `VECTORIZER_API_SECRET`
 
+### OpenAI API
+- **Location**: `docs/openai-api.md`
+- **Use for**: Text generation, image generation (DALL-E), embeddings, speech-to-text, text-to-speech, function calling
+- **Key models**: `gpt-4.1` (flagship), `gpt-4.1-mini` (fast), `dall-e-3` (images), `text-embedding-3-small` (embeddings)
+- **Base URL**: `https://api.openai.com/v1`
+- **Env var**: `OPENAI_API_KEY`
+
 ## Feature Documentation
 
 ### Merch Generator
@@ -80,6 +87,7 @@ Required environment variables for full functionality:
 - `BRAVE_API_KEY` - Brave Search
 - `VECTORIZER_API_ID` - Vectorizer.AI API ID
 - `VECTORIZER_API_SECRET` - Vectorizer.AI API Secret
+- `OPENAI_API_KEY` - OpenAI API
 - `DATABASE_URL` - Prisma database connection
 
 ## Common Commands
@@ -141,3 +149,11 @@ npx prisma studio
 4. Use `mode: production` for high-quality output, `mode: preview` for testing
 5. Enable `processing.palette` for limited color outputs (logos, icons)
 6. Use async workflow with `/download` endpoint for large batch operations
+
+### Adding OpenAI API Features
+1. Read `docs/openai-api.md` for complete API documentation
+2. Use `gpt-4.1-nano` for simple tasks, `gpt-4.1-mini` for medium, `gpt-4.1` for complex
+3. Enable structured outputs with `strict: true` for reliable JSON responses
+4. Use `dall-e-3` for image generation, `gpt-image-1` for latest quality
+5. Leverage Batch API for 50% cost savings on non-urgent workloads
+6. Use `text-embedding-3-small` for cost-effective similarity search
