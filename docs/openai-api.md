@@ -13,14 +13,6 @@ OpenAI provides a comprehensive suite of AI models accessible via API, including
 - **Function Calling:** Structured outputs with tool use
 - **Built-in Tools:** Web search, file search, code interpreter, computer use
 
-**Use Cases for Amazon Merch:**
-- Generate product descriptions and marketing copy
-- Create design concepts with DALL-E/GPT Image
-- Analyze trends from text data using embeddings
-- Build AI assistants for customer support
-- Automate content generation workflows
-- Function calling for API orchestration
-
 ---
 
 ## Authentication
@@ -311,23 +303,23 @@ const tools = [
   {
     type: "function",
     function: {
-      name: "get_product_data",
-      description: "Fetches product information from Amazon",
+      name: "get_weather",
+      description: "Get the current weather for a location",
       strict: true,  // Enable structured outputs
       parameters: {
         type: "object",
         properties: {
-          asin: {
+          location: {
             type: "string",
-            description: "Amazon Standard Identification Number"
+            description: "City and state, e.g., San Francisco, CA"
           },
-          marketplace: {
+          unit: {
             type: ["string", "null"],  // Optional field
-            enum: ["US", "UK", "DE", "JP"],
-            description: "Amazon marketplace"
+            enum: ["celsius", "fahrenheit"],
+            description: "Temperature unit"
           }
         },
-        required: ["asin"],
+        required: ["location"],
         additionalProperties: false
       }
     }
@@ -391,7 +383,7 @@ async function generateContent(prompt: string): Promise<string> {
   const response = await openai.chat.completions.create({
     model: 'gpt-4.1',
     messages: [
-      { role: 'system', content: 'You are a helpful assistant for Amazon Merch sellers.' },
+      { role: 'system', content: 'You are a helpful assistant.' },
       { role: 'user', content: prompt }
     ],
     temperature: 0.7,
@@ -424,20 +416,20 @@ async function streamResponse(prompt: string): Promise<void> {
 ### Function Calling
 
 ```typescript
-interface ProductData {
-  asin: string;
-  title: string;
-  price: number;
-  reviews: number;
+interface WeatherData {
+  location: string;
+  temperature: number;
+  unit: string;
+  conditions: string;
 }
 
-async function getProductInfo(asin: string): Promise<ProductData> {
+async function getWeather(location: string, unit: string = 'fahrenheit'): Promise<WeatherData> {
   // Your actual API call here
   return {
-    asin,
-    title: "Sample Product",
-    price: 19.99,
-    reviews: 150
+    location,
+    temperature: 72,
+    unit,
+    conditions: "Sunny"
   };
 }
 
@@ -446,18 +438,23 @@ async function analyzeWithTools(query: string): Promise<string> {
     {
       type: "function",
       function: {
-        name: "get_product_info",
-        description: "Get product information from Amazon by ASIN",
+        name: "get_weather",
+        description: "Get the current weather for a location",
         strict: true,
         parameters: {
           type: "object",
           properties: {
-            asin: {
+            location: {
               type: "string",
-              description: "Amazon Standard Identification Number"
+              description: "City and state, e.g., San Francisco, CA"
+            },
+            unit: {
+              type: "string",
+              enum: ["celsius", "fahrenheit"],
+              description: "Temperature unit"
             }
           },
-          required: ["asin"],
+          required: ["location"],
           additionalProperties: false
         }
       }
@@ -482,9 +479,9 @@ async function analyzeWithTools(query: string): Promise<string> {
   if (message.tool_calls) {
     // Execute each function call
     for (const toolCall of message.tool_calls) {
-      if (toolCall.function.name === 'get_product_info') {
+      if (toolCall.function.name === 'get_weather') {
         const args = JSON.parse(toolCall.function.arguments);
-        const result = await getProductInfo(args.asin);
+        const result = await getWeather(args.location, args.unit);
 
         // Add the tool response to messages
         messages.push(message);
@@ -552,7 +549,7 @@ async function generateDesignConcept(
 
 // Usage
 const design = await generateDesignConcept(
-  "A minimalist t-shirt design featuring a retro sunset over mountains with vapor wave aesthetics",
+  "A minimalist logo featuring a retro sunset over mountains with vapor wave aesthetics",
   { quality: 'hd', style: 'vivid' }
 );
 ```
@@ -631,240 +628,6 @@ async function generateSpeech(
 }
 ```
 
-### Complete Amazon Merch AI Service
-
-```typescript
-import OpenAI from 'openai';
-
-interface DesignBrief {
-  theme: string;
-  style: string;
-  targetAudience: string;
-  keywords: string[];
-}
-
-interface GeneratedContent {
-  title: string;
-  bulletPoints: string[];
-  description: string;
-  searchTerms: string[];
-  designPrompt: string;
-  imageUrl?: string;
-}
-
-class MerchAIService {
-  private openai: OpenAI;
-
-  constructor(apiKey: string) {
-    this.openai = new OpenAI({ apiKey });
-  }
-
-  async generateProductContent(brief: DesignBrief): Promise<GeneratedContent> {
-    const systemPrompt = `You are an expert Amazon Merch on Demand copywriter.
-Generate compelling, SEO-optimized product listings that follow Amazon's guidelines.
-Focus on benefits, use keywords naturally, and appeal to the target audience.`;
-
-    const userPrompt = `Create a complete product listing for a t-shirt design:
-Theme: ${brief.theme}
-Style: ${brief.style}
-Target Audience: ${brief.targetAudience}
-Keywords to include: ${brief.keywords.join(', ')}
-
-Provide:
-1. Title (max 200 characters, front-loaded with keywords)
-2. 5 bullet points (max 256 characters each)
-3. Product description (max 2000 characters)
-4. 7 backend search terms (max 250 characters total)
-5. A detailed DALL-E prompt for the design`;
-
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4.1',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'product_listing',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              title: { type: 'string' },
-              bulletPoints: {
-                type: 'array',
-                items: { type: 'string' }
-              },
-              description: { type: 'string' },
-              searchTerms: {
-                type: 'array',
-                items: { type: 'string' }
-              },
-              designPrompt: { type: 'string' }
-            },
-            required: ['title', 'bulletPoints', 'description', 'searchTerms', 'designPrompt'],
-            additionalProperties: false
-          }
-        }
-      },
-      temperature: 0.7,
-    });
-
-    const content = JSON.parse(response.choices[0].message.content || '{}');
-    return content as GeneratedContent;
-  }
-
-  async generateDesignImage(prompt: string): Promise<string> {
-    const response = await this.openai.images.generate({
-      model: 'dall-e-3',
-      prompt: `T-shirt design, print-ready, transparent background concept: ${prompt}`,
-      n: 1,
-      size: '1024x1024',
-      quality: 'hd',
-      style: 'vivid',
-    });
-
-    return response.data[0].url || '';
-  }
-
-  async analyzeTrendKeywords(
-    keywords: string[]
-  ): Promise<{ keyword: string; score: number; reasoning: string }[]> {
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4.1-mini',
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a market research analyst specializing in print-on-demand products.'
-        },
-        {
-          role: 'user',
-          content: `Analyze these keywords for Amazon Merch potential. Score 1-10 and explain:
-${keywords.join('\n')}`
-        }
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'keyword_analysis',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              analyses: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    keyword: { type: 'string' },
-                    score: { type: 'number' },
-                    reasoning: { type: 'string' }
-                  },
-                  required: ['keyword', 'score', 'reasoning'],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ['analyses'],
-            additionalProperties: false
-          }
-        }
-      },
-    });
-
-    const result = JSON.parse(response.choices[0].message.content || '{"analyses":[]}');
-    return result.analyses;
-  }
-
-  async generateDesignVariations(
-    baseDesign: string,
-    count: number = 3
-  ): Promise<string[]> {
-    const response = await this.openai.chat.completions.create({
-      model: 'gpt-4.1',
-      messages: [
-        {
-          role: 'user',
-          content: `Given this design concept: "${baseDesign}"
-Generate ${count} unique variations that could appeal to different audiences or occasions.
-Each variation should be a complete DALL-E prompt.`
-        }
-      ],
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'variations',
-          strict: true,
-          schema: {
-            type: 'object',
-            properties: {
-              prompts: {
-                type: 'array',
-                items: { type: 'string' }
-              }
-            },
-            required: ['prompts'],
-            additionalProperties: false
-          }
-        }
-      },
-    });
-
-    const result = JSON.parse(response.choices[0].message.content || '{"prompts":[]}');
-    return result.prompts;
-  }
-
-  async estimateCost(options: {
-    textGenerations: number;
-    imageGenerations: number;
-    embeddings: number;
-  }): Promise<{
-    textCost: number;
-    imageCost: number;
-    embeddingCost: number;
-    total: number;
-  }> {
-    // Assuming average token counts
-    const avgInputTokens = 500;
-    const avgOutputTokens = 800;
-
-    const textCost = options.textGenerations * (
-      (avgInputTokens / 1000000) * 2.00 +  // gpt-4.1 input
-      (avgOutputTokens / 1000000) * 8.00   // gpt-4.1 output
-    );
-
-    const imageCost = options.imageGenerations * 0.08;  // DALL-E 3 HD
-
-    const embeddingCost = options.embeddings * (500 / 1000000) * 0.02;  // text-embedding-3-small
-
-    return {
-      textCost: Math.round(textCost * 100) / 100,
-      imageCost: Math.round(imageCost * 100) / 100,
-      embeddingCost: Math.round(embeddingCost * 100) / 100,
-      total: Math.round((textCost + imageCost + embeddingCost) * 100) / 100,
-    };
-  }
-}
-
-// Usage
-const merch = new MerchAIService(process.env.OPENAI_API_KEY!);
-
-const content = await merch.generateProductContent({
-  theme: 'retro gaming',
-  style: 'pixel art',
-  targetAudience: 'millennials who grew up with 8-bit games',
-  keywords: ['retro', 'gaming', 'pixel art', '80s', 'nostalgic']
-});
-
-console.log('Generated listing:', content);
-
-if (content.designPrompt) {
-  const imageUrl = await merch.generateDesignImage(content.designPrompt);
-  console.log('Design image:', imageUrl);
-}
-```
-
 ---
 
 ## Python Implementation
@@ -888,7 +651,7 @@ response = client.chat.completions.create(
     model="gpt-4.1",
     messages=[
         {"role": "system", "content": "You are a helpful assistant."},
-        {"role": "user", "content": "Generate a product description for a vintage-style t-shirt"}
+        {"role": "user", "content": "Explain the benefits of renewable energy"}
     ],
     temperature=0.7,
     max_tokens=500
@@ -902,7 +665,7 @@ print(response.choices[0].message.content)
 ```python
 response = client.images.generate(
     model="dall-e-3",
-    prompt="A minimalist t-shirt design with mountains and sunset",
+    prompt="A minimalist illustration of mountains and sunset",
     size="1024x1024",
     quality="hd",
     n=1
@@ -917,7 +680,7 @@ print(f"Image URL: {image_url}")
 ```python
 response = client.embeddings.create(
     model="text-embedding-3-small",
-    input="vintage retro gaming t-shirt design",
+    input="artificial intelligence machine learning applications",
     dimensions=512
 )
 
@@ -934,18 +697,18 @@ tools = [
     {
         "type": "function",
         "function": {
-            "name": "analyze_keyword",
-            "description": "Analyze a keyword for Amazon Merch potential",
+            "name": "get_weather",
+            "description": "Get the current weather for a location",
             "strict": True,
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "keyword": {
+                    "location": {
                         "type": "string",
-                        "description": "The keyword to analyze"
+                        "description": "City and state, e.g., San Francisco, CA"
                     }
                 },
-                "required": ["keyword"],
+                "required": ["location"],
                 "additionalProperties": False
             }
         }
@@ -954,7 +717,7 @@ tools = [
 
 response = client.chat.completions.create(
     model="gpt-4.1",
-    messages=[{"role": "user", "content": "Analyze 'cat lover' as a merch keyword"}],
+    messages=[{"role": "user", "content": "What's the weather in San Francisco?"}],
     tools=tools,
     tool_choice="auto"
 )
@@ -974,14 +737,14 @@ For non-time-sensitive workloads, use the Batch API to save 50% on costs.
 
 ```typescript
 // Create batch file
-const batchRequests = keywords.map((keyword, index) => ({
+const batchRequests = items.map((item, index) => ({
   custom_id: `request-${index}`,
   method: 'POST',
   url: '/v1/chat/completions',
   body: {
     model: 'gpt-4.1-mini',
     messages: [
-      { role: 'user', content: `Analyze keyword: ${keyword}` }
+      { role: 'user', content: `Summarize: ${item}` }
     ],
     max_tokens: 200,
   }

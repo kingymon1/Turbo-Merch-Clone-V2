@@ -2,7 +2,7 @@
 
 ## Overview
 
-Google Gemini is a family of multimodal AI models developed by Google DeepMind. The Gemini API provides access to these models for text generation, image understanding, code generation, reasoning, and multimodal tasks. This documentation covers authentication, models, endpoints, pricing, and implementation for integration with the Amazon Merch trend research system.
+Google Gemini is a family of multimodal AI models developed by Google DeepMind. The Gemini API provides access to these models for text generation, image understanding, code generation, reasoning, and multimodal tasks. This documentation covers authentication, models, endpoints, pricing, and implementation patterns.
 
 **Key Features:**
 - Multimodal understanding (text, images, video, audio, documents)
@@ -77,14 +77,14 @@ const credentials = await auth.getApplicationDefault();
 | **Gemini 3 Pro Image** | `gemini-3-pro-image-preview` | Advanced image generation (Nano Banana) |
 | **Imagen 4** | `imagen-4.0-generate-001` | High-quality image generation |
 
-### Model Selection Guide for Amazon Merch Research
+### Model Selection Guide
 
 | Use Case | Recommended Model | Reasoning |
 |----------|-------------------|-----------|
-| Trend analysis & research | `gemini-2.5-flash` | Balance of quality and cost with thinking |
-| Batch product analysis | `gemini-2.5-flash-lite` | Cost-effective for high volume |
-| Complex market research | `gemini-2.5-pro` | Deep reasoning capabilities |
-| Design brief generation | `gemini-2.5-flash` | Good creative output |
+| General queries & research | `gemini-2.5-flash` | Balance of quality and cost with thinking |
+| High-volume batch processing | `gemini-2.5-flash-lite` | Cost-effective for high volume |
+| Complex reasoning tasks | `gemini-2.5-pro` | Deep reasoning capabilities |
+| Creative content generation | `gemini-2.5-flash` | Good creative output |
 | Real-time search grounding | `gemini-2.5-flash` | Native Google Search tool |
 
 ---
@@ -105,7 +105,7 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:g
     "contents": [
       {
         "parts": [
-          {"text": "Analyze trending t-shirt designs for summer 2025"}
+          {"text": "Explain the key features of quantum computing"}
         ]
       }
     ]
@@ -123,7 +123,7 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:s
   -H "x-goog-api-key: $GEMINI_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "contents": [{"parts": [{"text": "List 10 trending design niches"}]}]
+    "contents": [{"parts": [{"text": "List 10 emerging technology trends"}]}]
   }'
 ```
 
@@ -256,7 +256,7 @@ Ground responses with real-time web search results.
 ```json
 {
   "tools": [{"google_search": {}}],
-  "contents": [{"parts": [{"text": "What are the latest Amazon Merch design trends?"}]}]
+  "contents": [{"parts": [{"text": "What are the latest developments in renewable energy?"}]}]
 }
 ```
 
@@ -304,15 +304,15 @@ Connect Gemini to external APIs and tools.
 ```javascript
 const tools = [{
   functionDeclarations: [{
-    name: "get_amazon_trends",
-    description: "Fetch current Amazon Merch trending designs",
+    name: "get_weather",
+    description: "Get the current weather for a location",
     parameters: {
       type: "object",
       properties: {
-        category: { type: "string", description: "Product category" },
-        timeframe: { type: "string", enum: ["day", "week", "month"] }
+        location: { type: "string", description: "City and state" },
+        unit: { type: "string", enum: ["celsius", "fahrenheit"] }
       },
-      required: ["category"]
+      required: ["location"]
     }
   }]
 }];
@@ -467,9 +467,9 @@ async function streamContent(prompt: string): Promise<void> {
 ```typescript
 const response = await ai.models.generateContent({
   model: 'gemini-2.5-flash',
-  contents: 'Analyze these trending design categories',
+  contents: 'Analyze the current state of AI technology',
   config: {
-    systemInstruction: 'You are an expert Amazon Merch trend analyst. Provide actionable insights for print-on-demand designers.',
+    systemInstruction: 'You are an expert technology analyst. Provide clear, actionable insights with specific examples.',
     temperature: 0.7,
     maxOutputTokens: 2048,
   }
@@ -481,20 +481,20 @@ const response = await ai.models.generateContent({
 ```typescript
 const response = await ai.models.generateContent({
   model: 'gemini-2.5-flash',
-  contents: 'List 5 trending t-shirt design niches',
+  contents: 'List 5 emerging technology sectors',
   config: {
     responseMimeType: 'application/json',
     responseSchema: {
       type: 'object',
       properties: {
-        niches: {
+        sectors: {
           type: 'array',
           items: {
             type: 'object',
             properties: {
               name: { type: 'string' },
-              searchVolume: { type: 'string' },
-              competition: { type: 'string' },
+              marketSize: { type: 'string' },
+              growthRate: { type: 'string' },
               trendDirection: { type: 'string', enum: ['rising', 'stable', 'declining'] }
             }
           }
@@ -512,7 +512,7 @@ const data = JSON.parse(response.text);
 ```typescript
 const response = await ai.models.generateContent({
   model: 'gemini-2.5-flash',
-  contents: 'What are the current trending Amazon Merch design themes for Q1 2025?',
+  contents: 'What are the latest developments in electric vehicle technology?',
   config: {
     tools: [{ google_search: {} }]
   }
@@ -527,24 +527,24 @@ console.log(response.candidates[0].groundingMetadata);
 ```typescript
 import { FunctionDeclaration, FunctionCallingConfigMode } from '@google/genai';
 
-const getTrendsFunction: FunctionDeclaration = {
-  name: 'get_amazon_trends',
-  description: 'Fetch trending products from Amazon',
+const getWeatherFunction: FunctionDeclaration = {
+  name: 'get_weather',
+  description: 'Get the current weather for a location',
   parametersJsonSchema: {
     type: 'object',
     properties: {
-      category: { type: 'string', description: 'Product category' },
-      marketplace: { type: 'string', enum: ['US', 'UK', 'DE', 'JP'] }
+      location: { type: 'string', description: 'City and state' },
+      unit: { type: 'string', enum: ['celsius', 'fahrenheit'] }
     },
-    required: ['category']
+    required: ['location']
   }
 };
 
 const response = await ai.models.generateContent({
   model: 'gemini-2.5-flash',
-  contents: 'Find trending t-shirt designs in the US market',
+  contents: 'What is the weather like in San Francisco?',
   config: {
-    tools: [{ functionDeclarations: [getTrendsFunction] }],
+    tools: [{ functionDeclarations: [getWeatherFunction] }],
     toolConfig: {
       functionCallingConfig: {
         mode: FunctionCallingConfigMode.AUTO
@@ -568,37 +568,28 @@ if (response.functionCalls) {
 const chat = ai.chats.create({
   model: 'gemini-2.5-flash',
   config: {
-    systemInstruction: 'You are a helpful Amazon Merch research assistant.'
+    systemInstruction: 'You are a helpful research assistant.'
   }
 });
 
 // First turn
-const response1 = await chat.sendMessage('What niches are trending right now?');
+const response1 = await chat.sendMessage('What are the main applications of machine learning?');
 console.log(response1.text);
 
 // Follow-up (maintains context)
-const response2 = await chat.sendMessage('Which of those has the least competition?');
+const response2 = await chat.sendMessage('Which of those is growing fastest?');
 console.log(response2.text);
 ```
 
-### Complete Amazon Merch Research Service
+### Complete Research Service Example
 
 ```typescript
 import { GoogleGenAI } from '@google/genai';
 
-interface TrendAnalysis {
-  niche: string;
-  searchVolume: string;
-  competition: string;
-  opportunity_score: number;
-  design_suggestions: string[];
-  keywords: string[];
-}
-
-interface ResearchResult {
-  trends: TrendAnalysis[];
-  market_insights: string;
-  recommendations: string[];
+interface AnalysisResult {
+  topic: string;
+  summary: string;
+  key_points: string[];
   sources: string[];
 }
 
@@ -612,11 +603,11 @@ class GeminiResearchService {
     });
   }
 
-  async analyzeTrends(query: string): Promise<ResearchResult> {
-    const systemPrompt = `You are an expert Amazon Merch on Demand market research analyst.
-Analyze trends and provide actionable insights for print-on-demand designers.
-Always ground your analysis in current market data.
-Return structured JSON with trend analysis, market insights, and recommendations.`;
+  async analyzeWithSearch(query: string): Promise<AnalysisResult> {
+    const systemPrompt = `You are an expert research analyst.
+Analyze the topic and provide actionable insights.
+Always ground your analysis in current data.
+Return structured JSON with analysis and recommendations.`;
 
     const response = await this.ai.models.generateContent({
       model: this.model,
@@ -630,22 +621,9 @@ Return structured JSON with trend analysis, market insights, and recommendations
         responseSchema: {
           type: 'object',
           properties: {
-            trends: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  niche: { type: 'string' },
-                  searchVolume: { type: 'string' },
-                  competition: { type: 'string' },
-                  opportunity_score: { type: 'number' },
-                  design_suggestions: { type: 'array', items: { type: 'string' } },
-                  keywords: { type: 'array', items: { type: 'string' } }
-                }
-              }
-            },
-            market_insights: { type: 'string' },
-            recommendations: { type: 'array', items: { type: 'string' } },
+            topic: { type: 'string' },
+            summary: { type: 'string' },
+            key_points: { type: 'array', items: { type: 'string' } },
             sources: { type: 'array', items: { type: 'string' } }
           }
         }
@@ -655,43 +633,20 @@ Return structured JSON with trend analysis, market insights, and recommendations
     return JSON.parse(response.text);
   }
 
-  async generateDesignBrief(niche: string, keywords: string[]): Promise<string> {
-    const response = await this.ai.models.generateContent({
-      model: this.model,
-      contents: `Create a detailed design brief for an Amazon Merch t-shirt design.
-Niche: ${niche}
-Target Keywords: ${keywords.join(', ')}
-
-Include:
-1. Design concept and style recommendations
-2. Color palette suggestions
-3. Typography recommendations
-4. Key visual elements
-5. Target audience description
-6. Compliance notes for Amazon Merch`,
-      config: {
-        temperature: 0.8,
-        maxOutputTokens: 2048
-      }
-    });
-
-    return response.text;
-  }
-
-  async batchAnalyze(niches: string[]): Promise<TrendAnalysis[]> {
+  async batchAnalyze(topics: string[]): Promise<AnalysisResult[]> {
     // Use Promise.all with rate limiting for batch processing
-    const results: TrendAnalysis[] = [];
+    const results: AnalysisResult[] = [];
     const batchSize = 5;
     const delayMs = 1000; // 1 second between batches
 
-    for (let i = 0; i < niches.length; i += batchSize) {
-      const batch = niches.slice(i, i + batchSize);
+    for (let i = 0; i < topics.length; i += batchSize) {
+      const batch = topics.slice(i, i + batchSize);
       const batchResults = await Promise.all(
-        batch.map(niche => this.analyzeSingleNiche(niche))
+        batch.map(topic => this.analyzeSingleTopic(topic))
       );
       results.push(...batchResults);
 
-      if (i + batchSize < niches.length) {
+      if (i + batchSize < topics.length) {
         await this.delay(delayMs);
       }
     }
@@ -699,21 +654,19 @@ Include:
     return results;
   }
 
-  private async analyzeSingleNiche(niche: string): Promise<TrendAnalysis> {
+  private async analyzeSingleTopic(topic: string): Promise<AnalysisResult> {
     const response = await this.ai.models.generateContent({
       model: 'gemini-2.5-flash-lite', // Use lite for batch operations
-      contents: `Analyze the Amazon Merch niche: "${niche}"`,
+      contents: `Analyze: "${topic}"`,
       config: {
         responseMimeType: 'application/json',
         responseSchema: {
           type: 'object',
           properties: {
-            niche: { type: 'string' },
-            searchVolume: { type: 'string' },
-            competition: { type: 'string' },
-            opportunity_score: { type: 'number' },
-            design_suggestions: { type: 'array', items: { type: 'string' } },
-            keywords: { type: 'array', items: { type: 'string' } }
+            topic: { type: 'string' },
+            summary: { type: 'string' },
+            key_points: { type: 'array', items: { type: 'string' } },
+            sources: { type: 'array', items: { type: 'string' } }
           }
         }
       }
@@ -730,16 +683,12 @@ Include:
 // Usage
 const gemini = new GeminiResearchService();
 
-// Single trend analysis
-const trends = await gemini.analyzeTrends('trending cat-themed t-shirt designs');
-console.log(trends);
-
-// Generate design brief
-const brief = await gemini.generateDesignBrief('cat lovers', ['funny cats', 'cat mom', 'cute kittens']);
-console.log(brief);
+// Single analysis with search grounding
+const analysis = await gemini.analyzeWithSearch('latest developments in AI');
+console.log(analysis);
 
 // Batch analysis
-const batchResults = await gemini.batchAnalyze(['dog lovers', 'fitness motivation', 'retro gaming']);
+const batchResults = await gemini.batchAnalyze(['renewable energy', 'quantum computing', 'space exploration']);
 console.log(batchResults);
 ```
 
@@ -762,7 +711,7 @@ client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
 
 response = client.models.generate_content(
     model='gemini-2.5-flash',
-    contents='Analyze trending Amazon Merch design niches'
+    contents='Explain the key features of quantum computing'
 )
 print(response.text)
 ```
@@ -772,7 +721,7 @@ print(response.text)
 ```python
 for chunk in client.models.generate_content_stream(
     model='gemini-2.5-flash',
-    contents='List trending design categories'
+    contents='List emerging technology sectors'
 ):
     print(chunk.text, end='')
 ```
@@ -782,7 +731,7 @@ for chunk in client.models.generate_content_stream(
 ```python
 response = client.models.generate_content(
     model='gemini-2.5-flash',
-    contents='What are the latest Amazon Merch trends?',
+    contents='What are the latest developments in AI?',
     config={
         'tools': [{'google_search': {}}]
     }
@@ -935,31 +884,6 @@ const response = await withRetry(() =>
 3. **Monitor usage** - Set up alerts for unusual activity
 4. **Use OAuth for production** - More secure than API keys
 5. **Implement request validation** - Sanitize user inputs
-
----
-
-## Comparison with Other APIs
-
-| Feature | Gemini | Perplexity | Grok | Decodo |
-|---------|--------|------------|------|--------|
-| **Primary Use** | General AI + Search grounding | AI Research + Citations | AI Chat + X/Twitter | Web Scraping |
-| **Search Capability** | Native Google Search tool | Built-in with citations | Real-time X/Twitter | Amazon/Google templates |
-| **Structured Output** | Native JSON schema | Text-based | Text-based | Parsed HTML/JSON |
-| **Batch Processing** | Yes (50% discount) | No | No | Yes (3K URLs) |
-| **Context Window** | 1M-2M tokens | 128K tokens | 131K tokens | N/A |
-| **Free Tier** | Yes (generous) | Limited | Limited | Trial only |
-| **Best For Merch** | Trend analysis with search | Validated research | Social trends | Product data |
-
-### Recommended Usage in Amazon Merch System
-
-| Task | Primary API | Backup API |
-|------|-------------|------------|
-| Trend research | Gemini (with search grounding) | Perplexity |
-| Social trend validation | Grok | Gemini |
-| Product data scraping | Decodo | N/A |
-| Design brief generation | Gemini | Perplexity |
-| Keyword research | Gemini (with search) | Perplexity |
-| Competitor analysis | Decodo + Gemini | Perplexity |
 
 ---
 

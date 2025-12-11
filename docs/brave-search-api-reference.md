@@ -220,7 +220,7 @@ Get AI-powered summaries from web search results.
 {
   "type": "search",
   "query": {
-    "original": "amazon merch trends",
+    "original": "artificial intelligence trends",
     "show_strict_warning": false,
     "altered": null,
     "safesearch": true,
@@ -505,7 +505,7 @@ const brave = new BraveSearchClient({
 
 // Web search
 const webResults = await brave.webSearch({
-  q: 'amazon merch trending designs 2025',
+  q: 'artificial intelligence trends 2025',
   count: 20,
   country: 'US',
   search_lang: 'en',
@@ -550,10 +550,10 @@ async function searchWithSummary(query: string) {
 }
 ```
 
-### Complete Amazon Merch Research Service
+### Complete Research Service Example
 
 ```typescript
-interface TrendResult {
+interface SearchResult {
   title: string;
   url: string;
   description: string;
@@ -563,8 +563,8 @@ interface TrendResult {
 }
 
 interface ResearchResult {
-  webResults: TrendResult[];
-  newsResults: TrendResult[];
+  webResults: SearchResult[];
+  newsResults: SearchResult[];
   videoResults: any[];
   summary?: string;
   query: string;
@@ -578,13 +578,11 @@ class BraveResearchService {
     this.client = new BraveSearchClient({ apiKey });
   }
 
-  async researchTrend(query: string): Promise<ResearchResult> {
-    const trendQuery = `${query} trending designs amazon merch`;
-
+  async researchTopic(query: string): Promise<ResearchResult> {
     // Parallel requests for efficiency
     const [webSearch, newsSearch, videoSearch] = await Promise.all([
       this.client.webSearch({
-        q: trendQuery,
+        q: query,
         count: 20,
         country: 'US',
         freshness: 'pm',
@@ -592,12 +590,12 @@ class BraveResearchService {
         summary: true,
       }),
       this.client.newsSearch({
-        q: trendQuery,
+        q: query,
         count: 10,
         freshness: 'pw',
       }),
       this.client.videoSearch({
-        q: `${query} t-shirt design tutorial`,
+        q: query,
         count: 10,
       }),
     ]);
@@ -620,12 +618,12 @@ class BraveResearchService {
       newsResults: this.formatNewsResults(newsSearch.news?.results || []),
       videoResults: videoSearch.videos?.results || [],
       summary: summaryText,
-      query: trendQuery,
+      query: query,
       timestamp: new Date().toISOString(),
     };
   }
 
-  private formatWebResults(results: any[]): TrendResult[] {
+  private formatWebResults(results: any[]): SearchResult[] {
     return results.map(r => ({
       title: r.title,
       url: r.url,
@@ -636,7 +634,7 @@ class BraveResearchService {
     }));
   }
 
-  private formatNewsResults(results: any[]): TrendResult[] {
+  private formatNewsResults(results: any[]): SearchResult[] {
     return results.map(r => ({
       title: r.title,
       url: r.url,
@@ -645,43 +643,15 @@ class BraveResearchService {
       age: r.age,
     }));
   }
-
-  async searchNiche(niche: string): Promise<TrendResult[]> {
-    const results = await this.client.webSearch({
-      q: `"${niche}" amazon merch print on demand`,
-      count: 20,
-      freshness: 'pm',
-    });
-
-    return this.formatWebResults(results.web?.results || []);
-  }
-
-  async getCompetitorInsights(keyword: string): Promise<any> {
-    const results = await this.client.webSearch({
-      q: `${keyword} amazon merch bestseller analysis`,
-      count: 15,
-      result_filter: 'web,discussions',
-      extra_snippets: true,
-    });
-
-    return {
-      articles: this.formatWebResults(results.web?.results || []),
-      discussions: results.discussions?.results || [],
-    };
-  }
 }
 
 // Usage
 const research = new BraveResearchService(process.env.BRAVE_API_KEY!);
 
-// Research a trend
-const trendData = await research.researchTrend('cat lover');
-console.log('Summary:', trendData.summary);
-console.log('Top Results:', trendData.webResults.slice(0, 5));
-
-// Search specific niche
-const nicheResults = await research.searchNiche('retro gaming');
-console.log('Niche Results:', nicheResults);
+// Research a topic
+const data = await research.researchTopic('machine learning applications');
+console.log('Summary:', data.summary);
+console.log('Top Results:', data.webResults.slice(0, 5));
 ```
 
 ### Error Handling with Retry
@@ -744,7 +714,7 @@ import os
 brave = Brave(api_key=os.environ.get('BRAVE_API_KEY'))
 
 # Web search
-results = brave.search(q="amazon merch trends", count=20)
+results = brave.search(q="machine learning trends", count=20)
 
 # Access results
 web_results = results.web_results
@@ -764,7 +734,7 @@ avg_score = results.average_product_review_score()
 ```python
 # Use a Goggle to prioritize specific sources
 results = brave.search(
-    q="print on demand design tips",
+    q="software engineering best practices",
     count=20,
     goggles_id="https://raw.githubusercontent.com/example/goggle.goggle"
 )
@@ -951,34 +921,6 @@ const results = await brave.webSearch({
 2. **Validate user inputs** - Sanitize search queries
 3. **Monitor usage** - Track API consumption
 4. **Rotate keys periodically** - Regenerate API keys
-
----
-
-## Comparison with Other APIs
-
-| Feature | Brave Search | Google PSE | Bing (Retired) | Perplexity |
-|---------|--------------|------------|----------------|------------|
-| **Index Size** | 35B+ pages | Google index | Bing index | Multiple sources |
-| **Independence** | Own index | Google-dependent | Microsoft | Various APIs |
-| **Privacy** | Privacy-first | Tracking | Tracking | Varies |
-| **Free Tier** | 2K/month | Limited | N/A | Limited |
-| **Cost (CPM)** | $3-9 | $5+ | N/A | Higher |
-| **AI Summary** | Yes | No | No | Native |
-| **Local Search** | Yes (Pro) | No | Yes | No |
-| **Goggles** | Yes | No | No | No |
-| **MCP Server** | Official | Community | N/A | Community |
-
-### Recommended Usage in Amazon Merch System
-
-| Task | Primary API | Why |
-|------|-------------|-----|
-| Trend discovery | Brave Search | Independent index, fresh results |
-| News monitoring | Brave News | Dedicated news endpoint |
-| Tutorial research | Brave Video | YouTube + other platforms |
-| Competitor analysis | Brave + Goggles | Custom ranking |
-| Real-time trends | Grok | X/Twitter native |
-| Deep research | Perplexity | AI synthesis |
-| Product data | Decodo | Direct scraping |
 
 ---
 

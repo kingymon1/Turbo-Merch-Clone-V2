@@ -750,28 +750,6 @@ SCRAPER_API_USERNAME=your_scraper_username
 SCRAPER_API_PASSWORD=your_scraper_password
 ```
 
-## Comparison with Other APIs
-
-| Feature | Decodo | Perplexity | Grok |
-|---------|--------|------------|------|
-| **Primary Use** | Web scraping | AI-powered research | AI chat with search |
-| **Amazon Scraping** | ✅ Native templates | ❌ | ❌ |
-| **Google Scraping** | ✅ Native templates | ❌ (different approach) | Via web_search tool |
-| **Social Media** | ✅ TikTok, Reddit, YouTube | ❌ | ✅ X/Twitter native |
-| **Pricing Model** | Per request | Per request + tokens | Per token |
-| **JS Rendering** | ✅ Built-in | N/A | N/A |
-| **Raw HTML Access** | ✅ | ❌ | ❌ |
-| **Structured Parsing** | ✅ | ✅ (citations) | ✅ |
-| **Batch Processing** | ✅ Up to 3000 | ❌ | ❌ |
-| **MCP Integration** | ✅ | ✅ | ❌ |
-
-**Use Decodo when you need:**
-- Direct access to Amazon, Walmart, Target product data
-- Raw HTML scraping with JS rendering
-- Large-scale batch scraping operations
-- Geographic IP targeting for localized results
-- eCommerce price monitoring and competitive intelligence
-
 ---
 
 *Documentation compiled from official Decodo docs and API reference. Last updated: December 2025.*

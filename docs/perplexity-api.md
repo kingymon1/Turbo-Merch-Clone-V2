@@ -401,9 +401,9 @@ async function queryPerplexity(
 }
 
 // Usage
-const answer = await queryPerplexity('What are trending t-shirt designs?', {
+const answer = await queryPerplexity('What are the latest developments in renewable energy?', {
   model: 'sonar-pro',
-  searchDomains: ['amazon.com', 'etsy.com'],
+  searchDomains: ['nature.com', 'sciencedirect.com'],
   recencyFilter: 'week'
 });
 ```
@@ -541,9 +541,9 @@ def query_perplexity(
 
 # Usage
 result = query_perplexity(
-    "What are trending print-on-demand niches?",
+    "What are the latest developments in machine learning?",
     model="sonar-pro",
-    search_domains=["amazon.com", "etsy.com", "reddit.com"],
+    search_domains=["arxiv.org", "github.com", "reddit.com"],
     recency_filter="week"
 )
 

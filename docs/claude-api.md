@@ -16,14 +16,6 @@ Anthropic's Claude API provides access to a family of AI models designed for saf
 - **Structured Outputs:** Guaranteed JSON schema conformance
 - **Web Search & Fetch:** Built-in tools for web access
 
-**Use Cases for Amazon Merch:**
-- Generate SEO-optimized product listings and descriptions
-- Analyze competitor products and market trends
-- Build intelligent research assistants
-- Create automated content generation pipelines
-- Develop multi-step workflows with tool orchestration
-- Process and analyze design documents and images
-
 ---
 
 ## Authentication
@@ -223,7 +215,7 @@ const response = await anthropic.messages.create({
   model: "claude-sonnet-4-5-20250929",
   max_tokens: 1024,
   messages: [
-    { role: "user", content: "What are the key elements of a successful Amazon product listing?" }
+    { role: "user", content: "What are the key principles of effective technical documentation?" }
   ]
 });
 ```
@@ -234,9 +226,9 @@ const response = await anthropic.messages.create({
 const response = await anthropic.messages.create({
   model: "claude-sonnet-4-5-20250929",
   max_tokens: 2048,
-  system: "You are an expert Amazon Merch on Demand consultant specializing in SEO-optimized product listings.",
+  system: "You are an expert technical writer specializing in clear, concise documentation.",
   messages: [
-    { role: "user", content: "Create a title and bullet points for a vintage gaming t-shirt design." }
+    { role: "user", content: "Explain the benefits of modular software architecture." }
   ]
 });
 ```
@@ -248,9 +240,9 @@ const response = await anthropic.messages.create({
   model: "claude-sonnet-4-5-20250929",
   max_tokens: 1024,
   messages: [
-    { role: "user", content: "I'm designing a t-shirt for cat lovers." },
-    { role: "assistant", content: "Great choice! Cat-themed products are popular..." },
-    { role: "user", content: "What keywords should I target?" }
+    { role: "user", content: "I'm building a REST API for a mobile app." },
+    { role: "assistant", content: "Great! Let me help you with that..." },
+    { role: "user", content: "What authentication method should I use?" }
   ]
 });
 ```
@@ -275,7 +267,7 @@ const response = await anthropic.messages.create({
         },
         {
           type: "text",
-          text: "Analyze this t-shirt design for potential Amazon Merch listing."
+          text: "Analyze this image and describe its key visual elements."
         }
       ]
     }
@@ -352,22 +344,22 @@ interface MessagesResponse {
 ```typescript
 const tools = [
   {
-    name: "get_product_data",
-    description: "Fetch product information from Amazon by ASIN",
+    name: "get_weather",
+    description: "Get the current weather for a location",
     input_schema: {
       type: "object",
       properties: {
-        asin: {
+        location: {
           type: "string",
-          description: "Amazon Standard Identification Number"
+          description: "City and state, e.g., San Francisco, CA"
         },
-        marketplace: {
+        unit: {
           type: "string",
-          enum: ["US", "UK", "DE", "JP"],
-          description: "Amazon marketplace"
+          enum: ["celsius", "fahrenheit"],
+          description: "Temperature unit"
         }
       },
-      required: ["asin"]
+      required: ["location"]
     }
   }
 ];
@@ -380,19 +372,19 @@ Guarantee schema conformance with `strict: true`:
 ```typescript
 const tools = [
   {
-    name: "analyze_keyword",
-    description: "Analyze a keyword for Amazon Merch potential",
+    name: "search_database",
+    description: "Search the database for records",
     strict: true,  // Enables guaranteed schema conformance
     input_schema: {
       type: "object",
       properties: {
-        keyword: { type: "string" },
-        category: {
+        query: { type: "string" },
+        table: {
           type: "string",
-          enum: ["apparel", "accessories", "home"]
+          enum: ["users", "products", "orders"]
         }
       },
-      required: ["keyword", "category"],
+      required: ["query", "table"],
       additionalProperties: false  // Required for strict mode
     }
   }
@@ -412,7 +404,7 @@ const response = await anthropic.messages.create({
   max_tokens: 1024,
   tools: tools,
   messages: [
-    { role: "user", content: "Get product data for ASIN B08N5WRWNW" }
+    { role: "user", content: "What's the weather in San Francisco?" }
   ]
 });
 
@@ -429,7 +421,7 @@ if (response.stop_reason === "tool_use") {
     max_tokens: 1024,
     tools: tools,
     messages: [
-      { role: "user", content: "Get product data for ASIN B08N5WRWNW" },
+      { role: "user", content: "What's the weather in San Francisco?" },
       { role: "assistant", content: response.content },
       {
         role: "user",
@@ -463,7 +455,7 @@ const response = await anthropic.messages.create({
     }
   ],
   messages: [
-    { role: "user", content: "What are the current trending t-shirt designs?" }
+    { role: "user", content: "What are the latest developments in AI technology?" }
   ]
 });
 
@@ -500,7 +492,7 @@ const response = await anthropic.messages.create({
     budget_tokens: 10000  // Minimum 1024
   },
   messages: [
-    { role: "user", content: "Analyze the market potential for a quantum computing themed t-shirt line." }
+    { role: "user", content: "Analyze the advantages and disadvantages of microservices architecture." }
   ]
 });
 
@@ -529,7 +521,7 @@ const response = await anthropic.messages.create({
   },
   tools: tools,
   messages: [
-    { role: "user", content: "Research and analyze the top 5 competitors for cat-themed t-shirts" }
+    { role: "user", content: "Research and analyze the top 5 cloud computing platforms" }
   ]
 });
 ```
@@ -564,7 +556,7 @@ const response = await anthropic.messages.create({
   system: [
     {
       type: "text",
-      text: "You are an Amazon Merch expert...",  // This gets cached
+      text: "You are an expert technical assistant...",  // This gets cached
       cache_control: { type: "ephemeral" }
     }
   ],
@@ -703,7 +695,7 @@ const batch = await anthropic.messages.batches.create({
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 1024,
         messages: [
-          { role: "user", content: "Analyze keyword: vintage gaming" }
+          { role: "user", content: "Summarize: cloud computing benefits" }
         ]
       }
     },
@@ -713,7 +705,7 @@ const batch = await anthropic.messages.batches.create({
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 1024,
         messages: [
-          { role: "user", content: "Analyze keyword: cat lover" }
+          { role: "user", content: "Summarize: machine learning applications" }
         ]
       }
     }
@@ -761,288 +753,6 @@ const anthropic = new Anthropic({
 });
 ```
 
-### Complete Amazon Merch Service
-
-```typescript
-import Anthropic from '@anthropic-ai/sdk';
-
-interface ProductListing {
-  title: string;
-  bulletPoints: string[];
-  description: string;
-  searchTerms: string[];
-}
-
-interface KeywordAnalysis {
-  keyword: string;
-  score: number;
-  competition: 'low' | 'medium' | 'high';
-  reasoning: string;
-}
-
-class ClaudeMerchService {
-  private anthropic: Anthropic;
-  private model = "claude-sonnet-4-5-20250929";
-
-  constructor(apiKey: string) {
-    this.anthropic = new Anthropic({ apiKey });
-  }
-
-  async generateProductListing(
-    designDescription: string,
-    targetKeywords: string[]
-  ): Promise<ProductListing> {
-    const response = await this.anthropic.messages.create({
-      model: this.model,
-      max_tokens: 2048,
-      system: [
-        {
-          type: "text",
-          text: `You are an expert Amazon Merch on Demand listing optimizer.
-Create SEO-optimized listings that follow Amazon's guidelines:
-- Title: Max 200 characters, front-loaded with keywords
-- Bullet points: 5 points, max 256 characters each
-- Description: Max 2000 characters, benefit-focused
-- Search terms: 7 terms, max 250 characters total
-
-Always respond with valid JSON matching the ProductListing schema.`,
-          cache_control: { type: "ephemeral" }
-        }
-      ],
-      messages: [
-        {
-          role: "user",
-          content: `Create a product listing for this t-shirt design:
-Description: ${designDescription}
-Target keywords: ${targetKeywords.join(', ')}`
-        }
-      ],
-      tools: [
-        {
-          name: "create_listing",
-          description: "Create a structured product listing",
-          strict: true,
-          input_schema: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              bulletPoints: {
-                type: "array",
-                items: { type: "string" }
-              },
-              description: { type: "string" },
-              searchTerms: {
-                type: "array",
-                items: { type: "string" }
-              }
-            },
-            required: ["title", "bulletPoints", "description", "searchTerms"],
-            additionalProperties: false
-          }
-        }
-      ],
-      tool_choice: { type: "tool", name: "create_listing" }
-    });
-
-    const toolUse = response.content.find(b => b.type === "tool_use");
-    if (toolUse && toolUse.type === "tool_use") {
-      return toolUse.input as ProductListing;
-    }
-
-    throw new Error("Failed to generate listing");
-  }
-
-  async analyzeKeywords(keywords: string[]): Promise<KeywordAnalysis[]> {
-    const response = await this.anthropic.messages.create({
-      model: this.model,
-      max_tokens: 4096,
-      thinking: {
-        type: "enabled",
-        budget_tokens: 5000
-      },
-      messages: [
-        {
-          role: "user",
-          content: `Analyze these keywords for Amazon Merch potential:
-${keywords.map((k, i) => `${i + 1}. ${k}`).join('\n')}
-
-For each keyword, provide:
-- Score (1-10)
-- Competition level (low/medium/high)
-- Reasoning`
-        }
-      ],
-      tools: [
-        {
-          name: "keyword_analysis",
-          strict: true,
-          input_schema: {
-            type: "object",
-            properties: {
-              analyses: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    keyword: { type: "string" },
-                    score: { type: "number" },
-                    competition: {
-                      type: "string",
-                      enum: ["low", "medium", "high"]
-                    },
-                    reasoning: { type: "string" }
-                  },
-                  required: ["keyword", "score", "competition", "reasoning"],
-                  additionalProperties: false
-                }
-              }
-            },
-            required: ["analyses"],
-            additionalProperties: false
-          }
-        }
-      ],
-      tool_choice: { type: "tool", name: "keyword_analysis" }
-    });
-
-    const toolUse = response.content.find(b => b.type === "tool_use");
-    if (toolUse && toolUse.type === "tool_use") {
-      return (toolUse.input as { analyses: KeywordAnalysis[] }).analyses;
-    }
-
-    throw new Error("Failed to analyze keywords");
-  }
-
-  async analyzeDesignImage(imageBase64: string): Promise<string> {
-    const response = await this.anthropic.messages.create({
-      model: this.model,
-      max_tokens: 2048,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/png",
-                data: imageBase64
-              }
-            },
-            {
-              type: "text",
-              text: `Analyze this t-shirt design for Amazon Merch:
-1. Describe the design elements
-2. Suggest target audience
-3. Recommend keywords
-4. Identify potential issues (trademark, quality, etc.)
-5. Rate marketability (1-10)`
-            }
-          ]
-        }
-      ]
-    });
-
-    const textBlock = response.content.find(b => b.type === "text");
-    return textBlock?.type === "text" ? textBlock.text : "";
-  }
-
-  async researchTrends(topic: string): Promise<string> {
-    const response = await this.anthropic.messages.create({
-      model: this.model,
-      max_tokens: 4096,
-      tools: [
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-          max_uses: 5
-        }
-      ],
-      messages: [
-        {
-          role: "user",
-          content: `Research current trends for "${topic}" in the print-on-demand / t-shirt market.
-Include:
-- Popular sub-niches
-- Trending designs styles
-- Seasonal opportunities
-- Competition analysis`
-        }
-      ]
-    });
-
-    const textBlock = response.content.find(b => b.type === "text");
-    return textBlock?.type === "text" ? textBlock.text : "";
-  }
-
-  async batchAnalyzeKeywords(keywords: string[]): Promise<void> {
-    const requests = keywords.map((keyword, index) => ({
-      custom_id: `keyword-${index}`,
-      params: {
-        model: this.model,
-        max_tokens: 500,
-        messages: [
-          {
-            role: "user" as const,
-            content: `Analyze "${keyword}" for Amazon Merch. Score 1-10, competition level, and brief reasoning. Respond in JSON.`
-          }
-        ]
-      }
-    }));
-
-    const batch = await this.anthropic.messages.batches.create({ requests });
-    console.log("Batch created:", batch.id);
-    console.log("Check status with: anthropic.messages.batches.retrieve(batch.id)");
-  }
-
-  estimateCost(options: {
-    inputTokens: number;
-    outputTokens: number;
-    cached?: boolean;
-    batch?: boolean;
-  }): number {
-    // Sonnet 4.5 pricing
-    let inputRate = 3.00;  // per 1M tokens
-    let outputRate = 15.00;
-
-    if (options.cached) {
-      inputRate = 0.30;  // Cache read rate
-    }
-
-    if (options.batch) {
-      inputRate *= 0.5;
-      outputRate *= 0.5;
-    }
-
-    const inputCost = (options.inputTokens / 1_000_000) * inputRate;
-    const outputCost = (options.outputTokens / 1_000_000) * outputRate;
-
-    return Math.round((inputCost + outputCost) * 10000) / 10000;
-  }
-}
-
-// Usage
-const claude = new ClaudeMerchService(process.env.ANTHROPIC_API_KEY!);
-
-// Generate listing
-const listing = await claude.generateProductListing(
-  "A vintage-style pixel art design featuring a retro game controller with 80s synthwave colors",
-  ["retro gaming", "pixel art", "80s", "gamer gift", "vintage"]
-);
-
-console.log("Generated listing:", listing);
-
-// Analyze keywords
-const analysis = await claude.analyzeKeywords([
-  "cat mom",
-  "dog dad",
-  "plant parent",
-  "coffee lover"
-]);
-
-console.log("Keyword analysis:", analysis);
-```
-
 ---
 
 ## Python Implementation
@@ -1066,7 +776,7 @@ response = client.messages.create(
     model="claude-sonnet-4-5-20250929",
     max_tokens=1024,
     messages=[
-        {"role": "user", "content": "Create a product title for a cat-themed t-shirt"}
+        {"role": "user", "content": "Explain the benefits of microservices architecture"}
     ]
 )
 
@@ -1081,21 +791,20 @@ response = client.messages.create(
     max_tokens=1024,
     tools=[
         {
-            "name": "analyze_keyword",
-            "description": "Analyze keyword potential",
+            "name": "get_weather",
+            "description": "Get current weather for a location",
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "keyword": {"type": "string"},
-                    "score": {"type": "number"},
-                    "reasoning": {"type": "string"}
+                    "location": {"type": "string"},
+                    "unit": {"type": "string", "enum": ["celsius", "fahrenheit"]}
                 },
-                "required": ["keyword", "score", "reasoning"]
+                "required": ["location"]
             }
         }
     ],
     messages=[
-        {"role": "user", "content": "Analyze 'vintage gaming' as a merch keyword"}
+        {"role": "user", "content": "What's the weather in San Francisco?"}
     ]
 )
 
@@ -1253,20 +962,6 @@ ANTHROPIC_BASE_URL=https://api.anthropic.com  # For proxies
 - **SDK (Python):** https://github.com/anthropics/anthropic-sdk-python
 - **Model Deprecations:** https://docs.anthropic.com/en/docs/about-claude/models/model-deprecations
 - **Status:** https://status.anthropic.com
-
----
-
-## Comparison with OpenAI
-
-| Feature | Claude | OpenAI |
-|---------|--------|--------|
-| Best coding model | Sonnet 4.5 | GPT-4.1 |
-| Visible reasoning | Extended thinking | - |
-| Prompt caching | Native (90% savings) | 50-90% savings |
-| Batch discount | 50% | 50% |
-| Context window | 200K (1M beta) | 1M (GPT-4.1) |
-| Document support | Native PDF | File API |
-| Citations | Native feature | - |
 
 ---
 
