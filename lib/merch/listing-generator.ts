@@ -7,6 +7,12 @@
  * Phase 7A Enhancement: Now integrates marketplace intelligence to inject
  * proven keywords from successful MBA products into listing generation.
  *
+ * WORLD-CLASS UPDATE: Now uses multi-source keyword intelligence including:
+ * - Amazon autocomplete suggestions (what customers actually search)
+ * - Competitor title analysis (winning patterns from top BSR products)
+ * - Customer language from reviews (actual words customers use)
+ * - Long-tail keyword extraction
+ *
  * NOTE: Phase 7B validation removed - was stripping too many useful words.
  * Will be re-added later in revised format.
  */
@@ -19,6 +25,11 @@ import {
   isDatabaseConfigured,
 } from '@/services/marketplaceLearning';
 import { scrapeNicheOnDemand } from '@/services/marketplaceBootstrap';
+import {
+  buildKeywordIntelligence,
+  KeywordIntelligence,
+  isApiConfigured as isMarketplaceApiConfigured,
+} from '@/services/marketplaceIntelligence';
 // NOTE: Validation import removed - will be re-added later
 // import {
 //   validateMerchListing,
@@ -356,4 +367,348 @@ export function optimizeTitle(title: string, maxLength: number = 160): string {
   const lastSpace = truncated.lastIndexOf(' ');
 
   return lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+}
+
+// ============================================================================
+// WORLD-CLASS LISTING GENERATION WITH MULTI-SOURCE KEYWORD INTELLIGENCE
+// ============================================================================
+
+export interface EnhancedListingResult extends ListingResult {
+  keywordIntelligence?: {
+    autocompleteUsed: string[];
+    competitorKeywordsUsed: string[];
+    customerLanguageUsed: string[];
+    titlePatternUsed?: string;
+  };
+}
+
+/**
+ * Generate a world-class listing using multi-source keyword intelligence
+ *
+ * This enhanced version:
+ * 1. Fetches Amazon autocomplete suggestions (real customer searches)
+ * 2. Analyzes competitor titles from top BSR products
+ * 3. Extracts customer language from product reviews
+ * 4. Applies learned title patterns from successful listings
+ */
+export async function generateEnhancedListing(
+  phrase: string,
+  niche: string,
+  tone?: string,
+  style?: string
+): Promise<EnhancedListingResult> {
+  console.log(`[ListingGenerator] Generating enhanced listing for "${phrase}" in ${niche}`);
+
+  // Step 1: Build comprehensive keyword intelligence
+  let keywordIntel: KeywordIntelligence | null = null;
+
+  if (isMarketplaceApiConfigured()) {
+    try {
+      keywordIntel = await buildKeywordIntelligence(niche);
+      console.log(`[ListingGenerator] Keyword intelligence gathered: ${keywordIntel.autocomplete.length} autocomplete, ${keywordIntel.competitorKeywords.length} competitor keywords`);
+    } catch (error) {
+      console.log('[ListingGenerator] Keyword intelligence failed, using fallback:', error);
+    }
+  }
+
+  // Step 2: Also get the existing marketplace data
+  let marketplaceData: OptimizedKeywords | null = null;
+  let marketplaceEnhanced = false;
+
+  try {
+    const dbConfigured = await isDatabaseConfigured();
+    if (dbConfigured) {
+      marketplaceData = await getOptimizedKeywordsForNiche(niche);
+      if (marketplaceData && marketplaceData.confidence >= 30) {
+        marketplaceEnhanced = true;
+      } else {
+        // Auto-scrape if needed
+        const scrapeResult = await scrapeNicheOnDemand(niche);
+        if (scrapeResult.success && scrapeResult.confidence >= 30) {
+          marketplaceData = await getOptimizedKeywordsForNiche(niche);
+          if (marketplaceData) marketplaceEnhanced = true;
+        }
+      }
+    }
+  } catch (error) {
+    console.log('[ListingGenerator] Marketplace lookup failed:', error);
+  }
+
+  // Step 3: Build super-enhanced keywords combining all sources
+  const enhancedKeywords = buildSuperEnhancedKeywords(phrase, niche, tone, keywordIntel, marketplaceData);
+
+  // Step 4: Build customer phrases from real review language
+  const customerPhrases = buildRealCustomerPhrases(phrase, niche, tone, keywordIntel, marketplaceData);
+
+  // Step 5: Build comprehensive context for AI
+  const aiContext = buildComprehensiveContext(phrase, niche, keywordIntel, marketplaceData);
+
+  // Step 6: Create trend data with all intelligence
+  const trendData: TrendData = {
+    topic: phrase,
+    platform: 'Merch Generator - Enhanced',
+    volume: marketplaceEnhanced || keywordIntel ? 'Intelligence-Driven' : 'Generated',
+    sentiment: tone || 'Funny',
+    keywords: enhancedKeywords,
+    description: aiContext,
+    visualStyle: style || 'Bold modern typography with clean design',
+    typographyStyle: style || 'Bold sans-serif',
+    designText: phrase,
+    customerPhrases,
+    audienceProfile: niche,
+    marketplaceContext: aiContext,
+  };
+
+  try {
+    // Generate the listing
+    const listing: GeneratedListing = await geminiGenerateListing(trendData);
+
+    // Track which intelligence sources were used
+    const intelligenceUsed = {
+      autocompleteUsed: keywordIntel?.autocomplete.slice(0, 5) || [],
+      competitorKeywordsUsed: keywordIntel?.competitorKeywords.slice(0, 5) || [],
+      customerLanguageUsed: keywordIntel?.customerLanguage.slice(0, 5) || [],
+      titlePatternUsed: keywordIntel?.titlePatterns[0]?.pattern,
+    };
+
+    return {
+      title: listing.title,
+      bullets: [listing.bullet1, listing.bullet2].filter(Boolean),
+      description: listing.description,
+      keywords: enhancedKeywords,
+      brand: listing.brand || '',
+      marketplaceEnhanced,
+      marketplaceConfidence: marketplaceData?.confidence,
+      keywordIntelligence: intelligenceUsed,
+    };
+
+  } catch (error) {
+    console.error('[ListingGenerator] Enhanced generation failed:', error);
+
+    // Fallback to basic generation
+    return generateFallbackListing(phrase, niche, tone);
+  }
+}
+
+/**
+ * Build super-enhanced keywords from all sources
+ */
+function buildSuperEnhancedKeywords(
+  phrase: string,
+  niche: string,
+  tone: string | undefined,
+  keywordIntel: KeywordIntelligence | null,
+  marketplaceData: OptimizedKeywords | null
+): string[] {
+  const keywords = new Set<string>();
+
+  // Base keywords
+  keywords.add(phrase.toLowerCase());
+  keywords.add(niche.toLowerCase());
+  if (tone) keywords.add(tone.toLowerCase());
+  keywords.add('shirt');
+  keywords.add('gift');
+
+  // Long-tail from phrase
+  const phraseParts = phrase.toLowerCase().split(/\s+/);
+  if (phraseParts.length >= 2) {
+    keywords.add(`${phrase.toLowerCase()} shirt`);
+    keywords.add(`${niche} ${phrase.toLowerCase()}`);
+    keywords.add(`funny ${niche} shirt`);
+  }
+
+  // Add autocomplete suggestions (highest priority - real customer searches)
+  if (keywordIntel?.autocomplete.length) {
+    for (const suggestion of keywordIntel.autocomplete.slice(0, 8)) {
+      keywords.add(suggestion.toLowerCase());
+    }
+  }
+
+  // Add competitor keywords (proven to work)
+  if (keywordIntel?.competitorKeywords.length) {
+    for (const keyword of keywordIntel.competitorKeywords.slice(0, 10)) {
+      keywords.add(keyword.toLowerCase());
+    }
+  }
+
+  // Add long-tail phrases
+  if (keywordIntel?.longTail.length) {
+    for (const lt of keywordIntel.longTail.slice(0, 5)) {
+      keywords.add(lt.toLowerCase());
+    }
+  }
+
+  // Add marketplace primary keywords
+  if (marketplaceData?.primaryKeywords.length) {
+    for (const pk of marketplaceData.primaryKeywords.slice(0, 5)) {
+      keywords.add(pk.toLowerCase());
+    }
+  }
+
+  return Array.from(keywords).slice(0, 25);
+}
+
+/**
+ * Build customer phrases from real review language
+ */
+function buildRealCustomerPhrases(
+  phrase: string,
+  niche: string,
+  tone: string | undefined,
+  keywordIntel: KeywordIntelligence | null,
+  marketplaceData: OptimizedKeywords | null
+): string[] {
+  const phrases: string[] = [];
+
+  // Start with customer language from reviews (most authentic)
+  if (keywordIntel?.customerLanguage.length) {
+    phrases.push(...keywordIntel.customerLanguage.slice(0, 4));
+  }
+
+  // Add bullet formulas filled in with our data
+  if (keywordIntel?.bulletFormulas.length) {
+    const formula = keywordIntel.bulletFormulas[0];
+    const filled = formula.formula
+      .replace('{audience}', niche)
+      .replace('{niche}', niche)
+      .replace('{behavior}', `love ${tone || 'funny'} shirts`)
+      .replace('{adjective}', tone || 'hilarious')
+      .replace('{trait}', 'personality')
+      .replace('{occasion}', 'birthdays');
+    phrases.push(filled);
+  }
+
+  // Add marketplace-informed phrases
+  if (marketplaceData?.mbaInsights?.commonTones.length) {
+    if (marketplaceData.mbaInsights.commonTones.includes('gift-focused')) {
+      phrases.push(`Makes the perfect gift for ${niche}`);
+    }
+    if (marketplaceData.mbaInsights.commonTones.includes('funny')) {
+      phrases.push('Gets laughs and compliments every time');
+    }
+  }
+
+  // Default phrases if we have nothing
+  if (phrases.length === 0) {
+    phrases.push(
+      `Perfect for ${niche}`,
+      `Great ${tone || 'funny'} gift idea`,
+      'Premium quality that lasts'
+    );
+  }
+
+  return phrases.slice(0, 6);
+}
+
+/**
+ * Build comprehensive context for AI listing generation
+ */
+function buildComprehensiveContext(
+  phrase: string,
+  niche: string,
+  keywordIntel: KeywordIntelligence | null,
+  marketplaceData: OptimizedKeywords | null
+): string {
+  const sections: string[] = [
+    '═══════════════════════════════════════════════════════════════',
+    'COMPREHENSIVE KEYWORD INTELLIGENCE',
+    '═══════════════════════════════════════════════════════════════',
+    '',
+    `Design Text: "${phrase}"`,
+    `Target Niche: ${niche}`,
+    '',
+  ];
+
+  // Autocomplete section
+  if (keywordIntel?.autocomplete.length) {
+    sections.push(
+      '─── AMAZON AUTOCOMPLETE (What Customers Search) ───',
+      keywordIntel.autocomplete.slice(0, 10).join(', '),
+      '',
+      'USE THESE EXACT PHRASES - they are what customers type into Amazon!',
+      ''
+    );
+  }
+
+  // Competitor analysis section
+  if (keywordIntel?.competitorKeywords.length) {
+    sections.push(
+      '─── COMPETITOR KEYWORDS (Top BSR Product Titles) ───',
+      keywordIntel.competitorKeywords.slice(0, 15).join(', '),
+      ''
+    );
+  }
+
+  // Title patterns section
+  if (keywordIntel?.titlePatterns.length) {
+    sections.push(
+      '─── WINNING TITLE PATTERNS ───',
+    );
+    for (const pattern of keywordIntel.titlePatterns.slice(0, 3)) {
+      sections.push(`• ${pattern.pattern} (${Math.round(pattern.successRate * 100)}% frequency)`);
+      if (pattern.examples.length) {
+        sections.push(`  Example: "${pattern.examples[0]}"`);
+      }
+    }
+    sections.push('');
+  }
+
+  // Customer language section
+  if (keywordIntel?.customerLanguage.length) {
+    sections.push(
+      '─── CUSTOMER LANGUAGE (From Reviews) ───',
+      'These are actual phrases customers use:',
+      keywordIntel.customerLanguage.slice(0, 8).join(', '),
+      '',
+      'Use this language in bullets - it resonates with buyers!',
+      ''
+    );
+  }
+
+  // Long-tail section
+  if (keywordIntel?.longTail.length) {
+    sections.push(
+      '─── LONG-TAIL KEYWORDS (High-Value) ───',
+      keywordIntel.longTail.slice(0, 8).join(', '),
+      ''
+    );
+  }
+
+  // Bullet formulas
+  if (keywordIntel?.bulletFormulas.length) {
+    sections.push(
+      '─── PROVEN BULLET FORMULAS ───',
+    );
+    for (const formula of keywordIntel.bulletFormulas.slice(0, 3)) {
+      sections.push(`• ${formula.formula}`);
+    }
+    sections.push('');
+  }
+
+  // Marketplace data
+  if (marketplaceData) {
+    sections.push(
+      '─── MARKETPLACE INTELLIGENCE ───',
+      `Saturation: ${marketplaceData.saturation}`,
+      `Entry Recommendation: ${marketplaceData.entryRecommendation}`,
+      `Confidence: ${marketplaceData.confidence}%`,
+      '',
+      'Proven Primary Keywords:',
+      marketplaceData.primaryKeywords.slice(0, 10).join(', '),
+      ''
+    );
+  }
+
+  sections.push(
+    '═══════════════════════════════════════════════════════════════',
+    'INSTRUCTIONS:',
+    '1. Use autocomplete phrases in title (customers search these exact terms)',
+    '2. Apply a winning title pattern from above',
+    '3. Use customer language in bullets (resonates with buyers)',
+    '4. Include long-tail keywords naturally',
+    '5. Keep title under 200 chars, bullets under 500 chars each',
+    '═══════════════════════════════════════════════════════════════'
+  );
+
+  return sections.join('\n');
 }
