@@ -345,31 +345,20 @@ export const getAmazonProduct = async (asin: string): Promise<MarketplaceProduct
 
 /**
  * Get Amazon reviews for a product
+ *
+ * NOTE: Disabled - Decodo API does not have an 'amazon_reviews' target.
+ * The available Amazon targets are: amazon_product, amazon_pricing,
+ * amazon_search, amazon_sellers, amazon_bestsellers.
+ * Full review text extraction would require scraping the reviews page
+ * with 'universal' target and HTML parsing.
  */
 export const getAmazonReviews = async (
   asin: string,
   options: { page?: number } = {}
 ): Promise<{ reviews: string[]; avgRating: number } | null> => {
-  if (!isApiConfigured()) return null;
-
-  try {
-    const payload = {
-      target: 'amazon_reviews',
-      query: asin,
-      locale: 'en-US',
-      page_from: options.page || 1,
-      parse: true,
-    };
-
-    const response = await makeDecodoRequest(payload);
-
-    if (!response) return null;
-
-    return parseAmazonReviews(response);
-  } catch (error) {
-    console.error('[MARKETPLACE] Amazon reviews fetch error:', error);
-    return null;
-  }
+  // Disabled: amazon_reviews target doesn't exist in Decodo API (returns 410 Gone)
+  // This prevents retry spam in the logs
+  return null;
 };
 
 /**
