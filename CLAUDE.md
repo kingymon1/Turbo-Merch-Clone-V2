@@ -18,6 +18,13 @@ Turbo Merch is an AI-powered merchandise platform that helps discover trends, ge
 
 When implementing or modifying API integrations, refer to these documentation files:
 
+### Google Gemini API
+- **Location**: `docs/gemini-api.md`
+- **Use for**: Multimodal AI, text generation, search grounding, function calling
+- **Key models**: `gemini-2.5-flash` (balanced), `gemini-2.5-pro` (complex), `gemini-2.5-flash-lite` (cheap)
+- **Base URL**: `https://generativelanguage.googleapis.com/v1beta`
+- **Env var**: `GEMINI_API_KEY`
+
 ### Perplexity API
 - **Location**: `docs/perplexity-api.md`
 - **Use for**: Web search with AI, trend research, real-time information queries
@@ -97,6 +104,13 @@ npx prisma studio
 3. OpenAI SDK compatible - just change base URL to `https://api.x.ai/v1`
 4. For real-time search, use agentic tools (`web_search`, `x_search`)
 5. Image generation uses `grok-2-image` model at separate endpoint
+
+### Adding Google Gemini API Features
+1. Read `docs/gemini-api.md` for complete API documentation
+2. Use `gemini-2.5-flash` for most tasks, `gemini-2.5-flash-lite` for high-volume
+3. Enable Google Search grounding with `tools: [{ google_search: {} }]`
+4. Use `responseMimeType: 'application/json'` with `responseSchema` for structured output
+5. Implement context caching for repeated prompts (significant cost savings)
 
 ### Adding Decodo API Features
 1. Read `docs/decodo-api.md` for complete API documentation
