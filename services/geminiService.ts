@@ -2501,18 +2501,28 @@ const createSimplePrompt = (
         styleDescription = 'playful cartoon-style design';
     }
 
-    return `Create a ${style} T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt - just the GRAPHIC that goes ON a shirt).
+    return `Create a PREMIUM PROFESSIONAL ${style} T-SHIRT GRAPHIC DESIGN (NOT a mockup, NOT a photo of a shirt - just the GRAPHIC that goes ON a shirt).
 
 ${styleDescription} ${textInstruction}.
 
-DESIGN REQUIREMENTS:
+CRITICAL QUALITY REQUIREMENTS:
+- PROFESSIONAL COMMERCIAL-GRADE design quality - this must look like it was made by a professional graphic designer
+- Typography MUST have DEPTH and DIMENSION: use 3D effects, drop shadows, bevels, gradients, outlines, or metallic/chrome effects
+- Text should look PREMIUM and POLISHED - NOT flat, NOT basic, NOT clip-art style
+- Illustrations should be DETAILED and HIGH-QUALITY with shading, highlights, and professional rendering
 - This is a WEARABLE ART graphic for printing on a ${shirtColor} t-shirt
-- Make it in a ${style.toLowerCase()} style
-- ${graphicInstruction}
+- Make it in a ${style.toLowerCase()} style with rich visual effects
+- ${graphicInstruction} - make the illustration detailed and professional, NOT simple clip-art
 - Use the entire 4500x5400px canvas
 - ${colorNote}${nicheContext}${styleDirection}
+
+STYLE EXECUTION:
+- Add visual interest through: layered elements, texture overlays, gradient fills, shadow effects
+- Typography should have CHARACTER: stylized letterforms, decorative elements, or artistic flourishes
+- Create depth with: foreground/background separation, glow effects, or dimensional styling
 - Output ONLY the graphic design artwork on a solid black background
-- NO t-shirt mockups, NO photos of shirts, NO fabric textures`.trim();
+- NO t-shirt mockups, NO photos of shirts, NO fabric textures
+- AVOID: basic flat designs, simple clip-art, amateur-looking graphics`.trim();
 };
 
 /**

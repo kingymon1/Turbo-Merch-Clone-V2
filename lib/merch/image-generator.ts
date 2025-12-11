@@ -225,6 +225,16 @@ async function generateWithDalle3(prompt: string): Promise<string> {
   try {
     console.log('[ImageGenerator] Generating with DALL-E 3...');
 
+    // Enhance prompt with quality requirements for DALL-E
+    const enhancedPrompt = `${prompt}
+
+CRITICAL QUALITY INSTRUCTIONS:
+- Create a PROFESSIONAL COMMERCIAL-GRADE graphic design
+- Typography MUST have visual depth: 3D effects, drop shadows, bevels, or gradient fills
+- NOT flat basic text, NOT clip-art style - must look like professional graphic design
+- If illustrations are present, they must be DETAILED with proper shading and highlights
+- This is premium wearable art, not amateur graphics`;
+
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -233,10 +243,10 @@ async function generateWithDalle3(prompt: string): Promise<string> {
       },
       body: JSON.stringify({
         model: 'dall-e-3',
-        prompt: prompt,
+        prompt: enhancedPrompt,
         n: 1,
         size: '1024x1024',
-        quality: 'standard',
+        quality: 'hd',  // Changed from 'standard' to 'hd' for better quality
         response_format: 'url'
       })
     });

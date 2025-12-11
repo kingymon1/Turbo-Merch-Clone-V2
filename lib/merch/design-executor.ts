@@ -221,19 +221,32 @@ COMPLIANCE CHECKLIST
 ${requirements.map((req, i) => `${i + 1}. ${req}`).join('\n')}
 
 ═══════════════════════════════════════════════════════════════
-OUTPUT REQUIREMENTS
+OUTPUT REQUIREMENTS - PREMIUM QUALITY
 ═══════════════════════════════════════════════════════════════
 
-Generate an image prompt for a t-shirt design that:
+Generate an image prompt for a PROFESSIONAL COMMERCIAL-GRADE t-shirt design that:
+
+QUALITY STANDARDS (CRITICAL):
+1. PREMIUM typography with DEPTH: 3D effects, drop shadows, bevels, gradients, metallic effects, or chrome styling
+2. Text must look POLISHED and HIGH-END - NOT flat, NOT basic, NOT clip-art style
+3. Illustrations must be DETAILED with professional shading, highlights, and rendering - NOT simple clip-art
+4. Include specific visual effects: texture overlays, gradient fills, glow effects, layered elements
+5. Create DIMENSIONAL depth through foreground/background separation
+
+TECHNICAL REQUIREMENTS:
 1. Is suitable for print-on-demand (transparent or solid background)
-2. Works on a ${brief.style.colorApproach.shirtColor} t-shirt
-3. Has the text clearly readable
+2. Works on a ${brief.style.colorApproach.shirtColor} t-shirt with high contrast
+3. Has the text clearly readable with stylized, professional letterforms
 4. Follows ALL style requirements above
 5. Avoids ALL forbidden elements
 
-The prompt should be detailed and specific, suitable for Gemini Imagen or DALL-E.
+The prompt MUST explicitly request:
+- Professional graphic designer quality
+- Rich typography effects (shadows, gradients, 3D, or decorative elements)
+- Detailed illustrations with shading (if illustrations are included)
+- Avoid: basic flat designs, simple clip-art, amateur graphics
 
-REMEMBER: You are an EXECUTOR, not a creative. Follow the brief EXACTLY.`;
+REMEMBER: You are an EXECUTOR creating PREMIUM designs. Follow the brief EXACTLY with HIGH QUALITY execution.`;
 }
 
 /**
@@ -270,16 +283,23 @@ function buildComplianceRequirements(brief: DesignBrief): string[] {
 function generateFallbackPrompt(brief: DesignBrief): DesignExecutionResult {
   console.log('[DesignExecutor] Using fallback prompt generation');
 
-  const prompt = `T-shirt design with text "${brief.text.exact}".
+  const prompt = `PREMIUM PROFESSIONAL T-SHIRT GRAPHIC DESIGN with text "${brief.text.exact}".
 
-Style: ${brief.style.aesthetic.primary}
-Typography: ${brief.style.typography.required}
-Colors: ${brief.style.colorApproach.palette.join(', ')}
-Mood: ${brief.style.colorApproach.mood}
-Layout: ${brief.style.layout.composition}
+STYLE: ${brief.style.aesthetic.primary}
+TYPOGRAPHY: ${brief.style.typography.required} - MUST have 3D effects, drop shadows, gradients, or metallic styling for professional depth
+COLORS: ${brief.style.colorApproach.palette.join(', ')}
+MOOD: ${brief.style.colorApproach.mood}
+LAYOUT: ${brief.style.layout.composition}
 
 For ${brief.context.niche} audience. Tone: ${brief.context.tone}.
 ${brief.style.aesthetic.forbidden?.length ? `Avoid: ${brief.style.aesthetic.forbidden.join(', ')}.` : ''}
+
+QUALITY REQUIREMENTS:
+- Professional commercial-grade design quality
+- Typography with DEPTH and DIMENSION (shadows, bevels, gradients)
+- NOT flat, NOT basic, NOT clip-art style
+- Detailed illustrations with shading if included
+- Layered elements with visual depth
 
 Centered composition, print-ready, suitable for ${brief.style.colorApproach.shirtColor} shirt.`;
 
