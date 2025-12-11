@@ -1119,3 +1119,93 @@ model CrossNicheOpportunity {
   @@index([isActive])
   @@index([lastValidatedAt])
 }
+
+// ============================================================================
+// GENERATION HISTORY (Diversity Engine - Tracks What Was Generated)
+// ============================================================================
+// Tracks all generated designs to prevent repetition and ensure diversity.
+// The diversity engine uses this to:
+// 1. Avoid generating the same niche/phrase combinations
+// 2. Score novelty of new ideas
+// 3. Track what's working and what isn't
+
+model GenerationHistory {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  // What was generated
+  userId      String   // User who generated (or 'system' for cron)
+  phrase      String   // The phrase on the shirt (lowercase for matching)
+  niche       String   // The niche category (lowercase for matching)
+  topic       String   // The topic/trend that inspired it (lowercase)
+  riskLevel   Int      // 0-100 risk level used
+
+  // Timestamps for diversity calculations
+  generatedAt DateTime @default(now())
+
+  // Outcome tracking (updated later)
+  wasApproved   Boolean?  // Did user approve/download?
+  wasPublished  Boolean?  // Did user publish to marketplace?
+  userRating    Int?      // 1-5 user rating
+  performanceScore Float? // Calculated performance score
+
+  // Diversity tracking
+  diversityScore Float?   // 0-1 diversity score when generated
+  nicheNovelty   Float?   // How novel the niche was
+  phraseNovelty  Float?   // How novel the phrase was
+
+  // Source tracking
+  source         String?  // 'autopilot' | 'manual' | 'exploration' | 'cross-niche'
+  discoveryMethod String? // How this idea was found
+
+  @@index([userId])
+  @@index([phrase])
+  @@index([niche])
+  @@index([topic])
+  @@index([generatedAt])
+  @@index([userId, generatedAt])
+  @@index([niche, generatedAt])
+}
+
+// ============================================================================
+// DISCOVERED NICHES (Dynamic Niche Discovery Cache)
+// ============================================================================
+// Caches AI-discovered niches so we don't have to re-discover them constantly.
+// Niches expire and get re-evaluated to keep the system fresh.
+
+model DiscoveredNiche {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Niche info
+  niche         String   @unique
+  description   String?
+  audienceSize  String?  // 'massive' | 'large' | 'medium' | 'niche' | 'micro'
+  trendDirection String? // 'exploding' | 'growing' | 'stable' | 'declining'
+  competitionLevel String? // 'blue_ocean' | 'low' | 'medium' | 'high' | 'saturated'
+
+  // Suggested content
+  suggestedPhrases String[]
+  relatedNiches    String[]
+
+  // Discovery metadata
+  source        String   // 'ai-discovery' | 'trend-analysis' | 'user-submitted' | 'static'
+  focusArea     String?  // 'evergreen' | 'trending' | 'emerging' | 'seasonal'
+  discoveredAt  DateTime @default(now())
+
+  // Usage and performance
+  timesUsed     Int      @default(0)
+  lastUsedAt    DateTime?
+  avgPerformance Float?  // Average performance of designs in this niche
+
+  // Status
+  isActive      Boolean  @default(true)
+  expiresAt     DateTime? // When to re-evaluate this niche
+
+  @@index([niche])
+  @@index([source])
+  @@index([isActive])
+  @@index([timesUsed])
+  @@index([trendDirection])
+}

@@ -38,6 +38,13 @@ import {
   findBannedWords,
   cleanToAscii,
 } from './validation';
+import {
+  exploreForDiversity,
+  recordGeneration,
+  scoreDiversity,
+  DiversityScore,
+  ExplorationResult,
+} from './diversity-engine';
 
 // Track applied insights for logging
 // Maps from InsightApplication (from insight-applier) to simplified format for storage
@@ -63,47 +70,13 @@ function mapToAppliedInsight(insight: {
   };
 }
 
-// Niches to explore based on risk level
-const NICHE_POOLS = {
-  // Low risk: Evergreen, proven niches
-  low: [
-    'nurse gifts',
-    'teacher appreciation',
-    'dog mom',
-    'cat lover',
-    'coffee addict',
-    'dad jokes',
-    'mom life',
-    'gaming',
-    'fishing',
-    'camping',
-  ],
-  // Medium risk: Trending but established
-  medium: [
-    'work from home',
-    'introvert life',
-    'plant mom',
-    'true crime',
-    'book lover',
-    'yoga life',
-    'running',
-    'self care',
-    'mental health awareness',
-    'millennial humor',
-  ],
-  // High risk: Emerging trends, viral potential
-  high: [
-    'trending memes',
-    'viral tiktok',
-    'internet culture',
-    'gen z humor',
-    'chronically online',
-    'goblin mode',
-    'delulu',
-    'roman empire',
-    'pop culture moments',
-    'breaking news trends',
-  ],
+// DEPRECATED: These static pools are now replaced by the Diversity Engine
+// which dynamically discovers 300+ niches and tracks generation history
+// to ensure infinite variety. Kept as fallback only.
+const NICHE_POOLS_FALLBACK = {
+  low: ['nurse gifts', 'teacher appreciation', 'dog mom', 'cat lover', 'coffee addict'],
+  medium: ['work from home', 'introvert life', 'plant mom', 'true crime', 'book lover'],
+  high: ['trending memes', 'internet culture', 'gen z humor', 'viral moments', 'meme culture'],
 };
 
 /**
@@ -116,17 +89,18 @@ function mapRiskToVirality(riskLevel: number): number {
 }
 
 /**
- * Select a random niche from the appropriate pool based on risk level
+ * Select a random niche from the fallback pool based on risk level
+ * DEPRECATED: Use exploreForDiversity() instead for dynamic niche discovery
  */
-function selectNicheForRisk(riskLevel: number): string {
+function selectNicheForRiskFallback(riskLevel: number): string {
   let pool: string[];
 
   if (riskLevel < 30) {
-    pool = NICHE_POOLS.low;
+    pool = NICHE_POOLS_FALLBACK.low;
   } else if (riskLevel < 70) {
-    pool = NICHE_POOLS.medium;
+    pool = NICHE_POOLS_FALLBACK.medium;
   } else {
-    pool = NICHE_POOLS.high;
+    pool = NICHE_POOLS_FALLBACK.high;
   }
 
   return pool[Math.floor(Math.random() * pool.length)];
@@ -229,18 +203,46 @@ function getCategoryFromRisk(riskLevel: number): 'proven' | 'emerging' | 'moonsh
  *
  * Phase 6: Now integrates ProvenInsights to make smarter decisions.
  * Phase 7A: Now integrates marketplace intelligence from MBA products.
+ * Phase 8: Now uses Diversity Engine for infinite variety and anti-repetition.
  *
  * @param riskLevel - 0-100, where 0 is safe/evergreen and 100 is viral/risky
- * @returns Design concept with phrase, niche, style, tone, applied insights, and marketplace data
+ * @param userId - Optional user ID for per-user diversity tracking
+ * @returns Design concept with phrase, niche, style, tone, applied insights, marketplace data, and diversity info
  */
-export async function generateAutopilotConcept(riskLevel: number): Promise<{
+export async function generateAutopilotConcept(riskLevel: number, userId?: string): Promise<{
   concept: DesignConcept;
   trend: TrendData;
   source: string;
   appliedInsights?: AppliedInsight[];
   marketplaceData?: OptimizedKeywords;
+  diversityInfo?: {
+    score: DiversityScore;
+    explorationResult?: ExplorationResult;
+    wasForced: boolean;
+  };
 }> {
-  console.log(`[Autopilot] Generating concept at risk level ${riskLevel}`);
+  console.log(`[Autopilot] Generating concept at risk level ${riskLevel}${userId ? ` for user ${userId}` : ''}`);
+
+  // PHASE 8: Use Diversity Engine for niche selection
+  let explorationResult: ExplorationResult | null = null;
+  let diversityNiche: string | null = null;
+  let diversityPhrase: string | null = null;
+
+  try {
+    explorationResult = await exploreForDiversity({
+      userId,
+      riskLevel,
+      forceExploration: false,
+    });
+
+    if (explorationResult && explorationResult.confidence >= 0.4) {
+      diversityNiche = explorationResult.niche;
+      diversityPhrase = explorationResult.phrase;
+      console.log(`[Autopilot] Diversity Engine selected: "${diversityPhrase}" in ${diversityNiche} (score: ${explorationResult.diversityScore.overall.toFixed(2)})`);
+    }
+  } catch (diversityError) {
+    console.warn('[Autopilot] Diversity engine failed, using fallback:', diversityError);
+  }
 
   // Determine which data category to use
   const category = getCategoryFromRisk(riskLevel);
@@ -256,7 +258,8 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
   } | null = null;
 
   try {
-    const selectedNiche = selectNicheForRisk(riskLevel);
+    // Use diversity-selected niche if available, otherwise fallback
+    const selectedNiche = diversityNiche || selectNicheForRiskFallback(riskLevel);
     const rawGuidance = await applyInsightsToGeneration({
       niche: selectedNiche,
       riskLevel,
@@ -285,7 +288,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
   // PHASE 7A: Query marketplace intelligence for proven keywords
   // Now with auto-scraping: if niche not in database, scrape it on-demand
   let marketplaceData: OptimizedKeywords | null = null;
-  const selectedNicheForMarketplace = selectNicheForRisk(riskLevel);
+  const selectedNicheForMarketplace = diversityNiche || selectNicheForRiskFallback(riskLevel);
 
   try {
     const dbConfigured = await isDatabaseConfigured();
@@ -324,6 +327,54 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
     console.log('[Autopilot] Marketplace lookup failed, continuing without:', marketplaceError);
   }
 
+  // PHASE 8: If diversity engine provided a high-confidence result, use it directly
+  if (explorationResult && explorationResult.confidence >= 0.6) {
+    console.log('[Autopilot] Using Diversity Engine result directly (high confidence)');
+
+    // Build concept from diversity exploration
+    const style = insightGuidance?.recommendedStyles[0] || 'Bold Modern';
+    const tone = insightGuidance?.recommendedTones[0] || 'Funny';
+
+    const concept: DesignConcept = {
+      phrase: cleanToAscii(explorationResult.phrase),
+      niche: cleanToAscii(explorationResult.niche),
+      style,
+      tone,
+    };
+
+    const keywords = mergeKeywordsWithMarketplace(
+      [explorationResult.phrase, explorationResult.niche, explorationResult.topic],
+      marketplaceData
+    );
+
+    const trend: TrendData = {
+      topic: explorationResult.topic,
+      platform: 'Diversity Engine',
+      volume: 'AI-Discovered',
+      sentiment: tone,
+      keywords,
+      description: `AI-discovered design for ${explorationResult.niche} niche`,
+      visualStyle: style,
+      customerPhrases: [explorationResult.phrase],
+      marketplaceContext: marketplaceData
+        ? buildAutopilotMarketplaceContext(marketplaceData)
+        : undefined,
+    };
+
+    return {
+      concept,
+      trend,
+      source: `Diversity Engine (${explorationResult.source})`,
+      appliedInsights: insightGuidance?.appliedInsights,
+      marketplaceData: marketplaceData || undefined,
+      diversityInfo: {
+        score: explorationResult.diversityScore,
+        explorationResult,
+        wasForced: false,
+      },
+    };
+  }
+
   // PHASE 5: Try to use cached data first
   try {
     const hasCached = await hasRecentData(category, 12); // 12 hours
@@ -339,7 +390,11 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         const randomIndex = Math.floor(Math.random() * Math.min(cachedTrends.length, 10));
         const selectedTrend = cachedTrends[randomIndex];
 
+        // PHASE 8: If diversity engine gave us a niche, override the trend's niche
         const concept = extractDesignConcept(selectedTrend, insightGuidance);
+        if (diversityNiche) {
+          concept.niche = cleanToAscii(diversityNiche);
+        }
 
         // Phase 7A: Enhance trend with marketplace keywords
         const enhancedTrend = enhanceTrendWithMarketplace(selectedTrend, marketplaceData);
@@ -351,6 +406,11 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
           source: `Cached data (${category})`,
           appliedInsights: insightGuidance?.appliedInsights,
           marketplaceData: marketplaceData || undefined,
+          diversityInfo: explorationResult ? {
+            score: explorationResult.diversityScore,
+            explorationResult,
+            wasForced: false,
+          } : undefined,
         };
       }
     }
@@ -366,9 +426,12 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
       // Apply insight-recommended style if available (Phase 6)
       const style = insightGuidance?.recommendedStyles[0] || generated.style;
 
+      // PHASE 8: Use diversity niche if available
+      const finalNiche = diversityNiche || nicheData.niche;
+
       const concept: DesignConcept = {
         phrase: generated.phrase,
-        niche: nicheData.niche,
+        niche: finalNiche,
         style,
         tone: generated.tone,
         visualStyle: generated.visualDirection,
@@ -386,7 +449,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         volume: 'Analyzed',
         sentiment: generated.tone,
         keywords: mergedKeywords,
-        description: `Design based on ${nicheData.niche} niche analysis`,
+        description: `Design based on ${finalNiche} niche analysis`,
         visualStyle: generated.visualDirection,
         customerPhrases: nicheData.phrases.slice(0, 5),
         // Phase 7A: Add marketplace context
@@ -401,6 +464,11 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
         source: `Niche Intelligence (${nicheData.category})`,
         appliedInsights: insightGuidance?.appliedInsights,
         marketplaceData: marketplaceData || undefined,
+        diversityInfo: explorationResult ? {
+          score: explorationResult.diversityScore,
+          explorationResult,
+          wasForced: false,
+        } : undefined,
       };
     }
   } catch (cacheError) {
@@ -411,8 +479,8 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
   // FALLBACK: Live API call (original behavior)
   console.log('[Autopilot] No cached data, using live API');
 
-  // Select niche based on risk level
-  const selectedNiche = selectNicheForRisk(riskLevel);
+  // Select niche based on risk level (use diversity niche if available)
+  const selectedNiche = diversityNiche || selectNicheForRiskFallback(riskLevel);
   console.log(`[Autopilot] Selected niche: ${selectedNiche}`);
 
   // Map risk to virality for the search
@@ -426,7 +494,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
 
     if (!trends || trends.length === 0) {
       console.log('[Autopilot] No trends found, using fallback');
-      return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance, marketplaceData);
+      return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance, marketplaceData, explorationResult);
     }
 
     // Select the best trend (first one is usually highest quality)
@@ -434,6 +502,11 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
     console.log(`[Autopilot] Best trend: ${bestTrend.topic}`);
 
     const concept = extractDesignConcept(bestTrend, insightGuidance);
+
+    // PHASE 8: If diversity engine gave us a niche, use it
+    if (diversityNiche) {
+      concept.niche = cleanToAscii(diversityNiche);
+    }
 
     // Phase 7A: Enhance trend with marketplace keywords
     const enhancedTrend = enhanceTrendWithMarketplace(bestTrend, marketplaceData);
@@ -444,10 +517,15 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
       source: `Live API (${bestTrend.sources?.join(', ') || bestTrend.platform})`,
       appliedInsights: insightGuidance?.appliedInsights,
       marketplaceData: marketplaceData || undefined,
+      diversityInfo: explorationResult ? {
+        score: explorationResult.diversityScore,
+        explorationResult,
+        wasForced: false,
+      } : undefined,
     };
   } catch (error) {
     console.error('[Autopilot] Error in trend research:', error);
-    return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance, marketplaceData);
+    return generateFallbackConcept(riskLevel, selectedNiche, insightGuidance, marketplaceData, explorationResult);
   }
 }
 
@@ -456,6 +534,7 @@ export async function generateAutopilotConcept(riskLevel: number): Promise<{
  * Phase 6: Now uses insight guidance to improve fallback quality
  * Phase 7A: Now uses marketplace data for keywords
  * Phase 7B: Now cleans all text for compliance
+ * Phase 8: Now includes diversity info
  */
 function generateFallbackConcept(
   riskLevel: number,
@@ -467,13 +546,19 @@ function generateFallbackConcept(
     warnings: string[];
     appliedInsights: AppliedInsight[];
   } | null,
-  marketplaceData?: OptimizedKeywords | null
+  marketplaceData?: OptimizedKeywords | null,
+  explorationResult?: ExplorationResult | null
 ): {
   concept: DesignConcept;
   trend: TrendData;
   source: string;
   appliedInsights?: AppliedInsight[];
   marketplaceData?: OptimizedKeywords;
+  diversityInfo?: {
+    score: DiversityScore;
+    explorationResult?: ExplorationResult;
+    wasForced: boolean;
+  };
 } {
   // Fallback phrases based on niche and risk level
   const fallbackPhrases: Record<string, string[]> = {
@@ -529,6 +614,11 @@ function generateFallbackConcept(
     source: 'Fallback (trend research unavailable)',
     appliedInsights: insightGuidance?.appliedInsights,
     marketplaceData: marketplaceData || undefined,
+    diversityInfo: explorationResult ? {
+      score: explorationResult.diversityScore,
+      explorationResult,
+      wasForced: false,
+    } : undefined,
   };
 }
 

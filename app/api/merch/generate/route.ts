@@ -30,6 +30,7 @@ import { generateAutopilotConcept } from '@/lib/merch/autopilot-generator';
 import { logInsightUsage } from '@/lib/merch/learning';
 import { getSmartStyleProfile } from '@/lib/merch/style-discovery';
 import { getCrossNicheOpportunities } from '@/lib/merch/cross-niche-engine';
+import { recordGeneration } from '@/lib/merch/diversity-engine';
 
 // Increase timeout for AI generation (max 300s on Vercel Pro)
 export const maxDuration = 300;
@@ -137,7 +138,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         sourceData = { riskLevel, mock: true };
       } else {
         try {
-          const autopilotResult = await generateAutopilotConcept(riskLevel!);
+          // PHASE 8: Pass userId to autopilot for per-user diversity tracking
+          const autopilotResult = await generateAutopilotConcept(riskLevel!, userId);
           concept = autopilotResult.concept;
 
           if (autopilotResult.appliedInsights) {
@@ -157,7 +159,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
               confidence: i.confidence,
             })),
             insightCount: appliedInsights.length,
+            // PHASE 8: Track diversity engine results
+            diversityInfo: autopilotResult.diversityInfo ? {
+              overallScore: autopilotResult.diversityInfo.score.overall,
+              nicheNovelty: autopilotResult.diversityInfo.score.nicheNovelty,
+              phraseNovelty: autopilotResult.diversityInfo.score.phraseNovelty,
+              recommendation: autopilotResult.diversityInfo.score.recommendation,
+              source: autopilotResult.diversityInfo.explorationResult?.source,
+            } : undefined,
           };
+
+          if (autopilotResult.diversityInfo) {
+            console.log(`[Merch Generate] Diversity score: ${(autopilotResult.diversityInfo.score.overall * 100).toFixed(0)}% (${autopilotResult.diversityInfo.score.recommendation})`);
+          }
         } catch (error) {
           console.error('[Merch Generate] Autopilot failed, using fallback:', error);
           concept = {
@@ -461,6 +475,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     });
 
     console.log(`[Merch Generate] Design saved with ID: ${savedDesign.id}`);
+
+    // PHASE 8: Record generation for diversity tracking (non-blocking)
+    if (mode === 'autopilot' && !USE_MOCK_DATA) {
+      recordGeneration({
+        userId,
+        phrase: concept.phrase,
+        niche: concept.niche,
+        topic: sourceData.trend?.topic || concept.phrase,
+        riskLevel: riskLevel!,
+      }).catch(err => {
+        console.warn('[Merch Generate] Failed to record generation for diversity:', err);
+      });
+    }
 
     // Phase 6: Log insight usage for performance tracking (non-blocking)
     if (appliedInsights.length > 0) {
