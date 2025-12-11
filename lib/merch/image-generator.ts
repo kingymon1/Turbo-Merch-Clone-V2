@@ -245,7 +245,7 @@ CRITICAL QUALITY INSTRUCTIONS:
         model: 'gpt-image-1',  // Upgraded from dall-e-3 to latest flagship model
         prompt: enhancedPrompt,
         n: 1,
-        size: '1024x1024',
+        size: '1024x1792',  // Portrait ratio for t-shirts (closest to 5:6 Amazon spec)
         quality: 'high',  // gpt-image-1 uses 'low'/'medium'/'high' (not 'standard'/'hd')
         response_format: 'url'
       })

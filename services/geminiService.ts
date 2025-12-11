@@ -2706,7 +2706,7 @@ export const generateImagen4Image = async (prompt: string): Promise<string> => {
             prompt: prompt,
             config: {
                 numberOfImages: 1,
-                aspectRatio: '1:1',  // Square for t-shirts
+                aspectRatio: '3:4',  // Portrait ratio for t-shirts (closest to 5:6 Amazon spec)
                 // Note: personGeneration defaults to allowed
             }
         });

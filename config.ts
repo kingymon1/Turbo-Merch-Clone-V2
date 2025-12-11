@@ -41,6 +41,7 @@ export const SUBSCRIPTION_CONFIG = {
 // AI Model Configuration
 // Text: Gemini 3 Pro Preview for high-quality listing text generation
 // Image: Imagen 4 (Google's flagship image model) via generateImages API
+// Target output: 4500x5400px (5:6 portrait ratio) - models use closest available ratio
 export const AI_CONFIG = {
   models: {
     text: 'gemini-3-pro-preview',
