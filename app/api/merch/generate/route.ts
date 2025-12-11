@@ -399,11 +399,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
           // Track enhanced listing data
           sourceData.enhancedListing = {
             used: true,
-            keywordsUsed: enhancedListing.keywordsUsed?.length || 0,
-            customerPhrasesUsed: enhancedListing.customerPhrasesUsed?.length || 0
+            autocompleteUsed: enhancedListing.keywordIntelligence?.autocompleteUsed?.length || 0,
+            competitorKeywordsUsed: enhancedListing.keywordIntelligence?.competitorKeywordsUsed?.length || 0,
+            customerLanguageUsed: enhancedListing.keywordIntelligence?.customerLanguageUsed?.length || 0
           };
 
-          console.log(`[Merch Generate] Enhanced listing created with ${enhancedListing.keywordsUsed?.length || 0} keywords`);
+          console.log(`[Merch Generate] Enhanced listing created with ${enhancedListing.keywordIntelligence?.autocompleteUsed?.length || 0} autocomplete keywords`);
         } else {
           // Standard listing generation
           const listing = await generateMerchListing(
