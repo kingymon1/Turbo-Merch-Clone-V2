@@ -2692,6 +2692,54 @@ Apply the requested change and return the modified design.
     }
 };
 
+/**
+ * Generate image using Imagen 4 (Google's flagship image model)
+ * Uses the generateImages endpoint which is different from generateContent
+ */
+export const generateImagen4Image = async (prompt: string): Promise<string> => {
+    const ai = getAI();
+    console.log('🎨 Using Imagen 4 (flagship model) via generateImages API...');
+
+    try {
+        const response = await ai.models.generateImages({
+            model: 'imagen-4.0-generate-001',
+            prompt: prompt,
+            config: {
+                numberOfImages: 1,
+                aspectRatio: '1:1',  // Square for t-shirts
+                // Note: personGeneration defaults to allowed
+            }
+        });
+
+        // Extract image from response
+        const generatedImage = response.generatedImages?.[0];
+        if (!generatedImage?.image?.imageBytes) {
+            // Check if filtered
+            if (generatedImage?.raiFilteredReason) {
+                throw new Error(`Image filtered: ${generatedImage.raiFilteredReason}`);
+            }
+            throw new Error('No image data in Imagen 4 response');
+        }
+
+        const mimeType = generatedImage.image.mimeType || 'image/png';
+        const base64Data = generatedImage.image.imageBytes;
+
+        console.log('✓ Imagen 4 image generated successfully');
+        if (generatedImage.enhancedPrompt) {
+            console.log('📝 Enhanced prompt:', generatedImage.enhancedPrompt.substring(0, 100) + '...');
+        }
+
+        return `data:${mimeType};base64,${base64Data}`;
+    } catch (error: unknown) {
+        console.error('Imagen 4 Error:', error);
+        // Provide helpful error message
+        if (error instanceof Error && error.message.includes('not found')) {
+            throw new Error('Imagen 4 model not available. Ensure you have access to imagen-4.0-generate-001 in your Google AI account.');
+        }
+        throw error;
+    }
+};
+
 export const generateDesignImage = async (
     basicPrompt: string,
     style: string,
@@ -2716,8 +2764,21 @@ export const generateDesignImage = async (
             console.log('🎨 Using ADVANCED prompt mode (~500 words)');
         }
 
-        // Using Gemini image generation (Nano Banana)
+        // Try Imagen 4 first (flagship model), fall back to Gemini 3 Pro Image if not available
+        const useImagen4 = IMAGE_MODEL === 'imagen-4.0-generate-001';
+
+        if (useImagen4) {
+            try {
+                return await generateImagen4Image(finalPrompt);
+            } catch (error) {
+                console.warn('Imagen 4 failed, falling back to Gemini image model:', error);
+                // Fall through to Gemini model
+            }
+        }
+
+        // Using Gemini image generation (Nano Banana) as fallback or primary
         const ai = getAI();
+        console.log(`🎨 Using ${IMAGE_MODEL} via generateContent API...`);
         const response = await ai.models.generateContent({
             model: IMAGE_MODEL,
             contents: finalPrompt,
@@ -2772,12 +2833,27 @@ export const generateDesignImageEnhanced = async (
             const designPrompt = await createEnhancedDesignPrompt(research, promptMode);
             console.log('✓ Design brief ready');
 
-            // Step 3: Generate image with Gemini 3 Pro Image
+            // Step 3: Generate image - try Imagen 4 first, fallback to Gemini
             console.log('🖼️  Generating professional design...');
 
+            const useImagen4 = IMAGE_MODEL === 'imagen-4.0-generate-001';
+
+            if (useImagen4) {
+                try {
+                    const imageUrl = await generateImagen4Image(designPrompt);
+                    console.log('✓ Professional design generated with Imagen 4');
+                    return { imageUrl, research };
+                } catch (error) {
+                    console.warn('Imagen 4 failed in enhanced pipeline, falling back:', error);
+                    // Fall through to Gemini
+                }
+            }
+
+            // Fallback to Gemini image generation
             const ai = getAI();
+            console.log(`🎨 Using ${IMAGE_MODEL} via generateContent API...`);
             const response = await ai.models.generateContent({
-                model: IMAGE_MODEL,
+                model: IMAGE_MODEL === 'imagen-4.0-generate-001' ? 'gemini-3-pro-image-preview' : IMAGE_MODEL,
                 contents: designPrompt,
             });
 

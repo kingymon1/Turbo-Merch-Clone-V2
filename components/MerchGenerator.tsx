@@ -29,8 +29,8 @@ const TONE_OPTIONS = [
 ];
 
 const IMAGE_MODEL_OPTIONS = [
-  { value: 'gemini', label: 'Gemini 3 Pro (Google)' },
-  { value: 'dalle3', label: 'GPT-Image-1 (OpenAI Best)' },
+  { value: 'gemini', label: 'Imagen 4 (Google Flagship)' },
+  { value: 'dalle3', label: 'GPT-Image-1 (OpenAI Flagship)' },
 ];
 
 // Max 20 variations - higher counts may timeout

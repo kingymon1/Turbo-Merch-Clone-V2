@@ -40,13 +40,14 @@ export const SUBSCRIPTION_CONFIG = {
 
 // AI Model Configuration
 // Text: Gemini 3 Pro Preview for high-quality listing text generation
-// Image: Gemini 3 Pro Image for advanced image generation
+// Image: Imagen 4 (Google's flagship image model) via generateImages API
 export const AI_CONFIG = {
   models: {
     text: 'gemini-3-pro-preview',
-    // Image model - gemini-3-pro-image-preview works with generateContent API
-    // Note: imagen-4.0-generate-001 requires different endpoint (not generateContent)
-    image: 'gemini-3-pro-image-preview'
+    // Imagen 4 - Google's flagship image generation model
+    // Uses generateImages API (not generateContent)
+    // Falls back to gemini-3-pro-image-preview if Imagen 4 unavailable
+    image: 'imagen-4.0-generate-001'
   },
   // Request timeouts in milliseconds
   timeouts: {
