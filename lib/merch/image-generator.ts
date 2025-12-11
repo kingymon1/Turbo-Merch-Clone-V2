@@ -212,18 +212,18 @@ export async function generateMerchImageFromBrief(
 }
 
 /**
- * Generate image using DALL-E 3
+ * Generate image using GPT-Image-1 (OpenAI flagship)
  */
 async function generateWithDalle3(prompt: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
     console.warn('[ImageGenerator] OPENAI_API_KEY not set, falling back to Gemini');
-    throw new Error('DALL-E 3 not configured');
+    throw new Error('GPT-Image-1 not configured');
   }
 
   try {
-    console.log('[ImageGenerator] Generating with DALL-E 3...');
+    console.log('[ImageGenerator] Generating with GPT-Image-1...');
 
     // Enhance prompt with quality requirements for DALL-E
     const enhancedPrompt = `${prompt}
@@ -242,32 +242,31 @@ CRITICAL QUALITY INSTRUCTIONS:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'dall-e-3',  // Using DALL-E 3 (gpt-image-1 requires org verification)
+        model: 'gpt-image-1',
         prompt: enhancedPrompt,
         n: 1,
-        size: '1024x1792',  // Portrait (DALL-E 3 supports: 1024x1024, 1024x1792, 1792x1024)
-        quality: 'hd',
-        style: 'vivid',
-        response_format: 'url'
+        size: '1024x1536',  // Portrait (supported: 1024x1024, 1024x1536, 1536x1024, auto)
+        quality: 'high'
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(`DALL-E 3 API error: ${response.status} - ${JSON.stringify(errorData)}`);
+      throw new Error(`GPT-Image-1 API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();
 
-    if (data.data?.[0]?.url) {
-      console.log('[ImageGenerator] DALL-E 3 generation successful');
-      return data.data[0].url;
+    // gpt-image-1 returns b64_json by default
+    if (data.data?.[0]?.b64_json) {
+      console.log('[ImageGenerator] GPT-Image-1 generation successful');
+      return `data:image/png;base64,${data.data[0].b64_json}`;
     }
 
-    throw new Error('No image URL in DALL-E 3 response');
+    throw new Error('No image data in GPT-Image-1 response');
 
   } catch (error) {
-    console.error('[ImageGenerator] DALL-E 3 error:', error);
+    console.error('[ImageGenerator] GPT-Image-1 error:', error);
     throw error;
   }
 }
