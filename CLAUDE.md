@@ -11,7 +11,7 @@ Turbo Merch is an AI-powered merchandise platform that helps discover trends, ge
 - **Framework**: Next.js (App Router)
 - **Language**: TypeScript
 - **Database**: Prisma ORM
-- **AI Services**: Google Gemini, Grok, Perplexity, OpenAI
+- **AI Services**: Google Gemini, Grok, Perplexity, OpenAI, Anthropic Claude
 - **Styling**: Tailwind CSS
 
 ## API Documentation References
@@ -67,6 +67,13 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://api.openai.com/v1`
 - **Env var**: `OPENAI_API_KEY`
 
+### Anthropic Claude API
+- **Location**: `docs/claude-api.md`
+- **Use for**: Text generation, vision, PDF analysis, tool use, extended thinking, citations
+- **Key models**: `claude-sonnet-4-5` (coding/agents), `claude-opus-4-5` (complex), `claude-haiku-4-5` (fast/cheap)
+- **Base URL**: `https://api.anthropic.com/v1`
+- **Env var**: `ANTHROPIC_API_KEY`
+
 ## Feature Documentation
 
 ### Merch Generator
@@ -88,6 +95,7 @@ Required environment variables for full functionality:
 - `VECTORIZER_API_ID` - Vectorizer.AI API ID
 - `VECTORIZER_API_SECRET` - Vectorizer.AI API Secret
 - `OPENAI_API_KEY` - OpenAI API
+- `ANTHROPIC_API_KEY` - Anthropic Claude API
 - `DATABASE_URL` - Prisma database connection
 
 ## Common Commands
@@ -157,3 +165,11 @@ npx prisma studio
 4. Use `dall-e-3` for image generation, `gpt-image-1` for latest quality
 5. Leverage Batch API for 50% cost savings on non-urgent workloads
 6. Use `text-embedding-3-small` for cost-effective similarity search
+
+### Adding Anthropic Claude API Features
+1. Read `docs/claude-api.md` for complete API documentation
+2. Use `claude-haiku-4-5` for high-volume tasks, `claude-sonnet-4-5` for coding/production
+3. Enable prompt caching with `cache_control: { type: "ephemeral" }` for 90% cost savings
+4. Use `strict: true` in tool definitions for guaranteed JSON schema conformance
+5. Enable extended thinking with `thinking: { type: "enabled", budget_tokens: N }` for complex analysis
+6. Leverage Batch API for 50% cost savings on async workloads
