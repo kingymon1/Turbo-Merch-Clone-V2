@@ -345,31 +345,20 @@ export const getAmazonProduct = async (asin: string): Promise<MarketplaceProduct
 
 /**
  * Get Amazon reviews for a product
+ *
+ * NOTE: Disabled - Decodo API does not have an 'amazon_reviews' target.
+ * The available Amazon targets are: amazon_product, amazon_pricing,
+ * amazon_search, amazon_sellers, amazon_bestsellers.
+ * Full review text extraction would require scraping the reviews page
+ * with 'universal' target and HTML parsing.
  */
 export const getAmazonReviews = async (
   asin: string,
   options: { page?: number } = {}
 ): Promise<{ reviews: string[]; avgRating: number } | null> => {
-  if (!isApiConfigured()) return null;
-
-  try {
-    const payload = {
-      target: 'amazon_reviews',
-      query: asin,
-      locale: 'en-US',
-      page_from: options.page || 1,
-      parse: true,
-    };
-
-    const response = await makeDecodoRequest(payload);
-
-    if (!response) return null;
-
-    return parseAmazonReviews(response);
-  } catch (error) {
-    console.error('[MARKETPLACE] Amazon reviews fetch error:', error);
-    return null;
-  }
+  // Disabled: amazon_reviews target doesn't exist in Decodo API (returns 410 Gone)
+  // This prevents retry spam in the logs
+  return null;
 };
 
 /**
@@ -1843,6 +1832,417 @@ export const filterMerchByAmazon = (products: MarketplaceProduct[]): Marketplace
 };
 
 // ============================================================================
+// KEYWORD INTELLIGENCE - Multi-source keyword discovery for listings
+// ============================================================================
+
+export interface KeywordIntelligence {
+  niche: string;
+  fetchedAt: Date;
+  autocomplete: string[];
+  competitorKeywords: string[];
+  customerLanguage: string[];
+  longTail: string[];
+  titlePatterns: {
+    pattern: string;
+    successRate: number;
+    examples: string[];
+  }[];
+  bulletFormulas: {
+    formula: string;
+    examples: string[];
+  }[];
+}
+
+/**
+ * Fetch Amazon autocomplete suggestions for a query
+ * These are real search suggestions that customers use
+ */
+export const fetchAmazonAutocomplete = async (
+  query: string
+): Promise<string[]> => {
+  if (!isApiConfigured()) {
+    console.log('[MARKETPLACE] API not configured for autocomplete');
+    return [];
+  }
+
+  try {
+    console.log(`[MARKETPLACE] Fetching autocomplete for: "${query}"`);
+
+    // Use Decodo's google_search to simulate autocomplete
+    // Amazon doesn't have a direct autocomplete API, but we can scrape search suggestions
+    const payload = {
+      target: 'amazon_search',
+      query: `${query}`,
+      page_from: '1',
+      parse: true,
+    };
+
+    const response = await makeDecodoRequest(payload);
+
+    if (!response) {
+      return [];
+    }
+
+    // Extract related searches and suggestions from the response
+    const suggestions: string[] = [];
+    const data = response as Record<string, unknown>;
+
+    // Try to find related searches in the response
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      const wrapper = data.results[0] as Record<string, unknown>;
+      if (wrapper.content && typeof wrapper.content === 'object') {
+        const content = wrapper.content as Record<string, unknown>;
+
+        // Look for related searches
+        if (content.related_searches && Array.isArray(content.related_searches)) {
+          suggestions.push(...(content.related_searches as string[]));
+        }
+
+        // Look for refinements
+        if (content.refinements && Array.isArray(content.refinements)) {
+          for (const ref of content.refinements as Record<string, unknown>[]) {
+            if (ref.value && typeof ref.value === 'string') {
+              suggestions.push(ref.value);
+            }
+          }
+        }
+
+        // Extract keywords from top product titles as pseudo-autocomplete
+        if (content.results && typeof content.results === 'object') {
+          const innerResults = content.results as Record<string, unknown>;
+          if (Array.isArray(innerResults.organic)) {
+            const topTitles = (innerResults.organic as Record<string, unknown>[])
+              .slice(0, 10)
+              .map(p => String(p.title || ''));
+
+            // Extract common phrases from titles
+            const phrases = extractCommonPhrases(topTitles);
+            suggestions.push(...phrases);
+          }
+        }
+      }
+    }
+
+    // Deduplicate and clean
+    const unique = [...new Set(suggestions.map(s => s.toLowerCase().trim()))];
+    console.log(`[MARKETPLACE] Found ${unique.length} autocomplete suggestions`);
+
+    return unique.slice(0, 20);
+
+  } catch (error) {
+    console.error('[MARKETPLACE] Autocomplete fetch error:', error);
+    return [];
+  }
+};
+
+/**
+ * Extract common phrases from titles (for pseudo-autocomplete)
+ */
+const extractCommonPhrases = (titles: string[]): string[] => {
+  const phrases: Map<string, number> = new Map();
+
+  for (const title of titles) {
+    const words = title.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+    // Extract 2-3 word phrases
+    for (let len = 2; len <= 3; len++) {
+      for (let i = 0; i <= words.length - len; i++) {
+        const phrase = words.slice(i, i + len).join(' ');
+        phrases.set(phrase, (phrases.get(phrase) || 0) + 1);
+      }
+    }
+  }
+
+  // Return phrases that appear in multiple titles
+  return Array.from(phrases.entries())
+    .filter(([_, count]) => count >= 2)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([phrase]) => phrase);
+};
+
+/**
+ * Extract customer language from product reviews
+ * This gives us the actual words customers use when talking about products
+ */
+export const extractCustomerLanguage = async (
+  asin: string
+): Promise<{
+  phrases: string[];
+  giftMentions: string[];
+  qualityMentions: string[];
+  useCases: string[];
+}> => {
+  if (!isApiConfigured()) {
+    return { phrases: [], giftMentions: [], qualityMentions: [], useCases: [] };
+  }
+
+  try {
+    const reviewData = await getAmazonReviews(asin);
+
+    if (!reviewData || reviewData.reviews.length === 0) {
+      return { phrases: [], giftMentions: [], qualityMentions: [], useCases: [] };
+    }
+
+    const phrases: string[] = [];
+    const giftMentions: string[] = [];
+    const qualityMentions: string[] = [];
+    const useCases: string[] = [];
+
+    for (const review of reviewData.reviews) {
+      const reviewLower = review.toLowerCase();
+
+      // Extract gift-related phrases
+      if (reviewLower.includes('gift') || reviewLower.includes('bought for') || reviewLower.includes('present')) {
+        const giftMatch = review.match(/(?:gift|bought|present)\s+(?:for|to)\s+(?:my\s+)?(\w+(?:\s+\w+)?)/i);
+        if (giftMatch) {
+          giftMentions.push(giftMatch[0]);
+        }
+      }
+
+      // Extract quality mentions
+      const qualityPatterns = [
+        /(?:quality|material|fabric|print|color)(?:\s+(?:is|was|looks))?\s+(\w+)/gi,
+        /(?:soft|comfortable|fits|true to size|runs small|runs large)/gi
+      ];
+      for (const pattern of qualityPatterns) {
+        const matches = review.match(pattern);
+        if (matches) {
+          qualityMentions.push(...matches.map(m => m.toLowerCase()));
+        }
+      }
+
+      // Extract use cases
+      const useCasePatterns = [
+        /(?:wore|wear|wearing)\s+(?:it\s+)?(?:to|for|at)\s+([^.!?]+)/gi,
+        /(?:perfect|great|good)\s+for\s+([^.!?]+)/gi
+      ];
+      for (const pattern of useCasePatterns) {
+        const matches = review.match(pattern);
+        if (matches) {
+          useCases.push(...matches.map(m => m.toLowerCase().trim()));
+        }
+      }
+
+      // Extract positive phrases
+      const positivePatterns = [
+        /(?:love|loved|loving)\s+(?:this|the|it)/gi,
+        /(?:exactly|just)\s+what\s+(?:I|we)\s+(?:wanted|needed|was looking for)/gi
+      ];
+      for (const pattern of positivePatterns) {
+        const matches = review.match(pattern);
+        if (matches) {
+          phrases.push(...matches.map(m => m.toLowerCase()));
+        }
+      }
+    }
+
+    return {
+      phrases: [...new Set(phrases)].slice(0, 10),
+      giftMentions: [...new Set(giftMentions)].slice(0, 10),
+      qualityMentions: [...new Set(qualityMentions)].slice(0, 10),
+      useCases: [...new Set(useCases)].slice(0, 10)
+    };
+
+  } catch (error) {
+    console.error('[MARKETPLACE] Customer language extraction error:', error);
+    return { phrases: [], giftMentions: [], qualityMentions: [], useCases: [] };
+  }
+};
+
+/**
+ * Analyze competitor titles to extract winning patterns
+ */
+export const analyzeCompetitorTitles = async (
+  niche: string
+): Promise<{
+  titlePatterns: { pattern: string; frequency: number; examples: string[] }[];
+  keywordFrequency: Record<string, number>;
+  avgTitleLength: number;
+  commonStructures: string[];
+}> => {
+  console.log(`[MARKETPLACE] Analyzing competitor titles for: ${niche}`);
+
+  const searchResult = await searchAmazon(niche);
+
+  if (!searchResult.success || searchResult.products.length === 0) {
+    return {
+      titlePatterns: [],
+      keywordFrequency: {},
+      avgTitleLength: 0,
+      commonStructures: []
+    };
+  }
+
+  const titles = searchResult.products.map(p => p.title);
+  const keywordFrequency: Record<string, number> = {};
+  let totalLength = 0;
+
+  // Analyze each title
+  for (const title of titles) {
+    totalLength += title.length;
+
+    // Extract keywords (3+ char words, excluding common words)
+    const words = title.toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 2);
+
+    const stopWords = new Set([
+      'the', 'and', 'for', 'with', 'this', 'that', 'from', 'shirt', 'tshirt', 'tee'
+    ]);
+
+    for (const word of words) {
+      if (!stopWords.has(word)) {
+        keywordFrequency[word] = (keywordFrequency[word] || 0) + 1;
+      }
+    }
+  }
+
+  // Detect common title structures/patterns
+  const patterns: Map<string, { count: number; examples: string[] }> = new Map();
+
+  // Pattern detection: Look for common structural elements
+  const structurePatterns = [
+    { name: 'Adjective + Niche + Gift', regex: /^(funny|cute|cool|best|great)\s+\w+\s+.*gift/i },
+    { name: 'Niche + Profession + Shirt', regex: /\w+\s+(nurse|teacher|doctor|mom|dad)\s+.*shirt/i },
+    { name: 'Quote Style', regex: /^["'].*["']/i },
+    { name: 'For + Audience', regex: /for\s+(men|women|kids|boys|girls|her|him)/i },
+    { name: 'Holiday Theme', regex: /(christmas|halloween|valentine|birthday|mother'?s?\s*day|father'?s?\s*day)/i },
+    { name: 'Occupation Focus', regex: /^(nurse|teacher|doctor|engineer|developer|trucker|mechanic)/i },
+    { name: 'Hobby Focus', regex: /(fishing|hunting|camping|gaming|golf|yoga)/i }
+  ];
+
+  for (const title of titles) {
+    for (const { name, regex } of structurePatterns) {
+      if (regex.test(title)) {
+        const existing = patterns.get(name) || { count: 0, examples: [] };
+        existing.count++;
+        if (existing.examples.length < 3) {
+          existing.examples.push(title.substring(0, 80));
+        }
+        patterns.set(name, existing);
+      }
+    }
+  }
+
+  // Sort patterns by frequency
+  const titlePatterns = Array.from(patterns.entries())
+    .map(([pattern, data]) => ({
+      pattern,
+      frequency: data.count / titles.length,
+      examples: data.examples
+    }))
+    .sort((a, b) => b.frequency - a.frequency);
+
+  // Get most common structures
+  const commonStructures = titlePatterns
+    .filter(p => p.frequency > 0.1)
+    .map(p => p.pattern);
+
+  console.log(`[MARKETPLACE] Analyzed ${titles.length} titles, found ${titlePatterns.length} patterns`);
+
+  return {
+    titlePatterns,
+    keywordFrequency,
+    avgTitleLength: Math.round(totalLength / titles.length),
+    commonStructures
+  };
+};
+
+/**
+ * Build comprehensive keyword intelligence for a niche
+ * Combines autocomplete, reviews, and competitor analysis
+ */
+export const buildKeywordIntelligence = async (
+  niche: string,
+  sampleAsins?: string[]
+): Promise<KeywordIntelligence> => {
+  console.log(`[MARKETPLACE] Building keyword intelligence for: ${niche}`);
+
+  // Parallel fetch of all data sources
+  const [autocomplete, competitorAnalysis, searchResult] = await Promise.all([
+    fetchAmazonAutocomplete(`${niche} shirt`),
+    analyzeCompetitorTitles(niche),
+    searchAmazon(niche)
+  ]);
+
+  // Get ASINs from search if not provided
+  const asinsToAnalyze = sampleAsins ||
+    searchResult.products
+      .filter(p => p.asin && p.reviewCount > 10)
+      .slice(0, 3)
+      .map(p => p.asin!);
+
+  // Extract customer language from reviews (limit to 3 products to save API calls)
+  let customerLanguage: string[] = [];
+  for (const asin of asinsToAnalyze) {
+    const language = await extractCustomerLanguage(asin);
+    customerLanguage.push(
+      ...language.phrases,
+      ...language.giftMentions,
+      ...language.useCases
+    );
+  }
+  customerLanguage = [...new Set(customerLanguage)];
+
+  // Extract long-tail keywords from products
+  const longTail: string[] = [];
+  for (const product of searchResult.products.slice(0, 20)) {
+    const keywords = extractLongTailKeywords(product.title);
+    longTail.push(...keywords);
+  }
+
+  // Get top keywords by frequency
+  const topKeywords = Object.entries(competitorAnalysis.keywordFrequency)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 30)
+    .map(([keyword]) => keyword);
+
+  // Build title patterns with success rate estimation
+  const titlePatterns = competitorAnalysis.titlePatterns.map(p => ({
+    pattern: p.pattern,
+    successRate: p.frequency, // Using frequency as proxy for success
+    examples: p.examples
+  }));
+
+  // Build bullet formulas from common patterns
+  const bulletFormulas = [
+    {
+      formula: 'Perfect gift for {audience} who {behavior}',
+      examples: ['Perfect gift for nurses who love coffee', 'Perfect gift for dads who love fishing']
+    },
+    {
+      formula: 'Great for {occasion} or {occasion}',
+      examples: ['Great for birthdays or Christmas', 'Great for work or casual wear']
+    },
+    {
+      formula: 'Show off your {trait} with this {adjective} design',
+      examples: ['Show off your humor with this funny design', 'Show off your passion with this bold design']
+    },
+    {
+      formula: '{Audience} will love this {adjective} {niche} shirt',
+      examples: ['Teachers will love this hilarious classroom shirt', 'Dog moms will love this adorable pup shirt']
+    }
+  ];
+
+  const intelligence: KeywordIntelligence = {
+    niche,
+    fetchedAt: new Date(),
+    autocomplete,
+    competitorKeywords: topKeywords,
+    customerLanguage,
+    longTail: [...new Set(longTail)].slice(0, 20),
+    titlePatterns,
+    bulletFormulas
+  };
+
+  console.log(`[MARKETPLACE] Keyword intelligence built: ${autocomplete.length} autocomplete, ${topKeywords.length} competitor keywords, ${customerLanguage.length} customer phrases`);
+
+  return intelligence;
+};
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 
@@ -1871,4 +2271,9 @@ export default {
   // Hybrid MBA detection
   fetchMbaDetectionForProducts,
   searchAmazonWithMbaDetection,
+  // Keyword intelligence
+  fetchAmazonAutocomplete,
+  extractCustomerLanguage,
+  analyzeCompetitorTitles,
+  buildKeywordIntelligence,
 };

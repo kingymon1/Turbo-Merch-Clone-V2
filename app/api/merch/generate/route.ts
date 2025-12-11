@@ -2,18 +2,35 @@
  * POST /api/merch/generate
  *
  * Server-side endpoint for generating merch designs.
- * Integrates with existing Gemini services for AI generation.
+ *
+ * ENHANCED VERSION with:
+ * - DesignBrief system for style preservation
+ * - Niche style discovery integration
+ * - Cross-niche opportunity detection
+ * - Model selection (Gemini vs DALL-E 3)
+ * - Enhanced keyword-intelligent listings
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { GenerationRequest, GenerationResponse, MerchDesign } from '@/lib/merch/types';
-import { createImagePrompt, DesignConcept } from '@/lib/merch/image-prompter';
-import { generateMerchListing } from '@/lib/merch/listing-generator';
-import { generateMerchImage, generatePlaceholderImage, isValidImageUrl } from '@/lib/merch/image-generator';
+import { GenerationRequest, GenerationResponse, MerchDesign, DesignBrief } from '@/lib/merch/types';
+import { createImagePrompt, DesignConcept, buildDesignBriefFromTrend, buildDesignBriefFromManualSpecs } from '@/lib/merch/image-prompter';
+import { generateMerchListing, generateEnhancedListing } from '@/lib/merch/listing-generator';
+import {
+  generateMerchImage,
+  generatePlaceholderImage,
+  isValidImageUrl,
+  generateMerchImageFromBrief,
+  generateMerchImageWithModelSelection,
+  ImageModel,
+  BriefBasedGenerationResult
+} from '@/lib/merch/image-generator';
 import { generateAutopilotConcept } from '@/lib/merch/autopilot-generator';
 import { logInsightUsage } from '@/lib/merch/learning';
+import { getSmartStyleProfile } from '@/lib/merch/style-discovery';
+import { getCrossNicheOpportunities } from '@/lib/merch/cross-niche-engine';
+import { recordGeneration } from '@/lib/merch/diversity-engine';
 
 // Increase timeout for AI generation (max 300s on Vercel Pro)
 export const maxDuration = 300;
@@ -59,7 +76,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     }
 
     const body: GenerationRequest = await request.json();
-    const { mode, riskLevel, specs } = body;
+    const {
+      mode,
+      riskLevel,
+      specs,
+      // Enhanced options with defaults
+      imageModel = 'gemini',
+      useEnhancedListing = true,
+      useStyleDiscovery = true,
+      useCrossNicheBlend = true,
+      useBriefSystem = true,
+      promptMode = 'advanced'
+    } = body;
 
     // Validate request
     if (!mode || (mode !== 'autopilot' && mode !== 'manual')) {
@@ -84,11 +112,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     }
 
     console.log(`[Merch Generate] Starting ${mode} mode generation`);
+    console.log(`[Merch Generate] Options: model=${imageModel}, briefSystem=${useBriefSystem}, styleDiscovery=${useStyleDiscovery}`);
 
     let concept: DesignConcept;
     let sourceData: any = {};
     let isTest = USE_MOCK_DATA;
-    let appliedInsights: any[] = []; // Phase 6: Track insights used
+    let appliedInsights: any[] = [];
+    let designBrief: DesignBrief | null = null;
+    let nicheStyle: any = null;
+    let crossNicheData: any = null;
 
     // ========================================
     // STEP 1: Generate or extract concept
@@ -97,7 +129,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       console.log(`[Merch Generate] Autopilot mode at risk level ${riskLevel}`);
 
       if (USE_MOCK_DATA) {
-        // Mock mode: use simple fallback
         concept = {
           phrase: ['Coffee Then Adulting', 'Living My Best Life', 'Chaos Coordinator'][Math.floor(Math.random() * 3)],
           niche: 'general',
@@ -106,12 +137,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         };
         sourceData = { riskLevel, mock: true };
       } else {
-        // Real mode: use multi-agent trend research + insights
         try {
-          const autopilotResult = await generateAutopilotConcept(riskLevel!);
+          // PHASE 8: Pass userId to autopilot for per-user diversity tracking
+          const autopilotResult = await generateAutopilotConcept(riskLevel!, userId);
           concept = autopilotResult.concept;
 
-          // Phase 6: Capture applied insights for performance tracking
           if (autopilotResult.appliedInsights) {
             appliedInsights = autopilotResult.appliedInsights;
             console.log(`[Merch Generate] Used ${appliedInsights.length} insights`);
@@ -122,7 +152,6 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             trend: autopilotResult.trend,
             source: autopilotResult.source,
             generatedAt: new Date().toISOString(),
-            // Phase 6: Store insight references for learning system
             appliedInsights: appliedInsights.map(i => ({
               id: i.id,
               type: i.type,
@@ -130,7 +159,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
               confidence: i.confidence,
             })),
             insightCount: appliedInsights.length,
+            // PHASE 8: Track diversity engine results
+            diversityInfo: autopilotResult.diversityInfo ? {
+              overallScore: autopilotResult.diversityInfo.score.overall,
+              nicheNovelty: autopilotResult.diversityInfo.score.nicheNovelty,
+              phraseNovelty: autopilotResult.diversityInfo.score.phraseNovelty,
+              recommendation: autopilotResult.diversityInfo.score.recommendation,
+              source: autopilotResult.diversityInfo.explorationResult?.source,
+            } : undefined,
           };
+
+          if (autopilotResult.diversityInfo) {
+            console.log(`[Merch Generate] Diversity score: ${(autopilotResult.diversityInfo.score.overall * 100).toFixed(0)}% (${autopilotResult.diversityInfo.score.recommendation})`);
+          }
         } catch (error) {
           console.error('[Merch Generate] Autopilot failed, using fallback:', error);
           concept = {
@@ -140,11 +181,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             tone: 'Funny',
           };
           sourceData = { riskLevel, fallback: true, error: String(error) };
-          isTest = true; // Mark as test since real generation failed
+          isTest = true;
         }
       }
     } else {
-      // Manual mode: use user's exact specifications
       concept = {
         phrase: specs!.exactText,
         niche: specs!.niche || 'general',
@@ -158,28 +198,153 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     console.log(`[Merch Generate] Concept: "${concept.phrase}" for ${concept.niche}`);
 
     // ========================================
-    // STEP 2: Generate image prompt
+    // STEP 1.5: Enhanced - Fetch niche style profile with REAL-TIME IMAGE ANALYSIS
     // ========================================
-    const imagePrompt = createImagePrompt(concept, mode, specs);
-    console.log(`[Merch Generate] Image prompt created`);
+    // Uses smart style fetcher that:
+    // 1. Uses fresh cached profiles when available
+    // 2. Performs REAL-TIME Claude Vision analysis when cache is stale/missing
+    // 3. Falls back to stale cache if real-time fails
+    if (useStyleDiscovery && concept.niche && concept.niche !== 'general') {
+      try {
+        console.log(`[Merch Generate] Fetching smart style profile for niche: ${concept.niche}`);
+
+        const styleResult = await getSmartStyleProfile(concept.niche, {
+          maxCacheAgeHours: 168, // 1 week cache freshness
+          enableRealtime: true,  // Enable real-time Claude Vision analysis
+          maxRealtimeImages: 5   // Analyze up to 5 images for speed
+        });
+
+        if (styleResult.profile) {
+          nicheStyle = styleResult.profile;
+          console.log(`[Merch Generate] Style profile: source=${styleResult.source}, confidence=${Math.round(styleResult.confidence * 100)}%`);
+
+          sourceData.nicheStyleUsed = true;
+          sourceData.nicheStyleSource = styleResult.source;
+          sourceData.nicheStyleConfidence = styleResult.confidence;
+
+          // Track if real-time analysis was used (important for debugging)
+          if (styleResult.source === 'realtime') {
+            sourceData.realtimeVisionUsed = true;
+            console.log(`[Merch Generate] ✓ Real-time Claude Vision analysis applied`);
+          }
+        } else {
+          console.log(`[Merch Generate] No style profile available for "${concept.niche}"`);
+        }
+      } catch (error) {
+        console.warn('[Merch Generate] Style discovery failed, continuing without:', error);
+      }
+    }
 
     // ========================================
-    // STEP 3: Generate image
+    // STEP 1.6: Enhanced - Check cross-niche opportunities
+    // ========================================
+    if (useCrossNicheBlend && concept.niche && concept.niche !== 'general') {
+      try {
+        const opportunities = await getCrossNicheOpportunities(concept.niche, {
+          minScore: 50,
+          recommendations: ['strong_enter', 'enter'],
+          limit: 1
+        });
+
+        if (opportunities.length > 0) {
+          crossNicheData = opportunities[0];
+          console.log(`[Merch Generate] Found cross-niche opportunity: ${crossNicheData.primaryNiche} + ${crossNicheData.secondaryNiche}`);
+          sourceData.crossNicheUsed = true;
+          sourceData.crossNicheCombination = `${crossNicheData.primaryNiche} + ${crossNicheData.secondaryNiche}`;
+        }
+      } catch (error) {
+        console.warn('[Merch Generate] Cross-niche check failed, continuing without:', error);
+      }
+    }
+
+    // ========================================
+    // STEP 2: Build Design Brief (Enhanced System)
+    // ========================================
+    let imagePrompt: string;
+    let briefCompliance: any = null;
+
+    if (useBriefSystem && !USE_MOCK_DATA) {
+      // Build DesignBrief from trend data and niche style
+      if (mode === 'autopilot' && sourceData.trend) {
+        designBrief = buildDesignBriefFromTrend(
+          {
+            topic: sourceData.trend?.topic,
+            designText: concept.phrase,
+            phrase: concept.phrase,
+            niche: concept.niche,
+            audienceProfile: sourceData.trend?.audienceProfile,
+            visualStyle: sourceData.trend?.visualStyle || concept.style,
+            designStyle: concept.style,
+            colorPalette: sourceData.trend?.colorPalette,
+            recommendedShirtColor: sourceData.trend?.recommendedShirtColor || 'black',
+            sentiment: concept.tone,
+            typographyStyle: sourceData.trend?.typographyStyle
+          },
+          nicheStyle,
+          crossNicheData ? { text: undefined, style: crossNicheData.styleBlendRatio } : undefined
+        );
+      } else if (mode === 'manual' && specs) {
+        designBrief = buildDesignBriefFromManualSpecs(specs, nicheStyle);
+      }
+
+      if (designBrief) {
+        imagePrompt = `Design Brief: ${designBrief.text.exact}`;
+        console.log(`[Merch Generate] Design brief created with source: ${designBrief.style.source}`);
+        sourceData.briefSystem = true;
+        sourceData.briefId = designBrief._meta.briefId;
+      } else {
+        imagePrompt = createImagePrompt(concept, mode, specs);
+      }
+    } else {
+      imagePrompt = createImagePrompt(concept, mode, specs);
+    }
+
+    console.log(`[Merch Generate] Image prompt/brief created`);
+
+    // ========================================
+    // STEP 3: Generate image (with model selection)
     // ========================================
     let imageUrl: string;
+    let actualModel: ImageModel = imageModel as ImageModel;
 
     if (USE_MOCK_DATA) {
       imageUrl = generatePlaceholderImage(concept.phrase, concept.style || 'modern');
     } else {
       try {
-        const imageResult = await generateMerchImage(
-          imagePrompt,
-          concept.style || 'Bold Modern',
-          concept.phrase,
-          'black', // default shirt color
-          'simple' // use simple prompts for faster generation
-        );
-        imageUrl = imageResult.imageUrl;
+        // Use brief-based generation if we have a brief
+        if (designBrief) {
+          console.log(`[Merch Generate] Using brief-based generation with ${imageModel}`);
+
+          const briefResult = await generateMerchImageFromBrief(
+            designBrief,
+            imageModel as ImageModel,
+            promptMode
+          );
+
+          imageUrl = briefResult.imageUrl;
+          actualModel = briefResult.model;
+          briefCompliance = briefResult.briefCompliance;
+
+          if (briefCompliance) {
+            sourceData.briefCompliance = {
+              score: briefCompliance.overallScore,
+              textPreserved: briefCompliance.textPreserved,
+              typographyFollowed: briefCompliance.typographyFollowed,
+              aestheticFollowed: briefCompliance.aestheticFollowed
+            };
+            console.log(`[Merch Generate] Brief compliance: ${briefCompliance.overallScore * 100}%`);
+          }
+        } else {
+          // Legacy generation
+          const imageResult = await generateMerchImage(
+            imagePrompt,
+            concept.style || 'Bold Modern',
+            concept.phrase,
+            'black',
+            promptMode
+          );
+          imageUrl = imageResult.imageUrl;
+        }
 
         // Validate the image
         if (!isValidImageUrl(imageUrl)) {
@@ -194,10 +359,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       }
     }
 
-    console.log(`[Merch Generate] Image generated (isTest: ${isTest})`);
+    sourceData.imageModel = actualModel;
+    console.log(`[Merch Generate] Image generated with ${actualModel} (isTest: ${isTest})`);
 
     // ========================================
-    // STEP 4: Generate listing
+    // STEP 4: Generate listing (Enhanced with keyword intelligence)
     // ========================================
     let listingTitle: string;
     let listingBullets: string[];
@@ -215,27 +381,69 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       listingDesc = mockData.listing.description;
     } else {
       try {
-        const listing = await generateMerchListing(
-          concept.phrase,
-          concept.niche,
-          concept.tone,
-          concept.style
-        );
-        listingTitle = listing.title;
-        listingBullets = listing.bullets;
-        listingDesc = listing.description;
+        // Use enhanced listing if enabled
+        if (useEnhancedListing && concept.niche !== 'general') {
+          console.log(`[Merch Generate] Using enhanced listing with keyword intelligence`);
+
+          const enhancedListing = await generateEnhancedListing(
+            concept.phrase,
+            concept.niche,
+            concept.tone,
+            concept.style
+          );
+
+          listingTitle = enhancedListing.title;
+          listingBullets = enhancedListing.bullets;
+          listingDesc = enhancedListing.description;
+
+          // Track enhanced listing data
+          sourceData.enhancedListing = {
+            used: true,
+            autocompleteUsed: enhancedListing.keywordIntelligence?.autocompleteUsed?.length || 0,
+            competitorKeywordsUsed: enhancedListing.keywordIntelligence?.competitorKeywordsUsed?.length || 0,
+            customerLanguageUsed: enhancedListing.keywordIntelligence?.customerLanguageUsed?.length || 0
+          };
+
+          console.log(`[Merch Generate] Enhanced listing created with ${enhancedListing.keywordIntelligence?.autocompleteUsed?.length || 0} autocomplete keywords`);
+        } else {
+          // Standard listing generation
+          const listing = await generateMerchListing(
+            concept.phrase,
+            concept.niche,
+            concept.tone,
+            concept.style
+          );
+          listingTitle = listing.title;
+          listingBullets = listing.bullets;
+          listingDesc = listing.description;
+        }
       } catch (error) {
         console.error('[Merch Generate] Listing generation failed:', error);
-        const mockData = generateMockData(
-          concept.phrase,
-          concept.niche,
-          concept.style || 'Bold Modern',
-          concept.tone || 'Funny'
-        );
-        listingTitle = mockData.listing.title;
-        listingBullets = mockData.listing.bullets;
-        listingDesc = mockData.listing.description;
-        isTest = true;
+
+        // Try standard generation as fallback
+        try {
+          const listing = await generateMerchListing(
+            concept.phrase,
+            concept.niche,
+            concept.tone,
+            concept.style
+          );
+          listingTitle = listing.title;
+          listingBullets = listing.bullets;
+          listingDesc = listing.description;
+        } catch (fallbackError) {
+          console.error('[Merch Generate] Fallback listing also failed:', fallbackError);
+          const mockData = generateMockData(
+            concept.phrase,
+            concept.niche,
+            concept.style || 'Bold Modern',
+            concept.tone || 'Funny'
+          );
+          listingTitle = mockData.listing.title;
+          listingBullets = mockData.listing.bullets;
+          listingDesc = mockData.listing.description;
+          isTest = true;
+        }
       }
     }
 
@@ -268,6 +476,19 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     });
 
     console.log(`[Merch Generate] Design saved with ID: ${savedDesign.id}`);
+
+    // PHASE 8: Record generation for diversity tracking (non-blocking)
+    if (mode === 'autopilot' && !USE_MOCK_DATA) {
+      recordGeneration({
+        userId,
+        phrase: concept.phrase,
+        niche: concept.niche,
+        topic: sourceData.trend?.topic || concept.phrase,
+        riskLevel: riskLevel!,
+      }).catch(err => {
+        console.warn('[Merch Generate] Failed to record generation for diversity:', err);
+      });
+    }
 
     // Phase 6: Log insight usage for performance tracking (non-blocking)
     if (appliedInsights.length > 0) {
