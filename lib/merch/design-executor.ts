@@ -383,13 +383,23 @@ export function createDesignBriefFromTrend(
 
 /**
  * Build typography settings from available data
+ *
+ * PRIORITY ORDER (most reliable to least):
+ * 1. nicheStyle - from Claude Vision image analysis (cached OR real-time)
+ * 2. trend data - from Gemini text-based research
+ * 3. user style - explicit user preference
+ * 4. default - fallback
+ *
+ * Note: nicheStyle comes from getSmartStyleProfile which ensures freshness:
+ * - Fresh cache (<1 week) → used directly
+ * - Stale/missing → real-time Claude Vision analysis performed
+ * - Real-time fails → stale cache with reduced confidence
  */
 function buildTypography(
   trend: { typographyStyle?: string; visualStyle?: string; designStyle?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
   userStyle?: string
 ): DesignBrief['style']['typography'] {
-  // Priority: nicheStyle > trend data > user style > default
   let primary = 'bold sans-serif';
   const forbidden: string[] = [];
   const effects: string[] = [];

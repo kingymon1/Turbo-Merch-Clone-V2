@@ -28,7 +28,7 @@ import {
 } from '@/lib/merch/image-generator';
 import { generateAutopilotConcept } from '@/lib/merch/autopilot-generator';
 import { logInsightUsage } from '@/lib/merch/learning';
-import { getOrDiscoverNicheStyle } from '@/lib/merch/style-discovery';
+import { getSmartStyleProfile } from '@/lib/merch/style-discovery';
 import { getCrossNicheOpportunities } from '@/lib/merch/cross-niche-engine';
 
 // Increase timeout for AI generation (max 300s on Vercel Pro)
@@ -184,17 +184,37 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     console.log(`[Merch Generate] Concept: "${concept.phrase}" for ${concept.niche}`);
 
     // ========================================
-    // STEP 1.5: Enhanced - Fetch niche style profile
+    // STEP 1.5: Enhanced - Fetch niche style profile with REAL-TIME IMAGE ANALYSIS
     // ========================================
+    // Uses smart style fetcher that:
+    // 1. Uses fresh cached profiles when available
+    // 2. Performs REAL-TIME Claude Vision analysis when cache is stale/missing
+    // 3. Falls back to stale cache if real-time fails
     if (useStyleDiscovery && concept.niche && concept.niche !== 'general') {
       try {
-        console.log(`[Merch Generate] Fetching style profile for niche: ${concept.niche}`);
-        nicheStyle = await getOrDiscoverNicheStyle(concept.niche, 168); // Use cached if < 1 week old
+        console.log(`[Merch Generate] Fetching smart style profile for niche: ${concept.niche}`);
 
-        if (nicheStyle) {
-          console.log(`[Merch Generate] Found style profile with ${nicheStyle.confidence * 100}% confidence`);
+        const styleResult = await getSmartStyleProfile(concept.niche, {
+          maxCacheAgeHours: 168, // 1 week cache freshness
+          enableRealtime: true,  // Enable real-time Claude Vision analysis
+          maxRealtimeImages: 5   // Analyze up to 5 images for speed
+        });
+
+        if (styleResult.profile) {
+          nicheStyle = styleResult.profile;
+          console.log(`[Merch Generate] Style profile: source=${styleResult.source}, confidence=${Math.round(styleResult.confidence * 100)}%`);
+
           sourceData.nicheStyleUsed = true;
-          sourceData.nicheStyleConfidence = nicheStyle.confidence;
+          sourceData.nicheStyleSource = styleResult.source;
+          sourceData.nicheStyleConfidence = styleResult.confidence;
+
+          // Track if real-time analysis was used (important for debugging)
+          if (styleResult.source === 'realtime') {
+            sourceData.realtimeVisionUsed = true;
+            console.log(`[Merch Generate] ✓ Real-time Claude Vision analysis applied`);
+          }
+        } else {
+          console.log(`[Merch Generate] No style profile available for "${concept.niche}"`);
         }
       } catch (error) {
         console.warn('[Merch Generate] Style discovery failed, continuing without:', error);

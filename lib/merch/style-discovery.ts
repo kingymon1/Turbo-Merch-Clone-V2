@@ -890,11 +890,406 @@ function normalizeColor(color: string): string {
     .trim();
 }
 
+// ============================================================================
+// REAL-TIME STYLE ANALYSIS (For Live Requests)
+// ============================================================================
+
+/**
+ * Lightweight real-time style intelligence
+ * Used during generation requests when no cached profile exists
+ */
+export interface RealtimeStyleIntelligence {
+  niche: string;
+  sampleSize: number;
+  analysisTimestamp: Date;
+
+  // Quick style insights extracted from images
+  typography: {
+    dominant: string;        // Most common typography style
+    effects: string[];       // Common effects (distressed, shadow, etc.)
+  };
+
+  colors: {
+    primary: string[];       // Most common design colors
+    shirtColors: string[];   // Most common shirt colors
+    mood: string;            // Dominant color mood
+  };
+
+  layout: {
+    composition: string;     // Dominant composition
+    hasIcons: boolean;       // Whether icons are common
+    hasIllustrations: boolean;
+  };
+
+  aesthetic: {
+    primary: string;         // Main aesthetic descriptor
+    keywords: string[];      // Style keywords
+    mood: string;            // Emotional mood
+  };
+
+  // Source tracking
+  source: 'realtime-vision';
+  confidence: number;
+}
+
+/**
+ * Perform real-time style analysis for a niche during a generation request.
+ *
+ * This is a FAST, LIGHTWEIGHT version of style discovery designed to run
+ * during user requests. It analyzes only 3-5 images in parallel and returns
+ * quick style insights without storing to database.
+ *
+ * Use this when:
+ * - No cached NicheStyleProfile exists
+ * - Cached profile is stale but we need immediate results
+ * - User needs style intelligence for an uncommon niche
+ *
+ * @param niche - The niche to analyze
+ * @param options - Configuration options
+ * @returns Quick style intelligence or null if insufficient data
+ */
+export async function analyzeNicheStyleRealtime(
+  niche: string,
+  options: {
+    maxImages?: number;      // Max images to analyze (default: 5)
+    timeoutMs?: number;      // Timeout per image (default: 8000)
+    prioritizeTopSellers?: boolean;
+  } = {}
+): Promise<RealtimeStyleIntelligence | null> {
+  const {
+    maxImages = 5,
+    timeoutMs = 8000,
+    prioritizeTopSellers = true
+  } = options;
+
+  const startTime = Date.now();
+  console.log(`[RealtimeStyle] Starting real-time analysis for niche: "${niche}"`);
+
+  try {
+    // Step 1: Fetch a small sample of MBA products (fast query)
+    const products = await fetchMBAProductsForNiche(niche, {
+      limit: maxImages,
+      prioritizeTopSellers,
+      includeRecent: true
+    });
+
+    if (products.length < 2) {
+      console.log(`[RealtimeStyle] Insufficient products for "${niche}" (found ${products.length})`);
+      return null;
+    }
+
+    console.log(`[RealtimeStyle] Found ${products.length} products, analyzing images...`);
+
+    // Step 2: Analyze images in parallel with timeout
+    const client = getAnthropicClient();
+    const analysisPromises = products.map(product =>
+      analyzeImageWithTimeout(client, product, timeoutMs)
+    );
+
+    const analyses = await Promise.all(analysisPromises);
+    const successful = analyses.filter(a => a.success);
+
+    if (successful.length < 2) {
+      console.log(`[RealtimeStyle] Insufficient successful analyses (${successful.length})`);
+      return null;
+    }
+
+    console.log(`[RealtimeStyle] Successfully analyzed ${successful.length}/${products.length} images`);
+
+    // Step 3: Quick aggregation (simplified for speed)
+    const intelligence = aggregateRealtimeAnalyses(niche, successful);
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[RealtimeStyle] Completed in ${elapsed}ms with ${intelligence.confidence * 100}% confidence`);
+
+    return intelligence;
+
+  } catch (error) {
+    console.error(`[RealtimeStyle] Error analyzing "${niche}":`, error);
+    return null;
+  }
+}
+
+/**
+ * Analyze a single image with timeout
+ */
+async function analyzeImageWithTimeout(
+  client: Anthropic,
+  product: { externalId: string; imageUrl: string | null; isTopSeller: boolean },
+  timeoutMs: number
+): Promise<ProductImageAnalysis> {
+  if (!product.imageUrl) {
+    return { asin: product.externalId, success: false, error: 'No image URL' };
+  }
+
+  try {
+    // Create a promise that rejects after timeout
+    const timeoutPromise = new Promise<ProductImageAnalysis>((_, reject) => {
+      setTimeout(() => reject(new Error('Analysis timeout')), timeoutMs);
+    });
+
+    // Race the analysis against the timeout
+    const analysisPromise = analyzeSingleImage(
+      client,
+      product.imageUrl,
+      product.externalId,
+      product.isTopSeller
+    );
+
+    return await Promise.race([analysisPromise, timeoutPromise]);
+
+  } catch (error) {
+    return {
+      asin: product.externalId,
+      success: false,
+      error: error instanceof Error ? error.message : 'Analysis failed'
+    };
+  }
+}
+
+/**
+ * Quick aggregation of realtime analyses into style intelligence
+ */
+function aggregateRealtimeAnalyses(
+  niche: string,
+  analyses: ProductImageAnalysis[]
+): RealtimeStyleIntelligence {
+  // Count occurrences
+  const typographyStyles: Record<string, number> = {};
+  const typographyEffects: Record<string, number> = {};
+  const primaryColors: Record<string, number> = {};
+  const shirtColors: Record<string, number> = {};
+  const colorMoods: Record<string, number> = {};
+  const compositions: Record<string, number> = {};
+  const aestheticPrimary: Record<string, number> = {};
+  const aestheticKeywords: Record<string, number> = {};
+  const aestheticMoods: Record<string, number> = {};
+
+  let iconCount = 0;
+  let illustrationCount = 0;
+
+  for (const analysis of analyses) {
+    // Typography
+    if (analysis.typography) {
+      increment(typographyStyles, analysis.typography.style);
+      for (const effect of analysis.typography.effects || []) {
+        increment(typographyEffects, effect);
+      }
+    }
+
+    // Colors
+    if (analysis.colors) {
+      for (const color of analysis.colors.primary || []) {
+        increment(primaryColors, normalizeColor(color));
+      }
+      increment(shirtColors, normalizeColor(analysis.colors.shirtColor || 'black'));
+      increment(colorMoods, analysis.colors.mood);
+    }
+
+    // Layout
+    if (analysis.layout) {
+      increment(compositions, analysis.layout.composition);
+      if (analysis.layout.iconPresent) iconCount++;
+      if (analysis.layout.hasIllustration) illustrationCount++;
+    }
+
+    // Aesthetic
+    if (analysis.aesthetic) {
+      increment(aestheticPrimary, analysis.aesthetic.primary);
+      increment(aestheticMoods, analysis.aesthetic.mood);
+      for (const keyword of analysis.aesthetic.keywords || []) {
+        increment(aestheticKeywords, keyword.toLowerCase());
+      }
+    }
+  }
+
+  const total = analyses.length;
+
+  // Calculate confidence based on consistency
+  let confidence = 0.3; // Base confidence for having realtime data
+  if (total >= 3) confidence += 0.1;
+  if (total >= 5) confidence += 0.1;
+  if (Object.keys(typographyStyles).length <= 2) confidence += 0.1; // Consistent typography
+  if (Object.keys(aestheticPrimary).length <= 2) confidence += 0.1; // Consistent aesthetic
+
+  return {
+    niche,
+    sampleSize: total,
+    analysisTimestamp: new Date(),
+
+    typography: {
+      dominant: getTopItem(typographyStyles) || 'bold sans-serif',
+      effects: getTopItems(typographyEffects, 3)
+    },
+
+    colors: {
+      primary: getTopItems(primaryColors, 4),
+      shirtColors: getTopItems(shirtColors, 2),
+      mood: getTopItem(colorMoods) || 'neutral'
+    },
+
+    layout: {
+      composition: getTopItem(compositions) || 'centered',
+      hasIcons: iconCount / total > 0.3,
+      hasIllustrations: illustrationCount / total > 0.3
+    },
+
+    aesthetic: {
+      primary: getTopItem(aestheticPrimary) || 'modern',
+      keywords: getTopItems(aestheticKeywords, 6),
+      mood: getTopItem(aestheticMoods) || 'varied'
+    },
+
+    source: 'realtime-vision',
+    confidence: Math.min(confidence, 0.7) // Cap at 0.7 since it's a quick analysis
+  };
+}
+
+/**
+ * Convert RealtimeStyleIntelligence to NicheStyleProfile format
+ * for compatibility with the DesignBrief system
+ */
+export function realtimeToNicheStyleProfile(
+  realtime: RealtimeStyleIntelligence
+): NicheStyleProfile {
+  return {
+    niche: realtime.niche,
+    sampleSize: realtime.sampleSize,
+    lastAnalyzed: realtime.analysisTimestamp,
+    confidence: realtime.confidence,
+
+    dominantTypography: {
+      primary: realtime.typography.dominant,
+      secondary: undefined,
+      examples: realtime.typography.effects
+    },
+
+    colorPalette: {
+      primary: realtime.colors.primary,
+      accent: [],
+      background: realtime.colors.shirtColors,
+      seasonalVariants: undefined
+    },
+
+    layoutPatterns: {
+      dominant: realtime.layout.composition,
+      alternatives: [],
+      textPlacement: 'centered',
+      iconUsage: realtime.layout.hasIcons ? 'common' : 'rare'
+    },
+
+    illustrationStyle: {
+      dominant: realtime.layout.hasIllustrations ? 'simple' : 'none',
+      subjectMatter: realtime.aesthetic.keywords
+    },
+
+    moodAesthetic: {
+      primary: realtime.aesthetic.primary,
+      secondary: realtime.aesthetic.mood,
+      avoid: []
+    }
+  };
+}
+
+/**
+ * Smart style fetcher that uses cached profiles when fresh,
+ * or performs real-time analysis when needed.
+ *
+ * Priority order:
+ * 1. Fresh cached profile (< maxAgeHours old) - use directly
+ * 2. No cache or stale cache - perform real-time analysis
+ * 3. If real-time fails but stale cache exists - use stale cache
+ * 4. Nothing available - return null
+ */
+export async function getSmartStyleProfile(
+  niche: string,
+  options: {
+    maxCacheAgeHours?: number;
+    enableRealtime?: boolean;
+    maxRealtimeImages?: number;
+  } = {}
+): Promise<{
+  profile: NicheStyleProfile | null;
+  source: 'fresh-cache' | 'realtime' | 'stale-cache' | 'none';
+  confidence: number;
+}> {
+  const {
+    maxCacheAgeHours = 168, // 1 week
+    enableRealtime = true,
+    maxRealtimeImages = 5
+  } = options;
+
+  console.log(`[SmartStyle] Fetching style for niche: "${niche}"`);
+
+  // Step 1: Check for cached profile
+  const stored = await prisma.nicheStyleProfile.findUnique({
+    where: { niche }
+  });
+
+  if (stored) {
+    const ageMs = Date.now() - stored.lastAnalyzedAt.getTime();
+    const maxAgeMs = maxCacheAgeHours * 60 * 60 * 1000;
+
+    if (ageMs < maxAgeMs) {
+      // Fresh cache - use it
+      console.log(`[SmartStyle] Using fresh cached profile (age: ${Math.round(ageMs / 3600000)}h)`);
+      const profile = await getNicheStyleProfile(niche);
+      return {
+        profile,
+        source: 'fresh-cache',
+        confidence: profile?.confidence || 0.5
+      };
+    }
+
+    console.log(`[SmartStyle] Cache is stale (age: ${Math.round(ageMs / 3600000)}h)`);
+  }
+
+  // Step 2: Try real-time analysis
+  if (enableRealtime) {
+    console.log(`[SmartStyle] Attempting real-time analysis...`);
+    const realtime = await analyzeNicheStyleRealtime(niche, {
+      maxImages: maxRealtimeImages
+    });
+
+    if (realtime) {
+      console.log(`[SmartStyle] Real-time analysis successful`);
+      return {
+        profile: realtimeToNicheStyleProfile(realtime),
+        source: 'realtime',
+        confidence: realtime.confidence
+      };
+    }
+  }
+
+  // Step 3: Fall back to stale cache if available
+  if (stored) {
+    console.log(`[SmartStyle] Falling back to stale cache`);
+    const profile = await getNicheStyleProfile(niche);
+    return {
+      profile,
+      source: 'stale-cache',
+      confidence: (profile?.confidence || 0.5) * 0.7 // Reduce confidence for stale data
+    };
+  }
+
+  // Step 4: Nothing available
+  console.log(`[SmartStyle] No style data available for "${niche}"`);
+  return {
+    profile: null,
+    source: 'none',
+    confidence: 0
+  };
+}
+
 // Export for use in cron jobs
 export default {
   discoverNicheStyle,
   getNicheStyleProfile,
   getOrDiscoverNicheStyle,
   discoverStylesForNiches,
-  getNichesNeedingStyleDiscovery
+  getNichesNeedingStyleDiscovery,
+  // New real-time exports
+  analyzeNicheStyleRealtime,
+  realtimeToNicheStyleProfile,
+  getSmartStyleProfile
 };
