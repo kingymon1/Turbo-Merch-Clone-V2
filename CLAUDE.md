@@ -53,9 +53,12 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://scraper-api.decodo.com/v2`
 - **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`
 
-### Vectorizer AI
-- **Location**: `docs/vectorizer-ai/README.md`
-- **Use for**: Image vectorization
+### Vectorizer.AI
+- **Location**: `docs/vectorizer-api.md`
+- **Use for**: Raster-to-vector image conversion, logo vectorization, AI-powered tracing
+- **Key endpoints**: `/vectorize` (convert), `/download` (retrieve), `/delete` (cleanup), `/account` (usage)
+- **Base URL**: `https://api.vectorizer.ai/api/v1`
+- **Env vars**: `VECTORIZER_API_ID`, `VECTORIZER_API_SECRET`
 
 ## Feature Documentation
 
@@ -75,6 +78,8 @@ Required environment variables for full functionality:
 - `PERPLEXITY_API_KEY` - Perplexity search API
 - `GROK_API_KEY` - Grok AI
 - `BRAVE_API_KEY` - Brave Search
+- `VECTORIZER_API_ID` - Vectorizer.AI API ID
+- `VECTORIZER_API_SECRET` - Vectorizer.AI API Secret
 - `DATABASE_URL` - Prisma database connection
 
 ## Common Commands
@@ -128,3 +133,11 @@ npx prisma studio
 3. Set `parse: true` to get structured JSON instead of raw HTML
 4. Use `markdown: true` when feeding results to LLMs (reduces tokens)
 5. For batch operations, use async endpoints with up to 3000 URLs/queries
+
+### Adding Vectorizer.AI Features
+1. Read `docs/vectorizer-api.md` for complete API documentation
+2. Use Basic Auth with API ID and Secret for authentication
+3. Set `output.format` to `svg` for web use or `pdf`/`eps` for print
+4. Use `mode: production` for high-quality output, `mode: preview` for testing
+5. Enable `processing.palette` for limited color outputs (logos, icons)
+6. Use async workflow with `/download` endpoint for large batch operations
