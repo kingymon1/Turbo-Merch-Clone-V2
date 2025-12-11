@@ -28,6 +28,11 @@ const TONE_OPTIONS = [
   'Edgy',
 ];
 
+const IMAGE_MODEL_OPTIONS = [
+  { value: 'gemini', label: 'Gemini (Fast, Good Quality)' },
+  { value: 'dalle3', label: 'DALL-E 3 (Slower, Premium Quality)' },
+];
+
 // Max 20 variations - higher counts may timeout
 const VARIATION_COUNT_OPTIONS = [5, 10, 15, 20];
 
@@ -66,6 +71,7 @@ const MerchGenerator: React.FC = () => {
   const [targetNiche, setTargetNiche] = useState('');
   const [tone, setTone] = useState('Let AI decide');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
+  const [imageModel, setImageModel] = useState<'gemini' | 'dalle3'>('gemini');
 
   // Editable result fields
   const [editableTitle, setEditableTitle] = useState('');
@@ -115,7 +121,7 @@ const MerchGenerator: React.FC = () => {
     setGeneratedDesign(null);
 
     try {
-      const requestBody: any = { mode };
+      const requestBody: any = { mode, imageModel };
 
       if (mode === 'autopilot') {
         requestBody.riskLevel = riskLevel;
@@ -317,6 +323,27 @@ const MerchGenerator: React.FC = () => {
               </p>
             </div>
 
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Image Model
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {IMAGE_MODEL_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setImageModel(opt.value as 'gemini' | 'dalle3')}
+                    className={`px-4 py-3 rounded-lg font-medium text-sm transition-all ${
+                      imageModel === opt.value
+                        ? 'bg-brand-600 text-white shadow-lg'
+                        : 'bg-gray-100 dark:bg-dark-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-dark-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <button
               onClick={handleGenerate}
               disabled={isGenerating}
@@ -423,6 +450,27 @@ const MerchGenerator: React.FC = () => {
                 rows={3}
                 className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none"
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Image Model
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                {IMAGE_MODEL_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setImageModel(opt.value as 'gemini' | 'dalle3')}
+                    className={`px-4 py-3 rounded-lg font-medium text-sm transition-all ${
+                      imageModel === opt.value
+                        ? 'bg-brand-600 text-white shadow-lg'
+                        : 'bg-gray-100 dark:bg-dark-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-dark-600'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button
