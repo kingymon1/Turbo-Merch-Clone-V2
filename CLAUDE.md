@@ -25,9 +25,12 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://api.perplexity.ai`
 - **Env var**: `PERPLEXITY_API_KEY`
 
-### Grok API
-- **Location**: `docs/grok-api/README.md`
-- **Use for**: AI text and image generation
+### Grok API (xAI)
+- **Location**: `docs/grok-api.md`
+- **Use for**: AI text generation, image understanding, image generation, real-time search
+- **Key models**: `grok-4` (flagship), `grok-4-1-fast` (agentic), `grok-2-image` (image gen)
+- **Base URL**: `https://api.x.ai/v1`
+- **Env var**: `XAI_API_KEY`
 
 ### Brave Search API
 - **Location**: `docs/brave-search-api-reference.md`
@@ -84,3 +87,10 @@ npx prisma studio
 3. Always enable `return_citations: true` for source verification
 4. Use `search_domain_filter` to focus results on relevant sites
 5. Apply `search_recency_filter` for time-sensitive queries
+
+### Adding Grok API Features
+1. Read `docs/grok-api.md` for complete API documentation
+2. Use `grok-4` for complex reasoning, `grok-4-1-fast` for agentic tool calling
+3. OpenAI SDK compatible - just change base URL to `https://api.x.ai/v1`
+4. For real-time search, use agentic tools (`web_search`, `x_search`)
+5. Image generation uses `grok-2-image` model at separate endpoint
