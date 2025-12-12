@@ -224,3 +224,18 @@ Research agents provide complete style data:
 - `textLayout` (positioning, emphasis, sizing)
 
 This data flows through uncompressed to model-specific prompt renderers.
+
+### Niche-Aware Fallbacks
+When research data is incomplete, the system uses niche-specific defaults instead of generic fallbacks. Located in `lib/merch/design-executor.ts`:
+
+| Niche | Typography | Colors | Shirt Color | Aesthetic |
+|-------|------------|--------|-------------|-----------|
+| fishing | bold weathered sans-serif | forest green, navy, rust | forest green | cozy cabin lodge vibe |
+| nursing | clean modern sans-serif | teal, soft pink, navy | navy | healthcare professional pride |
+| coffee | warm rounded sans-serif | coffee brown, cream, tan | heather brown | coffee shop comfort |
+| dog | playful rounded sans-serif | warm tones, earthy colors | heather gray | devoted pet parent |
+| gaming | bold tech-styled sans-serif | neon green, electric blue, black | black | gamer lifestyle |
+| fitness | ultra bold condensed | black, red, gold | black | gym motivation |
+| teacher | friendly serif | apple red, green, navy | heather gray | educator appreciation |
+
+To add new niches, update `NICHE_STYLE_DEFAULTS` in `design-executor.ts`.
