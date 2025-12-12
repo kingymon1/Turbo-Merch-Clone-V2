@@ -361,7 +361,6 @@ ${QUALITY_FLOOR_CONSTRAINTS}`;
  * - Best-in-class typography/text rendering
  * - DESIGN style type for graphic design work
  * - magic_prompt: OFF for exact text preservation
- * - Transparent background via generate-transparent endpoint
  */
 async function generateWithIdeogram(prompt: string, brief: DesignBrief): Promise<string> {
   const apiKey = process.env.IDEOGRAM_API_KEY;
@@ -385,25 +384,26 @@ async function generateWithIdeogram(prompt: string, brief: DesignBrief): Promise
 
 ${QUALITY_FLOOR_CONSTRAINTS}`;
 
-    const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate-transparent', {
+    // Use FormData as per Ideogram API docs
+    const formData = new FormData();
+    formData.append('prompt', finalPrompt);
+    formData.append('aspect_ratio', 'ASPECT_2_3');  // Portrait for t-shirt designs
+    formData.append('model', 'V_3');
+    formData.append('style_type', 'DESIGN');  // Optimized for graphic design
+    formData.append('magic_prompt', 'OFF');   // CRITICAL: Preserve exact text
+    formData.append('negative_prompt', negativePrompt);
+
+    const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
       method: 'POST',
       headers: {
         'Api-Key': apiKey,
-        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        prompt: finalPrompt,
-        aspect_ratio: '2x3',  // Portrait for t-shirt designs (Ideogram uses 'x' not ':')
-        model: 'V_3',
-        style_type: 'DESIGN',  // Optimized for graphic design
-        magic_prompt: 'OFF',   // CRITICAL: Preserve exact text
-        negative_prompt: negativePrompt
-      })
+      body: formData
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Ideogram API error: ${response.status} - ${JSON.stringify(errorData)}`);
+      const errorData = await response.text();
+      throw new Error(`Ideogram API error: ${response.status} - ${errorData}`);
     }
 
     const data = await response.json();
