@@ -387,7 +387,7 @@ ${QUALITY_FLOOR_CONSTRAINTS}`;
     // Use FormData as per Ideogram API docs
     const formData = new FormData();
     formData.append('prompt', finalPrompt);
-    formData.append('aspect_ratio', 'ASPECT_2_3');  // Portrait for t-shirt designs
+    formData.append('aspect_ratio', '2x3');  // Portrait for t-shirt designs
     formData.append('model', 'V_3');
     formData.append('style_type', 'DESIGN');  // Optimized for graphic design
     formData.append('magic_prompt', 'OFF');   // CRITICAL: Preserve exact text
