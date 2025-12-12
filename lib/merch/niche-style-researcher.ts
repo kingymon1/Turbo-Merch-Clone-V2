@@ -13,7 +13,6 @@
  * - Gets smarter over time without getting stale
  */
 
-import OpenAI from 'openai';
 import { prisma } from '@/lib/prisma';
 
 // Result structure matches what design-executor needs
@@ -211,34 +210,43 @@ async function researchNicheStyle(niche: string, context: StoredContext): Promis
     return MINIMAL_FALLBACK;
   }
 
-  const client = new OpenAI({
-    apiKey,
-    baseURL: 'https://api.perplexity.ai'
-  });
-
   const prompt = buildEnrichedPrompt(niche, context);
 
-  const response = await client.chat.completions.create({
-    model: 'sonar',
-    messages: [
-      {
-        role: 'system',
-        content: `You are a merchandise design researcher. Your job is to discover CURRENT visual style patterns for specific niches by analyzing what's selling in that market.
+  // Use fetch directly for Perplexity API (OpenAI-compatible)
+  const response = await fetch('https://api.perplexity.ai/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a merchandise design researcher. Your job is to discover CURRENT visual style patterns for specific niches by analyzing what's selling in that market.
 
 You may receive context about what has historically worked. Use it as background, but prioritize discovering what's CURRENTLY trending - styles evolve.
 
 RESPOND ONLY WITH VALID JSON - no markdown, no explanation, just the JSON object.`
-      },
-      {
-        role: 'user',
-        content: prompt
-      }
-    ],
-    temperature: 0.4,
-    max_tokens: 1000
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      temperature: 0.4,
+      max_tokens: 1000
+    })
   });
 
-  const content = response.choices[0]?.message?.content;
+  if (!response.ok) {
+    console.warn(`[NicheStyleResearcher] Perplexity API error: ${response.status}`);
+    return MINIMAL_FALLBACK;
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
 
   if (!content) {
     console.warn('[NicheStyleResearcher] Empty response from Perplexity');
