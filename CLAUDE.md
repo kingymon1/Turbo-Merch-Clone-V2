@@ -225,27 +225,39 @@ Research agents provide complete style data:
 
 This data flows through uncompressed to model-specific prompt renderers.
 
-### Niche Style Inference (Agent-Based)
-When research data is incomplete, the system uses **agent-based web research** to discover current style patterns for the niche - NOT hardcoded defaults.
+### Niche Style Inference (Intelligent Research)
+When research data is incomplete, the system uses **intelligent agent-based research** to discover current style patterns - NOT hardcoded defaults.
 
-**Philosophy**: "We have access to all the information on the internet - use it."
+**Philosophy**:
+- "We have access to all the information on the internet - use it."
+- **Live research is PRIMARY** - always discover fresh patterns
+- **Stored data is CONTEXT** - informs and validates, never replaces research
+- **System makes autonomous decisions** - no user warnings, system decides everything
 
 **Implementation** (`lib/merch/niche-style-researcher.ts`):
-- Uses Perplexity's `sonar` model with web search to research current style patterns
-- Queries: "What typography/colors/aesthetics are selling in the [niche] t-shirt market?"
-- Returns structured style data: typography, effects, colorPalette, mood, shirtColor, aesthetic
-- Results cached for 10 minutes to avoid redundant API calls
-- Minimal fallback only if agent call completely fails (network error, etc.)
 
-**Why Agent-Based**:
-- Style patterns change with market trends - hardcoded values become stale
-- Different niches emerge constantly - can't maintain a static list
-- Agent decisions based on current web data are more accurate than our assumptions
+The research flow:
+1. **Fetch stored context** (parallel, non-blocking) - NicheStyleProfile, NicheMarketData, ProvenInsight
+2. **Build enriched prompt** - Stored data as BACKGROUND, not constraints
+3. **Call Perplexity** (sonar model) - Always do live web research
+4. **Score confidence** - Compare research with stored data (agreement = 0.9, novel = 0.75, disagrees = 0.65)
+5. **Write back findings** - Fire-and-forget database update (don't block on writes)
+
+**Database Integration**:
+- `NicheStyleProfile` - Accumulated style intelligence per niche (typography, colors, mood)
+- `NicheMarketData` - Market patterns and trends for niches
+- `ProvenInsight` - Validated patterns from actual product success
+
+**Why This Architecture**:
+- Stored data provides context that improves research prompts
+- Live research prevents system from getting lazy/repetitive
+- Confidence scoring validates novel discoveries vs established patterns
+- Write-back mechanism makes system smarter over time without getting stale
 - Aligns with "agent decisions, not hardcoded options" principle
 
 **Style Source Priority** (used in DesignBrief):
 1. `discovered` - from Claude Vision image analysis
 2. `researched` - from Gemini text-based research
 3. `user-specified` - explicit user preference
-4. `niche-researched` - from agent-based web research (NEW)
-5. `niche-default` - minimal fallback if agent fails
+4. `niche-researched` - from intelligent web research with database context
+5. `niche-default` - minimal fallback if research fails completely
