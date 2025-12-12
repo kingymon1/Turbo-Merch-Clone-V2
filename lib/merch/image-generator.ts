@@ -388,7 +388,7 @@ ${QUALITY_FLOOR_CONSTRAINTS}`;
     const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate-transparent', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Api-Key': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
