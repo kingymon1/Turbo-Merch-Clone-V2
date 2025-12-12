@@ -194,6 +194,13 @@ export function buildDesignBriefFromTrend(
     recommendedShirtColor?: string;
     sentiment?: string;
     typographyStyle?: string;
+    // Text layout from research agent
+    textLayout?: {
+      positioning?: string;
+      emphasis?: string;
+      sizing?: string;
+      reasoning?: string;
+    };
   },
   nicheStyle?: Partial<NicheStyleProfile>,
   userOverrides?: {

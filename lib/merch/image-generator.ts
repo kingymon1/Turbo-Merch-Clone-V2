@@ -131,7 +131,7 @@ export function isValidImageUrl(url: string): boolean {
 // NEW: DESIGN BRIEF SYSTEM - Style-compliant image generation
 // ============================================================================
 
-export type ImageModel = 'gemini' | 'dalle3';
+export type ImageModel = 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3';
 
 export interface BriefBasedGenerationResult extends ImageGenerationResult {
   model: ImageModel;
@@ -164,18 +164,28 @@ export async function generateMerchImageFromBrief(
     // Step 2: Generate the image using the selected model
     let imageUrl: string;
 
-    if (model === 'dalle3') {
-      imageUrl = await generateWithDalle3(executionResult.prompt);
-    } else {
-      // Default to Gemini
-      imageUrl = await generateDesignImage(
-        executionResult.prompt,
-        brief.style.aesthetic.primary,
-        brief.text.exact,
-        brief.style.typography.required,
-        brief.style.colorApproach.shirtColor,
-        promptMode
-      );
+    switch (model) {
+      case 'gpt-image-1':
+        imageUrl = await generateWithGptImage1(executionResult.prompt, brief);
+        break;
+      case 'ideogram':
+        imageUrl = await generateWithIdeogram(executionResult.prompt, brief);
+        break;
+      case 'dalle3':
+        imageUrl = await generateWithDalle3(executionResult.prompt);
+        break;
+      case 'gemini':
+      default:
+        // Default to Gemini
+        imageUrl = await generateDesignImage(
+          executionResult.prompt,
+          brief.style.aesthetic.primary,
+          brief.text.exact,
+          brief.style.typography.required,
+          brief.style.colorApproach.shirtColor,
+          promptMode
+        );
+        break;
     }
 
     console.log(`[ImageGenerator] Image generated successfully with ${model}`);
@@ -212,7 +222,16 @@ export async function generateMerchImageFromBrief(
 }
 
 /**
- * Generate image using DALL-E 3
+ * Quality floor constraints - negative prompts to ensure professional quality
+ * These are appended to ALL model prompts to set a minimum quality bar
+ */
+const QUALITY_FLOOR_CONSTRAINTS = `
+DO NOT create: amateur graphics, clipart style, basic flat designs, generic stock imagery,
+poorly rendered text, childish scribbles, low-effort templates, blurry elements,
+pixelated graphics, MS Paint quality, default system fonts.`;
+
+/**
+ * Generate image using DALL-E 3 (Legacy)
  */
 async function generateWithDalle3(prompt: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
@@ -225,15 +244,10 @@ async function generateWithDalle3(prompt: string): Promise<string> {
   try {
     console.log('[ImageGenerator] Generating with DALL-E 3...');
 
-    // Enhance prompt with quality requirements for DALL-E
+    // Add quality floor constraints
     const enhancedPrompt = `${prompt}
 
-CRITICAL QUALITY INSTRUCTIONS:
-- Create a PROFESSIONAL COMMERCIAL-GRADE graphic design
-- Typography MUST have visual depth: 3D effects, drop shadows, bevels, or gradient fills
-- NOT flat basic text, NOT clip-art style - must look like professional graphic design
-- If illustrations are present, they must be DETAILED with proper shading and highlights
-- This is premium wearable art, not amateur graphics`;
+${QUALITY_FLOOR_CONSTRAINTS}`;
 
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -273,6 +287,158 @@ CRITICAL QUALITY INSTRUCTIONS:
 }
 
 /**
+ * Generate image using GPT-Image-1 (OpenAI's latest model)
+ *
+ * Key features:
+ * - Native transparent background support
+ * - 75% cheaper than DALL-E 3
+ * - Better at following detailed prompts
+ * - Improved text rendering
+ */
+async function generateWithGptImage1(prompt: string, brief: DesignBrief): Promise<string> {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    console.warn('[ImageGenerator] OPENAI_API_KEY not set');
+    throw new Error('GPT-Image-1 not configured');
+  }
+
+  try {
+    console.log('[ImageGenerator] Generating with GPT-Image-1...');
+
+    // Build text-first non-negotiable prompt structure
+    const textFirstPrompt = buildTextFirstPrompt(prompt, brief);
+
+    // Add quality floor constraints
+    const finalPrompt = `${textFirstPrompt}
+
+${QUALITY_FLOOR_CONSTRAINTS}`;
+
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-image-1',
+        prompt: finalPrompt,
+        n: 1,
+        size: '1024x1536',  // Portrait aspect ratio
+        quality: 'high',
+        background: 'transparent',  // Native transparent background support
+        output_format: 'png'
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`GPT-Image-1 API error: ${response.status} - ${JSON.stringify(errorData)}`);
+    }
+
+    const data = await response.json();
+
+    if (data.data?.[0]?.b64_json) {
+      console.log('[ImageGenerator] GPT-Image-1 generation successful (base64)');
+      return `data:image/png;base64,${data.data[0].b64_json}`;
+    } else if (data.data?.[0]?.url) {
+      console.log('[ImageGenerator] GPT-Image-1 generation successful (url)');
+      return data.data[0].url;
+    }
+
+    throw new Error('No image data in GPT-Image-1 response');
+
+  } catch (error) {
+    console.error('[ImageGenerator] GPT-Image-1 error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Generate image using Ideogram 3.0
+ *
+ * Key features:
+ * - Best-in-class typography/text rendering
+ * - DESIGN style type for graphic design work
+ * - magic_prompt: OFF for exact text preservation
+ * - Transparent background via generate-transparent endpoint
+ */
+async function generateWithIdeogram(prompt: string, brief: DesignBrief): Promise<string> {
+  const apiKey = process.env.IDEOGRAM_API_KEY;
+
+  if (!apiKey) {
+    console.warn('[ImageGenerator] IDEOGRAM_API_KEY not set');
+    throw new Error('Ideogram not configured');
+  }
+
+  try {
+    console.log('[ImageGenerator] Generating with Ideogram 3.0...');
+
+    // Build text-first non-negotiable prompt structure
+    const textFirstPrompt = buildTextFirstPrompt(prompt, brief);
+
+    // Add quality floor as negative prompt
+    const negativePrompt = 'amateur graphics, clipart, basic flat design, generic stock imagery, poorly rendered text, childish, low-effort, blurry, pixelated, MS Paint quality, default fonts';
+
+    // Add quality floor constraints to main prompt
+    const finalPrompt = `${textFirstPrompt}
+
+${QUALITY_FLOOR_CONSTRAINTS}`;
+
+    const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate-transparent', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        prompt: finalPrompt,
+        aspect_ratio: '2:3',  // Portrait for t-shirt designs
+        model: 'V_3',
+        style_type: 'DESIGN',  // Optimized for graphic design
+        magic_prompt: 'OFF',   // CRITICAL: Preserve exact text
+        negative_prompt: negativePrompt
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Ideogram API error: ${response.status} - ${JSON.stringify(errorData)}`);
+    }
+
+    const data = await response.json();
+
+    if (data.data?.[0]?.url) {
+      console.log('[ImageGenerator] Ideogram generation successful');
+      return data.data[0].url;
+    }
+
+    throw new Error('No image URL in Ideogram response');
+
+  } catch (error) {
+    console.error('[ImageGenerator] Ideogram error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Build text-first non-negotiable prompt structure
+ *
+ * The text requirement must be:
+ * 1. FIRST in the prompt (loudest/most important)
+ * 2. EXACT - no paraphrasing allowed
+ * 3. NON-NEGOTIABLE - image models must render this text
+ */
+function buildTextFirstPrompt(originalPrompt: string, brief: DesignBrief): string {
+  const exactText = brief.text.exact;
+
+  // Text-first structure: Text requirement is the loudest part
+  return `TEXT REQUIREMENT (MANDATORY - EXACT): The design MUST prominently display the text "${exactText}" - this text must be clearly readable and is the primary element of this t-shirt graphic design.
+
+${originalPrompt}`;
+}
+
+/**
  * Generate with model selection - allows A/B testing between models
  */
 export async function generateMerchImageWithModelSelection(
@@ -288,6 +454,13 @@ export async function generateMerchImageWithModelSelection(
     recommendedShirtColor?: string;
     sentiment?: string;
     typographyStyle?: string;
+    // Text layout from research agent
+    textLayout?: {
+      positioning?: string;
+      emphasis?: string;
+      sizing?: string;
+      reasoning?: string;
+    };
   },
   nicheStyle?: Partial<NicheStyleProfile>,
   options: {

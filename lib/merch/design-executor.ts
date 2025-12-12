@@ -221,32 +221,37 @@ COMPLIANCE CHECKLIST
 ${requirements.map((req, i) => `${i + 1}. ${req}`).join('\n')}
 
 ═══════════════════════════════════════════════════════════════
-OUTPUT REQUIREMENTS - PREMIUM QUALITY
+OUTPUT REQUIREMENTS
 ═══════════════════════════════════════════════════════════════
 
-Generate an image prompt for a PROFESSIONAL COMMERCIAL-GRADE t-shirt design that:
-
-QUALITY STANDARDS (CRITICAL):
-1. PREMIUM typography with DEPTH: 3D effects, drop shadows, bevels, gradients, metallic effects, or chrome styling
-2. Text must look POLISHED and HIGH-END - NOT flat, NOT basic, NOT clip-art style
-3. Illustrations must be DETAILED with professional shading, highlights, and rendering - NOT simple clip-art
-4. Include specific visual effects: texture overlays, gradient fills, glow effects, layered elements
-5. Create DIMENSIONAL depth through foreground/background separation
+Generate an image prompt for a t-shirt design that:
 
 TECHNICAL REQUIREMENTS:
-1. Is suitable for print-on-demand (transparent or solid background)
+1. Is suitable for print-on-demand (transparent background preferred)
 2. Works on a ${brief.style.colorApproach.shirtColor} t-shirt with high contrast
-3. Has the text clearly readable with stylized, professional letterforms
-4. Follows ALL style requirements above
+3. Has the text "${brief.text.exact}" as the PRIMARY, FIRST element mentioned in the prompt
+4. Follows ALL style requirements from the brief above
 5. Avoids ALL forbidden elements
 
-The prompt MUST explicitly request:
-- Professional graphic designer quality
-- Rich typography effects (shadows, gradients, 3D, or decorative elements)
-- Detailed illustrations with shading (if illustrations are included)
-- Avoid: basic flat designs, simple clip-art, amateur graphics
+QUALITY FLOOR (MINIMUM STANDARDS):
+The prompt must include these negative constraints to avoid low-quality output:
+- DO NOT create: amateur graphics, clipart style, basic flat designs, generic stock imagery
+- DO NOT create: poorly rendered text, childish scribbles, low-effort templates
+- DO NOT create: blurry elements, pixelated graphics, MS Paint quality, default system fonts
 
-REMEMBER: You are an EXECUTOR creating PREMIUM designs. Follow the brief EXACTLY with HIGH QUALITY execution.`;
+IMPORTANT - RESEARCH DATA PRIORITY:
+- The style requirements above come from REAL market research
+- DO NOT override or "enhance" the research data with generic quality instructions
+- If the research says "vintage distressed" - use that, don't add "3D effects"
+- If the research says "minimalist clean" - honor that, don't add "gradients and shadows"
+- Trust the research data - it knows what sells in this niche
+
+PROMPT STRUCTURE (MANDATORY):
+1. Text requirement MUST come FIRST (loudest part of prompt)
+2. Style direction follows research brief EXACTLY
+3. Quality floor constraints come LAST as negative/avoid instructions
+
+REMEMBER: You are an EXECUTOR, not a creative director. The brief IS the creative direction.`;
 }
 
 /**
@@ -283,25 +288,22 @@ function buildComplianceRequirements(brief: DesignBrief): string[] {
 function generateFallbackPrompt(brief: DesignBrief): DesignExecutionResult {
   console.log('[DesignExecutor] Using fallback prompt generation');
 
-  const prompt = `PREMIUM PROFESSIONAL T-SHIRT GRAPHIC DESIGN with text "${brief.text.exact}".
+  // Text-first structure: Text requirement is the loudest part
+  const prompt = `TEXT REQUIREMENT (MANDATORY - EXACT): T-shirt design with the text "${brief.text.exact}" - this text must be clearly readable and is the primary element.
 
 STYLE: ${brief.style.aesthetic.primary}
-TYPOGRAPHY: ${brief.style.typography.required} - MUST have 3D effects, drop shadows, gradients, or metallic styling for professional depth
+TYPOGRAPHY: ${brief.style.typography.required}
 COLORS: ${brief.style.colorApproach.palette.join(', ')}
 MOOD: ${brief.style.colorApproach.mood}
 LAYOUT: ${brief.style.layout.composition}
 
 For ${brief.context.niche} audience. Tone: ${brief.context.tone}.
-${brief.style.aesthetic.forbidden?.length ? `Avoid: ${brief.style.aesthetic.forbidden.join(', ')}.` : ''}
 
-QUALITY REQUIREMENTS:
-- Professional commercial-grade design quality
-- Typography with DEPTH and DIMENSION (shadows, bevels, gradients)
-- NOT flat, NOT basic, NOT clip-art style
-- Detailed illustrations with shading if included
-- Layered elements with visual depth
+QUALITY FLOOR (AVOID):
+${brief.style.aesthetic.forbidden?.length ? `Style: ${brief.style.aesthetic.forbidden.join(', ')}.` : ''}
+DO NOT create: amateur graphics, clipart style, basic flat designs, poorly rendered text, blurry elements, pixelated graphics, MS Paint quality, default system fonts.
 
-Centered composition, print-ready, suitable for ${brief.style.colorApproach.shirtColor} shirt.`;
+Print-ready, transparent background, suitable for ${brief.style.colorApproach.shirtColor} shirt.`;
 
   return {
     success: true,
@@ -334,6 +336,13 @@ export function createDesignBriefFromTrend(
     recommendedShirtColor?: string;
     sentiment?: string;
     typographyStyle?: string;
+    // Text layout from research agent
+    textLayout?: {
+      positioning?: string;
+      emphasis?: string;
+      sizing?: string;
+      reasoning?: string;
+    };
   },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
   userOverrides?: {
@@ -401,6 +410,102 @@ export function createDesignBriefFromTrend(
   };
 }
 
+// ============================================================================
+// NICHE-AWARE DEFAULTS
+// When research data is incomplete, use these niche-specific fallbacks
+// instead of generic defaults. These are based on successful market patterns.
+// ============================================================================
+
+const NICHE_STYLE_DEFAULTS: Record<string, {
+  typography: string;
+  effects: string[];
+  colorPalette: string[];
+  mood: string;
+  shirtColor: string;
+  aesthetic: string;
+}> = {
+  'fishing': {
+    typography: 'bold weathered sans-serif with outdoor character',
+    effects: ['slightly distressed'],
+    colorPalette: ['forest green', 'navy', 'rust', 'cream'],
+    mood: 'rugged outdoor',
+    shirtColor: 'forest green',
+    aesthetic: 'cozy cabin fishing lodge vibe',
+  },
+  'nursing': {
+    typography: 'clean modern sans-serif with friendly weight',
+    effects: [],
+    colorPalette: ['teal', 'soft pink', 'white', 'navy'],
+    mood: 'professional yet warm',
+    shirtColor: 'navy',
+    aesthetic: 'healthcare professional pride',
+  },
+  'coffee': {
+    typography: 'warm rounded sans-serif or friendly script',
+    effects: ['subtle shadow'],
+    colorPalette: ['coffee brown', 'cream', 'warm tan', 'dark roast'],
+    mood: 'cozy morning ritual',
+    shirtColor: 'heather brown',
+    aesthetic: 'coffee shop comfort',
+  },
+  'dog': {
+    typography: 'playful rounded sans-serif',
+    effects: ['friendly weight'],
+    colorPalette: ['warm tones', 'paw prints', 'earthy colors'],
+    mood: 'loving and playful',
+    shirtColor: 'heather gray',
+    aesthetic: 'devoted pet parent',
+  },
+  'gaming': {
+    typography: 'bold tech-styled sans-serif or pixel-inspired',
+    effects: ['glow', 'tech edges'],
+    colorPalette: ['neon green', 'electric blue', 'black', 'purple'],
+    mood: 'energetic competitive',
+    shirtColor: 'black',
+    aesthetic: 'gamer lifestyle',
+  },
+  'fitness': {
+    typography: 'ultra bold condensed sans-serif',
+    effects: ['strong shadow', 'metallic optional'],
+    colorPalette: ['black', 'red', 'gold', 'white'],
+    mood: 'powerful motivational',
+    shirtColor: 'black',
+    aesthetic: 'gym motivation',
+  },
+  'teacher': {
+    typography: 'friendly serif or clean sans-serif',
+    effects: ['chalkboard style optional'],
+    colorPalette: ['apple red', 'green', 'navy', 'warm tones'],
+    mood: 'appreciative warm',
+    shirtColor: 'heather gray',
+    aesthetic: 'educator appreciation',
+  },
+  'default': {
+    typography: 'versatile bold sans-serif',
+    effects: [],
+    colorPalette: ['versatile neutral tones'],
+    mood: 'balanced approachable',
+    shirtColor: 'black',
+    aesthetic: 'clean modern design',
+  },
+};
+
+/**
+ * Get niche-specific defaults for incomplete research data
+ */
+function getNicheDefaults(niche: string): typeof NICHE_STYLE_DEFAULTS['default'] {
+  const nicheLower = niche?.toLowerCase() || '';
+
+  // Try to match niche to defaults
+  for (const [key, defaults] of Object.entries(NICHE_STYLE_DEFAULTS)) {
+    if (key !== 'default' && nicheLower.includes(key)) {
+      return defaults;
+    }
+  }
+
+  return NICHE_STYLE_DEFAULTS.default;
+}
+
 /**
  * Build typography settings from available data
  *
@@ -408,7 +513,7 @@ export function createDesignBriefFromTrend(
  * 1. nicheStyle - from Claude Vision image analysis (cached OR real-time)
  * 2. trend data - from Gemini text-based research
  * 3. user style - explicit user preference
- * 4. default - fallback
+ * 4. niche-aware defaults - fallback based on niche context
  *
  * Note: nicheStyle comes from getSmartStyleProfile which ensures freshness:
  * - Fresh cache (<1 week) → used directly
@@ -416,13 +521,14 @@ export function createDesignBriefFromTrend(
  * - Real-time fails → stale cache with reduced confidence
  */
 function buildTypography(
-  trend: { typographyStyle?: string; visualStyle?: string; designStyle?: string },
+  trend: { typographyStyle?: string; visualStyle?: string; designStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
   userStyle?: string
 ): DesignBrief['style']['typography'] {
-  let primary = 'bold sans-serif';
+  const nicheDefaults = getNicheDefaults(trend.niche || '');
+  let primary = nicheDefaults.typography;
   const forbidden: string[] = [];
-  const effects: string[] = [];
+  const effects: string[] = [...nicheDefaults.effects];
 
   if (nicheStyle?.dominantTypography?.primary) {
     primary = nicheStyle.dominantTypography.primary;
@@ -451,6 +557,7 @@ function buildTypography(
       primary = 'extra bold impact style';
     }
   }
+  // Note: If none of the above match, nicheDefaults.typography is already set
 
   // Add forbidden based on nicheStyle.moodAesthetic.avoid
   if (nicheStyle?.moodAesthetic?.avoid) {
@@ -471,14 +578,16 @@ function buildTypography(
 
 /**
  * Build color approach from available data
+ * Uses niche-aware defaults when research data is incomplete
  */
 function buildColorApproach(
-  trend: { colorPalette?: string; recommendedShirtColor?: string; visualStyle?: string },
+  trend: { colorPalette?: string; recommendedShirtColor?: string; visualStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>
 ): DesignBrief['style']['colorApproach'] {
-  let palette: string[] = ['versatile colors'];
-  let mood = 'balanced';
-  let shirtColor = trend.recommendedShirtColor || 'black';
+  const nicheDefaults = getNicheDefaults(trend.niche || '');
+  let palette: string[] = nicheDefaults.colorPalette;
+  let mood = nicheDefaults.mood;
+  let shirtColor = trend.recommendedShirtColor || nicheDefaults.shirtColor;
   const forbidden: string[] = [];
 
   if (nicheStyle?.colorPalette?.primary?.length) {
@@ -493,6 +602,7 @@ function buildColorApproach(
       palette = [trend.colorPalette];
     }
   }
+  // Note: If none of the above match, nicheDefaults.colorPalette is already set
 
   // Determine mood from visual style
   if (trend.visualStyle) {
@@ -503,6 +613,7 @@ function buildColorApproach(
     else if (vs.includes('professional')) mood = 'professional and clean';
     else if (vs.includes('playful')) mood = 'fun and playful';
   }
+  // Note: If visualStyle doesn't match, nicheDefaults.mood is already set
 
   // Add forbidden colors based on nicheStyle
   if (nicheStyle?.moodAesthetic?.avoid) {
@@ -523,13 +634,15 @@ function buildColorApproach(
 
 /**
  * Build aesthetic settings from available data
+ * Uses niche-aware defaults when research data is incomplete
  */
 function buildAesthetic(
-  trend: { visualStyle?: string; designStyle?: string },
+  trend: { visualStyle?: string; designStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
   userStyle?: string
 ): DesignBrief['style']['aesthetic'] {
-  let primary = 'clean modern design';
+  const nicheDefaults = getNicheDefaults(trend.niche || '');
+  let primary = nicheDefaults.aesthetic;
   let keywords: string[] = ['professional', 'readable'];
   const forbidden: string[] = [];
 
@@ -549,6 +662,7 @@ function buildAesthetic(
     primary = userStyle;
     keywords = extractKeywordsFromStyle(userStyle);
   }
+  // Note: If none of the above match, nicheDefaults.aesthetic is already set
 
   // Extract keywords from nicheStyle illustration subjects
   if (nicheStyle?.illustrationStyle?.subjectMatter?.length) {
@@ -564,9 +678,18 @@ function buildAesthetic(
 
 /**
  * Build layout settings from available data
+ * Priority: trend.textLayout (agent-determined) > nicheStyle > defaults
  */
 function buildLayout(
-  trend: { visualStyle?: string },
+  trend: {
+    visualStyle?: string;
+    textLayout?: {
+      positioning?: string;
+      emphasis?: string;
+      sizing?: string;
+      reasoning?: string;
+    };
+  },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>
 ): DesignBrief['style']['layout'] {
   let composition = 'centered, balanced composition';
@@ -574,7 +697,34 @@ function buildLayout(
   let includeIcon = false;
   let iconStyle: string | undefined;
 
-  if (nicheStyle?.layoutPatterns) {
+  // PRIORITY 1: Use agent-determined text layout from research
+  if (trend.textLayout) {
+    // Build composition from agent decisions
+    const layoutParts: string[] = [];
+
+    if (trend.textLayout.positioning) {
+      layoutParts.push(trend.textLayout.positioning);
+    }
+    if (trend.textLayout.emphasis) {
+      layoutParts.push(`emphasis: ${trend.textLayout.emphasis}`);
+    }
+    if (trend.textLayout.sizing) {
+      layoutParts.push(`sizing: ${trend.textLayout.sizing}`);
+    }
+
+    if (layoutParts.length > 0) {
+      composition = layoutParts.join('; ');
+    }
+
+    textPlacement = trend.textLayout.positioning || textPlacement;
+
+    console.log(`[DesignExecutor] Using agent-determined layout: ${composition}`);
+    if (trend.textLayout.reasoning) {
+      console.log(`[DesignExecutor] Layout reasoning: ${trend.textLayout.reasoning}`);
+    }
+  }
+  // PRIORITY 2: Use cached niche style patterns
+  else if (nicheStyle?.layoutPatterns) {
     composition = nicheStyle.layoutPatterns.dominant || composition;
     textPlacement = nicheStyle.layoutPatterns.textPlacement || textPlacement;
     includeIcon = nicheStyle.layoutPatterns.iconUsage === 'common';

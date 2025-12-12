@@ -41,6 +41,14 @@ export interface TrendData {
   shirtColorReason?: string; // Why this color works for this design
   alternativeShirtColors?: string[]; // Other colors that would work
 
+  // Text Layout - Agent-determined positioning and emphasis
+  textLayout?: {
+    positioning: string; // Where text should appear (centered, top-heavy, stacked, arched, etc.)
+    emphasis: string; // Which words to emphasize and how (e.g., 'WORLD\'S BEST smaller top, DAD larger bottom')
+    sizing: string; // Relative sizing guidance (e.g., 'headline large, subtext small')
+    reasoning: string; // Why this layout works for this phrase and audience
+  };
+
   // Metadata
   sourceUrl?: string;
   sources?: string[]; // e.g. ['Google', 'Grok', 'Brave', 'Rabbit Hole']

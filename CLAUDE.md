@@ -74,6 +74,14 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://api.anthropic.com/v1`
 - **Env var**: `ANTHROPIC_API_KEY`
 
+### Ideogram API
+- **Location**: `docs/ideogram-api.md`
+- **Use for**: AI image generation with best-in-class text/typography rendering
+- **Key endpoints**: `/v1/ideogram-v3/generate`, `/v1/ideogram-v3/generate-transparent`, `/v1/ideogram-v3/remix`
+- **Key features**: Superior text rendering, DESIGN style type, transparent backgrounds, 62 style presets
+- **Base URL**: `https://api.ideogram.ai`
+- **Env var**: `IDEOGRAM_API_KEY`
+
 ## Feature Documentation
 
 ### Merch Generator
@@ -96,6 +104,7 @@ Required environment variables for full functionality:
 - `VECTORIZER_API_SECRET` - Vectorizer.AI API Secret
 - `OPENAI_API_KEY` - OpenAI API
 - `ANTHROPIC_API_KEY` - Anthropic Claude API
+- `IDEOGRAM_API_KEY` - Ideogram image generation API
 - `DATABASE_URL` - Prisma database connection
 
 ## Common Commands
@@ -162,9 +171,10 @@ npx prisma studio
 1. Read `docs/openai-api.md` for complete API documentation
 2. Use `gpt-4.1-nano` for simple tasks, `gpt-4.1-mini` for medium, `gpt-4.1` for complex
 3. Enable structured outputs with `strict: true` for reliable JSON responses
-4. Use `dall-e-3` for image generation, `gpt-image-1` for latest quality
-5. Leverage Batch API for 50% cost savings on non-urgent workloads
-6. Use `text-embedding-3-small` for cost-effective similarity search
+4. Use `gpt-image-1` for image generation (preferred), `dall-e-3` as legacy option
+5. `gpt-image-1` supports native `background: "transparent"` - ideal for t-shirt designs
+6. Leverage Batch API for 50% cost savings on non-urgent workloads
+7. Use `text-embedding-3-small` for cost-effective similarity search
 
 ### Adding Anthropic Claude API Features
 1. Read `docs/claude-api.md` for complete API documentation
@@ -173,3 +183,44 @@ npx prisma studio
 4. Use `strict: true` in tool definitions for guaranteed JSON schema conformance
 5. Enable extended thinking with `thinking: { type: "enabled", budget_tokens: N }` for complex analysis
 6. Leverage Batch API for 50% cost savings on async workloads
+
+### Adding Ideogram API Features
+1. Read `docs/ideogram-api.md` for complete API documentation
+2. Use `DESIGN` style type for t-shirt graphics and logos
+3. Use `/v1/ideogram-v3/generate-transparent` for designs that need transparent backgrounds
+4. Set `magic_prompt: OFF` to preserve exact text without AI modifications
+5. Best-in-class text/typography rendering - preferred for text-heavy designs
+6. Use negative prompts for quality floor: `"blurry, low quality, amateur, clipart"`
+7. Rendering speeds: TURBO ($0.03) for drafts, DEFAULT ($0.06) for production, QUALITY ($0.09) for final
+8. **Important**: Image URLs expire - always download immediately after generation
+
+## Merch Generator Image Pipeline
+
+### Available Image Models
+The merch generator supports multiple image generation models:
+- **GPT-Image-1** (OpenAI) - Good text rendering, native transparent backgrounds, 75% cheaper than DALL-E 3
+- **Ideogram** - Best-in-class typography, DESIGN style type, 62 style presets
+- **Imagen 4** (Google) - Strong text rendering, enterprise-grade
+- **DALL-E 3** (OpenAI) - Legacy option, vivid/natural styles
+
+### Prompt Structure
+For t-shirt designs, prompts should follow this structure:
+1. **Text requirement (first, non-negotiable)**: Exact text in quotes, positioned prominently
+2. **Text layout**: Positioning, sizing, emphasis based on phrase meaning
+3. **Style direction**: From research or niche-aware defaults
+4. **Quality floor**: Negative constraints (NOT clipart, NOT amateur, etc.)
+5. **Technical requirements**: Background color, composition, print-ready
+
+### Text Length Limits
+- **Autopilot mode**: Maximum 6 words enforced for reliable rendering
+- **Manual mode**: User choice with optional warning for >10 words
+
+### Research Data Flow
+Research agents provide complete style data:
+- `visualStyle` (min 80 chars)
+- `typographyStyle`
+- `colorPalette`
+- `designEffects`
+- `textLayout` (positioning, emphasis, sizing)
+
+This data flows through uncompressed to model-specific prompt renderers.

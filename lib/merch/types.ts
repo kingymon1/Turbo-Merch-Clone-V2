@@ -41,13 +41,16 @@ export interface AutopilotParams {
   riskLevel: number;
 }
 
+// Image generation models
+export type ImageModel = 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3';
+
 export interface GenerationRequest {
   mode: 'autopilot' | 'manual';
   riskLevel?: number;
   specs?: ManualSpecs;
 
   // Enhanced options
-  imageModel?: 'gemini' | 'dalle3';              // Which model to use for image generation
+  imageModel?: ImageModel;                       // Which model to use for image generation
   useEnhancedListing?: boolean;                  // Use keyword-intelligent listing generation
   useStyleDiscovery?: boolean;                   // Use discovered niche style profiles
   useCrossNicheBlend?: boolean;                  // Apply cross-niche style blending

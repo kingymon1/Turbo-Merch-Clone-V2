@@ -25,6 +25,11 @@ export {
   validateBrand,
   preValidateInput,
   MERCH_LIMITS,
+  // Autopilot text length validation
+  AUTOPILOT_TEXT_LIMITS,
+  countWords,
+  validateAutopilotTextLength,
+  enforceAutopilotTextLimit,
   type MerchListing,
   type MerchValidationResult,
 } from './listing-validator';

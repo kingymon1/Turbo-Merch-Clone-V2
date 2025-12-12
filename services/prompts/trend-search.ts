@@ -269,6 +269,12 @@ Return JSON Array:
     "recommendedShirtColor": "string - black, white, navy, or heather grey",
     "shirtColorReason": "string - why this color works for this design and audience",
     "alternativeShirtColors": ["array of other colors that would work"],
+    "textLayout": {
+      "positioning": "string - where the text should appear (centered, top-heavy, stacked, arched, etc.)",
+      "emphasis": "string - which words should be emphasized and how (e.g., 'WORLD\\'S BEST smaller top, DAD larger bottom')",
+      "sizing": "string - relative sizing guidance (e.g., 'headline large, subtext small', 'all equal weight')",
+      "reasoning": "string - why this layout works for this specific phrase and audience"
+    },
     "amazonSafe": true,
     "sources": ["array of sources that contributed: Google, Brave, Grok, Rabbit Hole"],
     "sourceUrl": "string - REQUIRED: the primary URL from the agent report that proves this trend is real"
