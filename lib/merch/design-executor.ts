@@ -11,6 +11,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { DesignBrief, DesignExecutionResult } from './types';
+import { getNicheStyleFromResearch, NicheStyleResult } from './niche-style-researcher';
 
 // Initialize Anthropic client
 const getAnthropicClient = (): Anthropic => {
@@ -322,8 +323,11 @@ Print-ready, transparent background, suitable for ${brief.style.colorApproach.sh
 
 /**
  * Create a DesignBrief from TrendData and optional user overrides
+ *
+ * NOW ASYNC: Fetches niche-specific style patterns via agent research
+ * when research data is incomplete (instead of using hardcoded defaults).
  */
-export function createDesignBriefFromTrend(
+export async function createDesignBriefFromTrend(
   trend: {
     topic?: string;
     designText?: string;
@@ -350,21 +354,26 @@ export function createDesignBriefFromTrend(
     style?: string;
     tone?: string;
   }
-): DesignBrief {
+): Promise<DesignBrief> {
   // Determine text - user override > trend data
   const text = userOverrides?.text || trend.designText || trend.phrase || trend.topic || 'Design';
 
   // Determine niche
   const niche = trend.niche || extractNicheFromTopic(trend.topic || '');
 
+  // Fetch niche-specific style via agent research (replaces hardcoded defaults)
+  // This is called ONCE and passed to all helper functions
+  const nicheDefaults = await getNicheStyleFromResearch(niche);
+  console.log(`[DesignExecutor] Using ${nicheDefaults.source} style for "${niche}" (confidence: ${nicheDefaults.confidence})`);
+
   // Build typography from available sources
-  const typography = buildTypography(trend, nicheStyle, userOverrides?.style);
+  const typography = buildTypography(trend, nicheStyle, userOverrides?.style, nicheDefaults);
 
   // Build color approach from available sources
-  const colorApproach = buildColorApproach(trend, nicheStyle);
+  const colorApproach = buildColorApproach(trend, nicheStyle, nicheDefaults);
 
   // Build aesthetic from available sources
-  const aesthetic = buildAesthetic(trend, nicheStyle, userOverrides?.style);
+  const aesthetic = buildAesthetic(trend, nicheStyle, userOverrides?.style, nicheDefaults);
 
   // Build layout from available sources
   const layout = buildLayout(trend, nicheStyle);
@@ -376,9 +385,11 @@ export function createDesignBriefFromTrend(
       ? 'researched'
       : userOverrides?.style
         ? 'user-specified'
-        : 'niche-default';
+        : nicheDefaults.source === 'researched'
+          ? 'niche-researched' // NEW: Agent-researched niche style
+          : 'niche-default';
 
-  const styleConfidence = nicheStyle?.confidence || (trend.visualStyle ? 0.7 : 0.5);
+  const styleConfidence = nicheStyle?.confidence || (trend.visualStyle ? 0.7 : nicheDefaults.confidence);
 
   return {
     text: {
@@ -411,100 +422,14 @@ export function createDesignBriefFromTrend(
 }
 
 // ============================================================================
-// NICHE-AWARE DEFAULTS
-// When research data is incomplete, use these niche-specific fallbacks
-// instead of generic defaults. These are based on successful market patterns.
+// NICHE STYLE INFERENCE
+// When research data is incomplete, we use agent-based web research
+// to discover current style patterns for the specific niche.
+// NO MORE HARDCODED DEFAULTS - the agent decides based on real data.
 // ============================================================================
 
-const NICHE_STYLE_DEFAULTS: Record<string, {
-  typography: string;
-  effects: string[];
-  colorPalette: string[];
-  mood: string;
-  shirtColor: string;
-  aesthetic: string;
-}> = {
-  'fishing': {
-    typography: 'bold weathered sans-serif with outdoor character',
-    effects: ['slightly distressed'],
-    colorPalette: ['forest green', 'navy', 'rust', 'cream'],
-    mood: 'rugged outdoor',
-    shirtColor: 'forest green',
-    aesthetic: 'cozy cabin fishing lodge vibe',
-  },
-  'nursing': {
-    typography: 'clean modern sans-serif with friendly weight',
-    effects: [],
-    colorPalette: ['teal', 'soft pink', 'white', 'navy'],
-    mood: 'professional yet warm',
-    shirtColor: 'navy',
-    aesthetic: 'healthcare professional pride',
-  },
-  'coffee': {
-    typography: 'warm rounded sans-serif or friendly script',
-    effects: ['subtle shadow'],
-    colorPalette: ['coffee brown', 'cream', 'warm tan', 'dark roast'],
-    mood: 'cozy morning ritual',
-    shirtColor: 'heather brown',
-    aesthetic: 'coffee shop comfort',
-  },
-  'dog': {
-    typography: 'playful rounded sans-serif',
-    effects: ['friendly weight'],
-    colorPalette: ['warm tones', 'paw prints', 'earthy colors'],
-    mood: 'loving and playful',
-    shirtColor: 'heather gray',
-    aesthetic: 'devoted pet parent',
-  },
-  'gaming': {
-    typography: 'bold tech-styled sans-serif or pixel-inspired',
-    effects: ['glow', 'tech edges'],
-    colorPalette: ['neon green', 'electric blue', 'black', 'purple'],
-    mood: 'energetic competitive',
-    shirtColor: 'black',
-    aesthetic: 'gamer lifestyle',
-  },
-  'fitness': {
-    typography: 'ultra bold condensed sans-serif',
-    effects: ['strong shadow', 'metallic optional'],
-    colorPalette: ['black', 'red', 'gold', 'white'],
-    mood: 'powerful motivational',
-    shirtColor: 'black',
-    aesthetic: 'gym motivation',
-  },
-  'teacher': {
-    typography: 'friendly serif or clean sans-serif',
-    effects: ['chalkboard style optional'],
-    colorPalette: ['apple red', 'green', 'navy', 'warm tones'],
-    mood: 'appreciative warm',
-    shirtColor: 'heather gray',
-    aesthetic: 'educator appreciation',
-  },
-  'default': {
-    typography: 'versatile bold sans-serif',
-    effects: [],
-    colorPalette: ['versatile neutral tones'],
-    mood: 'balanced approachable',
-    shirtColor: 'black',
-    aesthetic: 'clean modern design',
-  },
-};
-
-/**
- * Get niche-specific defaults for incomplete research data
- */
-function getNicheDefaults(niche: string): typeof NICHE_STYLE_DEFAULTS['default'] {
-  const nicheLower = niche?.toLowerCase() || '';
-
-  // Try to match niche to defaults
-  for (const [key, defaults] of Object.entries(NICHE_STYLE_DEFAULTS)) {
-    if (key !== 'default' && nicheLower.includes(key)) {
-      return defaults;
-    }
-  }
-
-  return NICHE_STYLE_DEFAULTS.default;
-}
+// Type alias for consistency
+type NicheDefaults = NicheStyleResult;
 
 /**
  * Build typography settings from available data
@@ -513,22 +438,25 @@ function getNicheDefaults(niche: string): typeof NICHE_STYLE_DEFAULTS['default']
  * 1. nicheStyle - from Claude Vision image analysis (cached OR real-time)
  * 2. trend data - from Gemini text-based research
  * 3. user style - explicit user preference
- * 4. niche-aware defaults - fallback based on niche context
+ * 4. nicheDefaults - from agent-based web research (NOT hardcoded)
  *
  * Note: nicheStyle comes from getSmartStyleProfile which ensures freshness:
  * - Fresh cache (<1 week) → used directly
  * - Stale/missing → real-time Claude Vision analysis performed
  * - Real-time fails → stale cache with reduced confidence
+ *
+ * Note: nicheDefaults now come from agent research via getNicheStyleFromResearch()
+ * instead of hardcoded fallbacks.
  */
 function buildTypography(
   trend: { typographyStyle?: string; visualStyle?: string; designStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
-  userStyle?: string
+  userStyle?: string,
+  nicheDefaults?: NicheDefaults
 ): DesignBrief['style']['typography'] {
-  const nicheDefaults = getNicheDefaults(trend.niche || '');
-  let primary = nicheDefaults.typography;
+  let primary = nicheDefaults?.typography || 'bold readable sans-serif';
   const forbidden: string[] = [];
-  const effects: string[] = [...nicheDefaults.effects];
+  const effects: string[] = nicheDefaults?.effects ? [...nicheDefaults.effects] : [];
 
   if (nicheStyle?.dominantTypography?.primary) {
     primary = nicheStyle.dominantTypography.primary;
@@ -578,16 +506,16 @@ function buildTypography(
 
 /**
  * Build color approach from available data
- * Uses niche-aware defaults when research data is incomplete
+ * Uses agent-researched niche style when research data is incomplete
  */
 function buildColorApproach(
   trend: { colorPalette?: string; recommendedShirtColor?: string; visualStyle?: string; niche?: string },
-  nicheStyle?: Partial<import('./types').NicheStyleProfile>
+  nicheStyle?: Partial<import('./types').NicheStyleProfile>,
+  nicheDefaults?: NicheDefaults
 ): DesignBrief['style']['colorApproach'] {
-  const nicheDefaults = getNicheDefaults(trend.niche || '');
-  let palette: string[] = nicheDefaults.colorPalette;
-  let mood = nicheDefaults.mood;
-  let shirtColor = trend.recommendedShirtColor || nicheDefaults.shirtColor;
+  let palette: string[] = nicheDefaults?.colorPalette || ['versatile neutral tones'];
+  let mood = nicheDefaults?.mood || 'balanced';
+  let shirtColor = trend.recommendedShirtColor || nicheDefaults?.shirtColor || 'black';
   const forbidden: string[] = [];
 
   if (nicheStyle?.colorPalette?.primary?.length) {
@@ -634,15 +562,15 @@ function buildColorApproach(
 
 /**
  * Build aesthetic settings from available data
- * Uses niche-aware defaults when research data is incomplete
+ * Uses agent-researched niche style when research data is incomplete
  */
 function buildAesthetic(
   trend: { visualStyle?: string; designStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
-  userStyle?: string
+  userStyle?: string,
+  nicheDefaults?: NicheDefaults
 ): DesignBrief['style']['aesthetic'] {
-  const nicheDefaults = getNicheDefaults(trend.niche || '');
-  let primary = nicheDefaults.aesthetic;
+  let primary = nicheDefaults?.aesthetic || 'clean professional';
   let keywords: string[] = ['professional', 'readable'];
   const forbidden: string[] = [];
 

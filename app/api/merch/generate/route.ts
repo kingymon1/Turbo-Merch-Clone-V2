@@ -266,7 +266,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     if (useBriefSystem && !USE_MOCK_DATA) {
       // Build DesignBrief from trend data and niche style
       if (mode === 'autopilot' && sourceData.trend) {
-        designBrief = buildDesignBriefFromTrend(
+        designBrief = await buildDesignBriefFromTrend(
           {
             topic: sourceData.trend?.topic,
             designText: concept.phrase,

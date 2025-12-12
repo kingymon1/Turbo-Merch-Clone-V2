@@ -481,8 +481,8 @@ export async function generateMerchImageWithModelSelection(
     userOverrides
   } = options;
 
-  // Build the design brief from trend data
-  const brief = buildDesignBriefFromTrend(trendData, nicheStyle, userOverrides);
+  // Build the design brief from trend data (async - uses agent research for niche style)
+  const brief = await buildDesignBriefFromTrend(trendData, nicheStyle, userOverrides);
 
   if (testBothModels) {
     // Generate with both models for comparison
@@ -569,7 +569,7 @@ export async function generateMerchImageHybrid(
   // Try brief system if trend data is available
   if (useBriefSystem && trendData) {
     try {
-      const brief = buildDesignBriefFromTrend(trendData, nicheStyle);
+      const brief = await buildDesignBriefFromTrend(trendData, nicheStyle);
       const result = await generateMerchImageFromBrief(brief, model, promptMode);
 
       if (result.imageUrl && isValidImageUrl(result.imageUrl)) {

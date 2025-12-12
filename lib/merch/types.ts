@@ -81,7 +81,7 @@ export interface DesignBrief {
 
   // REQUIRED STYLE - Discovered from market data or specified by user
   style: {
-    source: 'discovered' | 'researched' | 'user-specified' | 'niche-default';
+    source: 'discovered' | 'researched' | 'user-specified' | 'niche-default' | 'niche-researched';
     confidence: number;      // 0-1, how confident we are in this style
 
     typography: {

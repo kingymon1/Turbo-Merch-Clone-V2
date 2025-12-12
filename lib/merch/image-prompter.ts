@@ -180,8 +180,10 @@ export async function createImagePromptFromBrief(
 /**
  * Create a DesignBrief from trend data
  * Use this when generating from autopilot research results
+ *
+ * NOW ASYNC: Uses agent-based niche style research when data is incomplete
  */
-export function buildDesignBriefFromTrend(
+export async function buildDesignBriefFromTrend(
   trendData: {
     topic?: string;
     designText?: string;
@@ -208,7 +210,7 @@ export function buildDesignBriefFromTrend(
     style?: string;
     tone?: string;
   }
-): DesignBrief {
+): Promise<DesignBrief> {
   return createDesignBriefFromTrend(trendData, nicheStyle, userOverrides);
 }
 
@@ -427,7 +429,7 @@ export async function createImagePromptHybrid(
       if (mode === 'manual' && specs) {
         brief = buildDesignBriefFromManualSpecs(specs, nicheStyle);
       } else {
-        brief = buildDesignBriefFromTrend(
+        brief = await buildDesignBriefFromTrend(
           {
             phrase: concept.phrase,
             niche: concept.niche,

@@ -225,17 +225,27 @@ Research agents provide complete style data:
 
 This data flows through uncompressed to model-specific prompt renderers.
 
-### Niche-Aware Fallbacks
-When research data is incomplete, the system uses niche-specific defaults instead of generic fallbacks. Located in `lib/merch/design-executor.ts`:
+### Niche Style Inference (Agent-Based)
+When research data is incomplete, the system uses **agent-based web research** to discover current style patterns for the niche - NOT hardcoded defaults.
 
-| Niche | Typography | Colors | Shirt Color | Aesthetic |
-|-------|------------|--------|-------------|-----------|
-| fishing | bold weathered sans-serif | forest green, navy, rust | forest green | cozy cabin lodge vibe |
-| nursing | clean modern sans-serif | teal, soft pink, navy | navy | healthcare professional pride |
-| coffee | warm rounded sans-serif | coffee brown, cream, tan | heather brown | coffee shop comfort |
-| dog | playful rounded sans-serif | warm tones, earthy colors | heather gray | devoted pet parent |
-| gaming | bold tech-styled sans-serif | neon green, electric blue, black | black | gamer lifestyle |
-| fitness | ultra bold condensed | black, red, gold | black | gym motivation |
-| teacher | friendly serif | apple red, green, navy | heather gray | educator appreciation |
+**Philosophy**: "We have access to all the information on the internet - use it."
 
-To add new niches, update `NICHE_STYLE_DEFAULTS` in `design-executor.ts`.
+**Implementation** (`lib/merch/niche-style-researcher.ts`):
+- Uses Perplexity's `sonar` model with web search to research current style patterns
+- Queries: "What typography/colors/aesthetics are selling in the [niche] t-shirt market?"
+- Returns structured style data: typography, effects, colorPalette, mood, shirtColor, aesthetic
+- Results cached for 10 minutes to avoid redundant API calls
+- Minimal fallback only if agent call completely fails (network error, etc.)
+
+**Why Agent-Based**:
+- Style patterns change with market trends - hardcoded values become stale
+- Different niches emerge constantly - can't maintain a static list
+- Agent decisions based on current web data are more accurate than our assumptions
+- Aligns with "agent decisions, not hardcoded options" principle
+
+**Style Source Priority** (used in DesignBrief):
+1. `discovered` - from Claude Vision image analysis
+2. `researched` - from Gemini text-based research
+3. `user-specified` - explicit user preference
+4. `niche-researched` - from agent-based web research (NEW)
+5. `niche-default` - minimal fallback if agent fails
