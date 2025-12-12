@@ -261,3 +261,30 @@ The research flow:
 3. `user-specified` - explicit user preference
 4. `niche-researched` - from intelligent web research with database context
 5. `niche-default` - minimal fallback if research fails completely
+
+### Real-Time Style Discovery (Claude Vision)
+
+**Implementation** (`lib/merch/style-discovery.ts`):
+
+The system uses Claude Vision to analyze actual MBA product images and learn style patterns.
+
+**Key Enhancement**: Now accepts phrase context for trend-relevant analysis:
+- Old: Analyzed generic "fishing" products
+- New: Analyzes "Fishing Dad" products when that's the trend
+
+**Flow**:
+1. **Search by phrase first** - More specific results (e.g., "Pickleball Dad" shirts)
+2. **Fall back to niche** - If phrase yields insufficient results
+3. **Analyze images** - Claude Vision extracts typography, colors, layout, aesthetic
+4. **Write back learnings** - Every analysis updates NicheStyleProfile (fire-and-forget)
+
+**Continuous Learning**:
+- Every real-time analysis writes back to database
+- New styles merge with existing (weighted by sample size)
+- Confidence scores blend over time
+- System gets smarter with each generation
+
+**Cache Strategy**:
+- Fresh cache (<1 week): Use immediately
+- Stale cache: Trigger real-time analysis, use cache as fallback
+- No cache: Real-time analysis, create new profile
