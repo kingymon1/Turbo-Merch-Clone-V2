@@ -393,7 +393,7 @@ ${QUALITY_FLOOR_CONSTRAINTS}`;
       },
       body: JSON.stringify({
         prompt: finalPrompt,
-        aspect_ratio: '2:3',  // Portrait for t-shirt designs
+        aspect_ratio: '2x3',  // Portrait for t-shirt designs (Ideogram uses 'x' not ':')
         model: 'V_3',
         style_type: 'DESIGN',  // Optimized for graphic design
         magic_prompt: 'OFF',   // CRITICAL: Preserve exact text
