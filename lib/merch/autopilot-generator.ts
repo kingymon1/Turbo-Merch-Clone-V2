@@ -37,6 +37,8 @@ import {
   preValidateInput,
   findBannedWords,
   cleanToAscii,
+  enforceAutopilotTextLimit,
+  validateAutopilotTextLength,
 } from './validation';
 import {
   exploreForDiversity,
@@ -137,6 +139,13 @@ function extractDesignConcept(
       const regex = new RegExp(`\\b${banned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
       phrase = phrase.replace(regex, '').replace(/\s+/g, ' ').trim();
     }
+  }
+
+  // Phase 9: Enforce text length limit for autopilot mode (≤6 words)
+  const lengthValidation = validateAutopilotTextLength(phrase);
+  if (lengthValidation.wasShortened) {
+    console.log(`[Autopilot] ${lengthValidation.warning}`);
+    phrase = lengthValidation.shortened;
   }
 
   // Phase 6: Use insight-recommended style if available, otherwise infer from trend

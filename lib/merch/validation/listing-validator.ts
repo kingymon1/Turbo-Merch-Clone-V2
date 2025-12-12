@@ -369,3 +369,77 @@ export function preValidateInput(phrase: string, niche: string): {
     warnings
   };
 }
+
+// ============================================================================
+// AUTOPILOT MODE VALIDATION
+// ============================================================================
+
+/**
+ * Maximum word count for autopilot-generated design text
+ * This limit ensures text renders clearly and is visually impactful.
+ * Research shows: shorter phrases (≤6 words) perform better for t-shirt text.
+ *
+ * NOTE: This limit applies ONLY to autopilot mode.
+ * Manual mode allows users to enter any length they choose.
+ */
+export const AUTOPILOT_TEXT_LIMITS = {
+  maxWords: 6,
+  recommendedWords: { min: 2, max: 4 },
+};
+
+/**
+ * Count words in a phrase
+ */
+export function countWords(text: string): number {
+  if (!text || text.trim().length === 0) return 0;
+  return text.trim().split(/\s+/).filter(word => word.length > 0).length;
+}
+
+/**
+ * Validate text length for autopilot mode
+ *
+ * @param phrase - The design text to validate
+ * @returns Validation result with original and possibly shortened phrase
+ */
+export function validateAutopilotTextLength(phrase: string): {
+  valid: boolean;
+  wordCount: number;
+  shortened: string;
+  wasShortened: boolean;
+  warning?: string;
+} {
+  const wordCount = countWords(phrase);
+
+  if (wordCount <= AUTOPILOT_TEXT_LIMITS.maxWords) {
+    return {
+      valid: true,
+      wordCount,
+      shortened: phrase,
+      wasShortened: false,
+    };
+  }
+
+  // Shorten to max words
+  const words = phrase.trim().split(/\s+/).filter(word => word.length > 0);
+  const shortened = words.slice(0, AUTOPILOT_TEXT_LIMITS.maxWords).join(' ');
+
+  return {
+    valid: false,
+    wordCount,
+    shortened,
+    wasShortened: true,
+    warning: `Text shortened from ${wordCount} to ${AUTOPILOT_TEXT_LIMITS.maxWords} words for optimal t-shirt design`,
+  };
+}
+
+/**
+ * Enforce autopilot text length limit
+ * Returns the phrase if valid, or shortened version if too long
+ *
+ * @param phrase - The design text to enforce limits on
+ * @returns The phrase, shortened if necessary
+ */
+export function enforceAutopilotTextLimit(phrase: string): string {
+  const result = validateAutopilotTextLength(phrase);
+  return result.shortened;
+}

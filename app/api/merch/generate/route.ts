@@ -204,14 +204,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     // 1. Uses fresh cached profiles when available
     // 2. Performs REAL-TIME Claude Vision analysis when cache is stale/missing
     // 3. Falls back to stale cache if real-time fails
+    // NEW: Now passes phrase for trend-relevant image search (e.g., "Fishing Dad" not just "fishing")
     if (useStyleDiscovery && concept.niche && concept.niche !== 'general') {
       try {
-        console.log(`[Merch Generate] Fetching smart style profile for niche: ${concept.niche}`);
+        console.log(`[Merch Generate] Fetching smart style profile for niche: ${concept.niche}, phrase: ${concept.phrase || 'N/A'}`);
 
         const styleResult = await getSmartStyleProfile(concept.niche, {
           maxCacheAgeHours: 168, // 1 week cache freshness
           enableRealtime: true,  // Enable real-time Claude Vision analysis
-          maxRealtimeImages: 5   // Analyze up to 5 images for speed
+          maxRealtimeImages: 5,  // Analyze up to 5 images for speed
+          phrase: concept.phrase // NEW: Pass phrase for targeted image search
         });
 
         if (styleResult.profile) {
@@ -266,7 +268,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     if (useBriefSystem && !USE_MOCK_DATA) {
       // Build DesignBrief from trend data and niche style
       if (mode === 'autopilot' && sourceData.trend) {
-        designBrief = buildDesignBriefFromTrend(
+        designBrief = await buildDesignBriefFromTrend(
           {
             topic: sourceData.trend?.topic,
             designText: concept.phrase,

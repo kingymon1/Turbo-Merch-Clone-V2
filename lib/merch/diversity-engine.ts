@@ -120,7 +120,72 @@ function sanitizeJson(jsonString: string): string {
   // This is tricky - we need to be inside a string value
   sanitized = sanitized.replace(/"([^"]*)\n([^"]*)"/g, '"$1 $2"');
 
+  // Fix unescaped quotes inside string values
+  // Look for patterns like: "value with "inner quotes" here"
+  // This regex finds strings and escapes any unescaped inner quotes
+  sanitized = sanitized.replace(/"([^"\\]*(?:\\.[^"\\]*)*)"/g, (match) => {
+    // If it's a valid string already, return as-is
+    try {
+      JSON.parse(match);
+      return match;
+    } catch {
+      // Try to fix inner quotes by escaping them
+      // Remove outer quotes, escape inner quotes, add outer quotes back
+      const inner = match.slice(1, -1);
+      const fixed = inner.replace(/(?<!\\)"/g, '\\"');
+      return `"${fixed}"`;
+    }
+  });
+
   return sanitized;
+}
+
+/**
+ * Attempt to parse JSON with multiple repair strategies
+ */
+function parseJsonWithRepair(jsonString: string): any {
+  // First try: direct parse
+  try {
+    return JSON.parse(jsonString);
+  } catch (e1) {
+    // Second try: basic sanitization
+    try {
+      const sanitized = sanitizeJson(jsonString);
+      return JSON.parse(sanitized);
+    } catch (e2) {
+      // Third try: aggressive repair - extract just the array content
+      try {
+        // Find the outermost array brackets and their content
+        const arrayMatch = jsonString.match(/\[[\s\S]*\]/);
+        if (arrayMatch) {
+          // Try to parse individual objects
+          const objects: any[] = [];
+          const objectMatches = arrayMatch[0].matchAll(/\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g);
+
+          for (const objMatch of objectMatches) {
+            try {
+              const sanitizedObj = sanitizeJson(objMatch[0]);
+              objects.push(JSON.parse(sanitizedObj));
+            } catch {
+              // Skip malformed objects
+              console.warn('[Diversity] Skipping malformed object in JSON array');
+            }
+          }
+
+          if (objects.length > 0) {
+            console.log(`[Diversity] Recovered ${objects.length} objects from malformed JSON`);
+            return objects;
+          }
+        }
+
+        throw e2;
+      } catch (e3) {
+        // If all repair attempts fail, throw the original error with context
+        const error = e1 as SyntaxError;
+        throw new Error(`JSON parse failed after repair attempts: ${error.message}`);
+      }
+    }
+  }
 }
 
 // ============================================================================
@@ -406,9 +471,8 @@ Examples of BAD generic niches: "sports fans", "food lovers", "music fans", "nat
       throw new Error('No JSON array in response');
     }
 
-    // Sanitize JSON before parsing (AI sometimes returns malformed JSON)
-    const sanitizedJson = sanitizeJson(jsonMatch[0]);
-    const niches = JSON.parse(sanitizedJson) as any[];
+    // Parse JSON with repair strategies (AI sometimes returns malformed JSON)
+    const niches = parseJsonWithRepair(jsonMatch[0]) as any[];
 
     return niches.map(n => ({
       niche: n.niche,

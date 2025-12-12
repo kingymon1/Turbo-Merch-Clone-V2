@@ -74,6 +74,14 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://api.anthropic.com/v1`
 - **Env var**: `ANTHROPIC_API_KEY`
 
+### Ideogram API
+- **Location**: `docs/ideogram-api.md`
+- **Use for**: AI image generation with best-in-class text/typography rendering
+- **Key endpoints**: `/v1/ideogram-v3/generate`, `/v1/ideogram-v3/generate-transparent`, `/v1/ideogram-v3/remix`
+- **Key features**: Superior text rendering, DESIGN style type, transparent backgrounds, 62 style presets
+- **Base URL**: `https://api.ideogram.ai`
+- **Env var**: `IDEOGRAM_API_KEY`
+
 ## Feature Documentation
 
 ### Merch Generator
@@ -96,6 +104,7 @@ Required environment variables for full functionality:
 - `VECTORIZER_API_SECRET` - Vectorizer.AI API Secret
 - `OPENAI_API_KEY` - OpenAI API
 - `ANTHROPIC_API_KEY` - Anthropic Claude API
+- `IDEOGRAM_API_KEY` - Ideogram image generation API
 - `DATABASE_URL` - Prisma database connection
 
 ## Common Commands
@@ -162,9 +171,10 @@ npx prisma studio
 1. Read `docs/openai-api.md` for complete API documentation
 2. Use `gpt-4.1-nano` for simple tasks, `gpt-4.1-mini` for medium, `gpt-4.1` for complex
 3. Enable structured outputs with `strict: true` for reliable JSON responses
-4. Use `dall-e-3` for image generation, `gpt-image-1` for latest quality
-5. Leverage Batch API for 50% cost savings on non-urgent workloads
-6. Use `text-embedding-3-small` for cost-effective similarity search
+4. Use `gpt-image-1` for image generation (preferred), `dall-e-3` as legacy option
+5. `gpt-image-1` supports native `background: "transparent"` - ideal for t-shirt designs
+6. Leverage Batch API for 50% cost savings on non-urgent workloads
+7. Use `text-embedding-3-small` for cost-effective similarity search
 
 ### Adding Anthropic Claude API Features
 1. Read `docs/claude-api.md` for complete API documentation
@@ -173,3 +183,108 @@ npx prisma studio
 4. Use `strict: true` in tool definitions for guaranteed JSON schema conformance
 5. Enable extended thinking with `thinking: { type: "enabled", budget_tokens: N }` for complex analysis
 6. Leverage Batch API for 50% cost savings on async workloads
+
+### Adding Ideogram API Features
+1. Read `docs/ideogram-api.md` for complete API documentation
+2. Use `DESIGN` style type for t-shirt graphics and logos
+3. Use `/v1/ideogram-v3/generate-transparent` for designs that need transparent backgrounds
+4. Set `magic_prompt: OFF` to preserve exact text without AI modifications
+5. Best-in-class text/typography rendering - preferred for text-heavy designs
+6. Use negative prompts for quality floor: `"blurry, low quality, amateur, clipart"`
+7. Rendering speeds: TURBO ($0.03) for drafts, DEFAULT ($0.06) for production, QUALITY ($0.09) for final
+8. **Important**: Image URLs expire - always download immediately after generation
+
+## Merch Generator Image Pipeline
+
+### Available Image Models
+The merch generator supports multiple image generation models:
+- **GPT-Image-1** (OpenAI) - Good text rendering, native transparent backgrounds, 75% cheaper than DALL-E 3
+- **Ideogram** - Best-in-class typography, DESIGN style type, 62 style presets
+- **Imagen 4** (Google) - Strong text rendering, enterprise-grade
+- **DALL-E 3** (OpenAI) - Legacy option, vivid/natural styles
+
+### Prompt Structure
+For t-shirt designs, prompts should follow this structure:
+1. **Text requirement (first, non-negotiable)**: Exact text in quotes, positioned prominently
+2. **Text layout**: Positioning, sizing, emphasis based on phrase meaning
+3. **Style direction**: From research or niche-aware defaults
+4. **Quality floor**: Negative constraints (NOT clipart, NOT amateur, etc.)
+5. **Technical requirements**: Background color, composition, print-ready
+
+### Text Length Limits
+- **Autopilot mode**: Maximum 6 words enforced for reliable rendering
+- **Manual mode**: User choice with optional warning for >10 words
+
+### Research Data Flow
+Research agents provide complete style data:
+- `visualStyle` (min 80 chars)
+- `typographyStyle`
+- `colorPalette`
+- `designEffects`
+- `textLayout` (positioning, emphasis, sizing)
+
+This data flows through uncompressed to model-specific prompt renderers.
+
+### Niche Style Inference (Intelligent Research)
+When research data is incomplete, the system uses **intelligent agent-based research** to discover current style patterns - NOT hardcoded defaults.
+
+**Philosophy**:
+- "We have access to all the information on the internet - use it."
+- **Live research is PRIMARY** - always discover fresh patterns
+- **Stored data is CONTEXT** - informs and validates, never replaces research
+- **System makes autonomous decisions** - no user warnings, system decides everything
+
+**Implementation** (`lib/merch/niche-style-researcher.ts`):
+
+The research flow:
+1. **Fetch stored context** (parallel, non-blocking) - NicheStyleProfile, NicheMarketData, ProvenInsight
+2. **Build enriched prompt** - Stored data as BACKGROUND, not constraints
+3. **Call Perplexity** (sonar model) - Always do live web research
+4. **Score confidence** - Compare research with stored data (agreement = 0.9, novel = 0.75, disagrees = 0.65)
+5. **Write back findings** - Fire-and-forget database update (don't block on writes)
+
+**Database Integration**:
+- `NicheStyleProfile` - Accumulated style intelligence per niche (typography, colors, mood)
+- `NicheMarketData` - Market patterns and trends for niches
+- `ProvenInsight` - Validated patterns from actual product success
+
+**Why This Architecture**:
+- Stored data provides context that improves research prompts
+- Live research prevents system from getting lazy/repetitive
+- Confidence scoring validates novel discoveries vs established patterns
+- Write-back mechanism makes system smarter over time without getting stale
+- Aligns with "agent decisions, not hardcoded options" principle
+
+**Style Source Priority** (used in DesignBrief):
+1. `discovered` - from Claude Vision image analysis
+2. `researched` - from Gemini text-based research
+3. `user-specified` - explicit user preference
+4. `niche-researched` - from intelligent web research with database context
+5. `niche-default` - minimal fallback if research fails completely
+
+### Real-Time Style Discovery (Claude Vision)
+
+**Implementation** (`lib/merch/style-discovery.ts`):
+
+The system uses Claude Vision to analyze actual MBA product images and learn style patterns.
+
+**Key Enhancement**: Now accepts phrase context for trend-relevant analysis:
+- Old: Analyzed generic "fishing" products
+- New: Analyzes "Fishing Dad" products when that's the trend
+
+**Flow**:
+1. **Search by phrase first** - More specific results (e.g., "Pickleball Dad" shirts)
+2. **Fall back to niche** - If phrase yields insufficient results
+3. **Analyze images** - Claude Vision extracts typography, colors, layout, aesthetic
+4. **Write back learnings** - Every analysis updates NicheStyleProfile (fire-and-forget)
+
+**Continuous Learning**:
+- Every real-time analysis writes back to database
+- New styles merge with existing (weighted by sample size)
+- Confidence scores blend over time
+- System gets smarter with each generation
+
+**Cache Strategy**:
+- Fresh cache (<1 week): Use immediately
+- Stale cache: Trigger real-time analysis, use cache as fallback
+- No cache: Real-time analysis, create new profile

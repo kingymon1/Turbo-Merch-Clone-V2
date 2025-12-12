@@ -174,7 +174,12 @@ export async function discoverNicheStyle(
 }
 
 /**
- * Fetch MBA products from database for a specific niche
+ * Fetch MBA products from database for a specific niche/phrase
+ *
+ * Priority:
+ * 1. If phrase provided, search by phrase first (more specific)
+ * 2. Fall back to niche search if phrase yields insufficient results
+ * 3. Combine phrase + niche for maximum relevance
  */
 async function fetchMBAProductsForNiche(
   niche: string,
@@ -182,6 +187,7 @@ async function fetchMBAProductsForNiche(
     limit: number;
     prioritizeTopSellers: boolean;
     includeRecent: boolean;
+    phrase?: string;  // NEW: specific phrase/trend to search for
   }
 ): Promise<Array<{
   id: string;
@@ -192,14 +198,31 @@ async function fetchMBAProductsForNiche(
   salesRank: number | null;
   isTopSeller: boolean;
 }>> {
+  // Build search terms - prioritize phrase if provided
+  const searchTerms: string[] = [];
+
+  if (options.phrase) {
+    // Extract key terms from phrase for more targeted search
+    const phraseWords = options.phrase.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    searchTerms.push(options.phrase); // Full phrase
+    // Add key combinations (e.g., "Fishing Dad" -> search for both together)
+    if (phraseWords.length >= 2) {
+      searchTerms.push(phraseWords.slice(0, 2).join(' ')); // First two words
+    }
+  }
+  searchTerms.push(niche); // Always include niche as fallback
+
+  // Build OR conditions for each search term
+  const searchConditions = searchTerms.flatMap(term => [
+    { title: { contains: term, mode: 'insensitive' as const } },
+    { niche: { contains: term, mode: 'insensitive' as const } },
+    { category: { contains: term, mode: 'insensitive' as const } }
+  ]);
+
   const where: any = {
     isMerchByAmazon: true,
     imageUrl: { not: null },
-    OR: [
-      { niche: { contains: niche, mode: 'insensitive' } },
-      { title: { contains: niche, mode: 'insensitive' } },
-      { category: { contains: niche, mode: 'insensitive' } }
-    ]
+    OR: searchConditions
   };
 
   // Build order by based on options
@@ -933,16 +956,19 @@ export interface RealtimeStyleIntelligence {
 }
 
 /**
- * Perform real-time style analysis for a niche during a generation request.
+ * Perform real-time style analysis for a niche/phrase during a generation request.
  *
  * This is a FAST, LIGHTWEIGHT version of style discovery designed to run
  * during user requests. It analyzes only 3-5 images in parallel and returns
- * quick style insights without storing to database.
+ * quick style insights.
+ *
+ * IMPORTANT: Now searches by phrase (if provided) for trend-relevant results,
+ * and writes back learnings to database for continuous improvement.
  *
  * Use this when:
  * - No cached NicheStyleProfile exists
  * - Cached profile is stale but we need immediate results
- * - User needs style intelligence for an uncommon niche
+ * - User needs style intelligence for a specific trend/phrase
  *
  * @param niche - The niche to analyze
  * @param options - Configuration options
@@ -954,23 +980,30 @@ export async function analyzeNicheStyleRealtime(
     maxImages?: number;      // Max images to analyze (default: 5)
     timeoutMs?: number;      // Timeout per image (default: 8000)
     prioritizeTopSellers?: boolean;
+    phrase?: string;         // NEW: specific phrase/trend for targeted search
+    writeBack?: boolean;     // NEW: whether to write learnings to DB (default: true)
   } = {}
 ): Promise<RealtimeStyleIntelligence | null> {
   const {
     maxImages = 5,
     timeoutMs = 8000,
-    prioritizeTopSellers = true
+    prioritizeTopSellers = true,
+    phrase,
+    writeBack = true
   } = options;
 
   const startTime = Date.now();
-  console.log(`[RealtimeStyle] Starting real-time analysis for niche: "${niche}"`);
+  const searchContext = phrase ? `"${phrase}" in ${niche}` : `niche: "${niche}"`;
+  console.log(`[RealtimeStyle] Starting real-time analysis for ${searchContext}`);
 
   try {
     // Step 1: Fetch a small sample of MBA products (fast query)
+    // Now searches by phrase first for more relevant results
     const products = await fetchMBAProductsForNiche(niche, {
       limit: maxImages,
       prioritizeTopSellers,
-      includeRecent: true
+      includeRecent: true,
+      phrase  // Pass phrase for targeted search
     });
 
     if (products.length < 2) {
@@ -999,6 +1032,13 @@ export async function analyzeNicheStyleRealtime(
     // Step 3: Quick aggregation (simplified for speed)
     const intelligence = aggregateRealtimeAnalyses(niche, successful);
 
+    // Step 4: Write back learnings to database (fire-and-forget, non-blocking)
+    // This ensures every analysis contributes to our knowledge base
+    if (writeBack) {
+      writeBackRealtimeLearnings(niche, intelligence, products.map(p => p.externalId), phrase)
+        .catch(err => console.warn(`[RealtimeStyle] Write-back failed:`, err));
+    }
+
     const elapsed = Date.now() - startTime;
     console.log(`[RealtimeStyle] Completed in ${elapsed}ms with ${intelligence.confidence * 100}% confidence`);
 
@@ -1008,6 +1048,133 @@ export async function analyzeNicheStyleRealtime(
     console.error(`[RealtimeStyle] Error analyzing "${niche}":`, error);
     return null;
   }
+}
+
+/**
+ * Write back realtime analysis learnings to database
+ * Fire-and-forget - doesn't block the response
+ */
+async function writeBackRealtimeLearnings(
+  niche: string,
+  intelligence: RealtimeStyleIntelligence,
+  analyzedAsins: string[],
+  phrase?: string
+): Promise<void> {
+  console.log(`[RealtimeStyle] Writing back learnings for "${niche}"${phrase ? ` (phrase: "${phrase}")` : ''}`);
+
+  try {
+    // Check if profile exists
+    const existing = await prisma.nicheStyleProfile.findUnique({
+      where: { niche }
+    });
+
+    if (existing) {
+      // Merge new learnings with existing profile
+      // Use weighted averaging - existing data has more weight if higher sample size
+      const existingWeight = Math.min(existing.sampleSize / 20, 1);
+      const newWeight = Math.min(intelligence.sampleSize / 10, 0.5);
+
+      await prisma.nicheStyleProfile.update({
+        where: { niche },
+        data: {
+          // Merge typography - add new if not present
+          typographyDominant: mergeArraysUnique(
+            existing.typographyDominant,
+            [intelligence.typography.dominant],
+            5
+          ),
+          typographySuccessful: mergeArraysUnique(
+            existing.typographySuccessful,
+            intelligence.typography.effects,
+            8
+          ),
+
+          // Merge colors
+          colorPalettesCommon: mergeArraysUnique(
+            existing.colorPalettesCommon,
+            intelligence.colors.primary,
+            8
+          ),
+
+          // Merge mood
+          moodPrimary: mergeArraysUnique(
+            existing.moodPrimary,
+            [intelligence.aesthetic.primary],
+            5
+          ),
+          moodSecondary: mergeArraysUnique(
+            existing.moodSecondary,
+            intelligence.aesthetic.keywords,
+            10
+          ),
+
+          // Update metadata
+          sampleSize: existing.sampleSize + intelligence.sampleSize,
+          sourceSampleIds: mergeArraysUnique(
+            existing.sourceSampleIds,
+            analyzedAsins,
+            50
+          ),
+          lastAnalyzedAt: new Date(),
+          analysisCount: { increment: 1 },
+
+          // Blend confidence - weighted average
+          confidence: (existing.confidence * existingWeight + intelligence.confidence * newWeight) /
+                      (existingWeight + newWeight)
+        }
+      });
+
+      console.log(`[RealtimeStyle] Updated existing profile for "${niche}"`);
+
+    } else {
+      // Create new profile from realtime analysis
+      await prisma.nicheStyleProfile.create({
+        data: {
+          niche,
+          sampleSize: intelligence.sampleSize,
+          sourceSampleIds: analyzedAsins,
+          confidence: intelligence.confidence * 0.8, // Slightly lower for realtime-only
+
+          typographyDominant: [intelligence.typography.dominant],
+          typographySuccessful: intelligence.typography.effects,
+          typographyAvoided: [],
+
+          colorPalettesCommon: intelligence.colors.primary,
+          colorPalettesSuccessful: intelligence.colors.primary,
+          colorsByShirtColor: {
+            [intelligence.colors.shirtColors[0] || 'black']: intelligence.colors.primary
+          },
+
+          moodPrimary: [intelligence.aesthetic.primary],
+          moodSecondary: intelligence.aesthetic.keywords,
+          moodAvoided: [],
+          moodReference: `${intelligence.aesthetic.mood} ${niche} aesthetic`,
+
+          layoutCompositions: [intelligence.layout.composition],
+          layoutTextPlacements: ['centered'],
+          layoutIconUsage: intelligence.layout.hasIcons ? 0.5 : 0.1,
+          layoutIconStyles: intelligence.layout.hasIcons ? ['integrated'] : [],
+
+          audienceMotivations: [],
+          relatedNiches: [],
+          nicheBlendOpportunities: []
+        }
+      });
+
+      console.log(`[RealtimeStyle] Created new profile for "${niche}"`);
+    }
+  } catch (error) {
+    // Don't throw - this is fire-and-forget
+    console.error(`[RealtimeStyle] Write-back error for "${niche}":`, error);
+  }
+}
+
+/**
+ * Merge two arrays keeping unique values, limited to maxItems
+ */
+function mergeArraysUnique(existing: string[], newItems: string[], maxItems: number): string[] {
+  const combined = [...new Set([...existing, ...newItems])];
+  return combined.slice(0, maxItems);
 }
 
 /**
@@ -1195,11 +1362,17 @@ export function realtimeToNicheStyleProfile(
  * Smart style fetcher that uses cached profiles when fresh,
  * or performs real-time analysis when needed.
  *
+ * NEW: Now accepts phrase parameter for trend-relevant image analysis.
+ * The phrase is used to search for more specific products when doing
+ * real-time analysis (e.g., "Fishing Dad" instead of just "fishing").
+ *
  * Priority order:
  * 1. Fresh cached profile (< maxAgeHours old) - use directly
- * 2. No cache or stale cache - perform real-time analysis
+ * 2. No cache or stale cache - perform real-time analysis with phrase context
  * 3. If real-time fails but stale cache exists - use stale cache
  * 4. Nothing available - return null
+ *
+ * Write-back: Every real-time analysis writes learnings to database
  */
 export async function getSmartStyleProfile(
   niche: string,
@@ -1207,6 +1380,7 @@ export async function getSmartStyleProfile(
     maxCacheAgeHours?: number;
     enableRealtime?: boolean;
     maxRealtimeImages?: number;
+    phrase?: string;  // NEW: specific phrase/trend for targeted image search
   } = {}
 ): Promise<{
   profile: NicheStyleProfile | null;
@@ -1216,10 +1390,12 @@ export async function getSmartStyleProfile(
   const {
     maxCacheAgeHours = 168, // 1 week
     enableRealtime = true,
-    maxRealtimeImages = 5
+    maxRealtimeImages = 5,
+    phrase
   } = options;
 
-  console.log(`[SmartStyle] Fetching style for niche: "${niche}"`);
+  const searchContext = phrase ? `"${phrase}" in ${niche}` : `niche: "${niche}"`;
+  console.log(`[SmartStyle] Fetching style for ${searchContext}`);
 
   // Step 1: Check for cached profile
   const stored = await prisma.nicheStyleProfile.findUnique({
@@ -1244,11 +1420,13 @@ export async function getSmartStyleProfile(
     console.log(`[SmartStyle] Cache is stale (age: ${Math.round(ageMs / 3600000)}h)`);
   }
 
-  // Step 2: Try real-time analysis
+  // Step 2: Try real-time analysis with phrase context
   if (enableRealtime) {
     console.log(`[SmartStyle] Attempting real-time analysis...`);
     const realtime = await analyzeNicheStyleRealtime(niche, {
-      maxImages: maxRealtimeImages
+      maxImages: maxRealtimeImages,
+      phrase,  // Pass phrase for targeted search
+      writeBack: true  // Always write back learnings
     });
 
     if (realtime) {
