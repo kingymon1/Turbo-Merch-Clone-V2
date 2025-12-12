@@ -361,22 +361,26 @@ export async function createDesignBriefFromTrend(
   // Determine niche
   const niche = trend.niche || extractNicheFromTopic(trend.topic || '');
 
+  // Determine tone for enrichment
+  const tone = userOverrides?.tone || trend.sentiment || 'funny';
+
   // Fetch niche-specific style via agent research (replaces hardcoded defaults)
   // This is called ONCE and passed to all helper functions
   const nicheDefaults = await getNicheStyleFromResearch(niche);
   console.log(`[DesignExecutor] Using ${nicheDefaults.source} style for "${niche}" (confidence: ${nicheDefaults.confidence})`);
+  console.log(`[DesignExecutor] Tone for enrichment: "${tone}"`);
 
-  // Build typography from available sources
-  const typography = buildTypography(trend, nicheStyle, userOverrides?.style, nicheDefaults);
+  // Build typography from available sources (now with tone enrichment)
+  const typography = buildTypography(trend, nicheStyle, userOverrides?.style, nicheDefaults, tone);
 
   // Build color approach from available sources
   const colorApproach = buildColorApproach(trend, nicheStyle, nicheDefaults);
 
-  // Build aesthetic from available sources
-  const aesthetic = buildAesthetic(trend, nicheStyle, userOverrides?.style, nicheDefaults);
+  // Build aesthetic from available sources (now with tone enrichment)
+  const aesthetic = buildAesthetic(trend, nicheStyle, userOverrides?.style, nicheDefaults, tone);
 
-  // Build layout from available sources
-  const layout = buildLayout(trend, nicheStyle);
+  // Build layout from available sources (now with tone-based icons and text-only detection)
+  const layout = buildLayout(trend, nicheStyle, tone);
 
   // Determine style source and confidence
   const styleSource = nicheStyle
@@ -431,6 +435,210 @@ export async function createDesignBriefFromTrend(
 // Type alias for consistency
 type NicheDefaults = NicheStyleResult;
 
+// ============================================================================
+// TONE-BASED STYLE ENRICHMENT
+// When research data is thin, use the tone/sentiment to infer appropriate effects
+// This prevents generic "clean professional" designs for all tones
+// ============================================================================
+
+interface ToneEnrichment {
+  typographyHints: string[];        // Hints to add to typography description
+  effects: string[];                // Visual effects to apply
+  aestheticKeywords: string[];      // Keywords to add to aesthetic
+  iconStyle?: string;               // Suggested icon style if icons are used
+  preferVisuals: boolean;           // Does this tone benefit from visual elements?
+  visualReasoning: string;          // Why this tone should/shouldn't have visuals
+}
+
+/**
+ * Tone-to-style mappings based on what sells for each sentiment
+ *
+ * These are NOT hardcoded defaults - they're ENRICHMENTS applied when
+ * research data doesn't specify effects. The enrichments come from
+ * understanding what visual styles resonate with each emotional tone.
+ */
+const TONE_STYLE_ENRICHMENTS: Record<string, ToneEnrichment> = {
+  funny: {
+    typographyHints: ['playful', 'slightly tilted or quirky'],
+    effects: ['slight distress', 'drop shadow', 'outline'],
+    aestheticKeywords: ['humorous', 'attention-grabbing', 'bold'],
+    iconStyle: 'playful cartoon style or emoji-like',
+    preferVisuals: true,
+    visualReasoning: 'Humor designs benefit from visual elements that enhance the joke'
+  },
+  sarcastic: {
+    typographyHints: ['bold impact style', 'condensed'],
+    effects: ['halftone', 'slight distress'],
+    aestheticKeywords: ['edgy', 'bold', 'statement'],
+    iconStyle: 'ironic or subversive imagery',
+    preferVisuals: true,
+    visualReasoning: 'Sarcasm benefits from visual irony or emphasis elements'
+  },
+  inspirational: {
+    typographyHints: ['elegant serif or clean sans', 'well-spaced'],
+    effects: ['subtle gradient', 'clean lines'],
+    aestheticKeywords: ['uplifting', 'refined', 'motivational'],
+    iconStyle: 'minimalist symbolic (sunrise, mountain, path)',
+    preferVisuals: true,
+    visualReasoning: 'Inspirational messages are enhanced by symbolic imagery'
+  },
+  heartfelt: {
+    typographyHints: ['warm serif', 'handwritten touches'],
+    effects: ['soft shadow', 'gentle curves'],
+    aestheticKeywords: ['warm', 'personal', 'emotional'],
+    iconStyle: 'hand-drawn heart or family-themed',
+    preferVisuals: true,
+    visualReasoning: 'Heartfelt messages pair well with personal, warm visuals'
+  },
+  proud: {
+    typographyHints: ['bold all-caps', 'strong weight'],
+    effects: ['3D effect', 'metallic', 'shadow'],
+    aestheticKeywords: ['confident', 'powerful', 'statement'],
+    iconStyle: 'bold emblematic or badge-style',
+    preferVisuals: true,
+    visualReasoning: 'Pride designs benefit from strong visual presence'
+  },
+  nostalgic: {
+    typographyHints: ['vintage serif', 'retro display'],
+    effects: ['distressed', 'worn texture', 'halftone'],
+    aestheticKeywords: ['vintage', 'retro', 'classic'],
+    iconStyle: 'retro illustration style',
+    preferVisuals: true,
+    visualReasoning: 'Nostalgia is enhanced by period-appropriate visual elements'
+  },
+  edgy: {
+    typographyHints: ['gothic', 'distorted', 'grunge'],
+    effects: ['heavy distress', 'drip effect', 'splatter'],
+    aestheticKeywords: ['rebellious', 'alternative', 'punk'],
+    iconStyle: 'skull, flames, or counter-culture imagery',
+    preferVisuals: true,
+    visualReasoning: 'Edgy designs rely heavily on visual aesthetic'
+  },
+  professional: {
+    typographyHints: ['clean sans-serif', 'corporate'],
+    effects: ['clean', 'minimal'],
+    aestheticKeywords: ['polished', 'corporate', 'minimal'],
+    iconStyle: 'simple professional icon or none',
+    preferVisuals: false, // Text-only can work well for professional
+    visualReasoning: 'Professional tone can succeed with clean typography alone'
+  },
+  wholesome: {
+    typographyHints: ['rounded friendly', 'warm'],
+    effects: ['soft edges', 'subtle shadow'],
+    aestheticKeywords: ['friendly', 'approachable', 'warm'],
+    iconStyle: 'cute simple illustration',
+    preferVisuals: true,
+    visualReasoning: 'Wholesome content benefits from friendly visual elements'
+  },
+  witty: {
+    typographyHints: ['smart serif', 'clever layout'],
+    effects: ['clean with subtle flair'],
+    aestheticKeywords: ['clever', 'smart', 'refined humor'],
+    iconStyle: 'subtle visual pun or clever icon',
+    preferVisuals: true,
+    visualReasoning: 'Wit is often enhanced by clever visual elements'
+  }
+};
+
+// Default enrichment when tone doesn't match known patterns
+const DEFAULT_TONE_ENRICHMENT: ToneEnrichment = {
+  typographyHints: [],
+  effects: ['subtle depth', 'clean finish'],
+  aestheticKeywords: ['balanced', 'appealing'],
+  iconStyle: 'simple complementary illustration',
+  preferVisuals: true, // Default to including visuals
+  visualReasoning: 'Most designs benefit from visual elements to stand out'
+};
+
+/**
+ * Get tone enrichment - looks up the tone and returns appropriate style hints
+ */
+function getToneEnrichment(tone: string): ToneEnrichment {
+  const toneLower = tone.toLowerCase().trim();
+
+  // Direct match
+  if (TONE_STYLE_ENRICHMENTS[toneLower]) {
+    return TONE_STYLE_ENRICHMENTS[toneLower];
+  }
+
+  // Partial match - check if tone contains any of our keys
+  for (const [key, enrichment] of Object.entries(TONE_STYLE_ENRICHMENTS)) {
+    if (toneLower.includes(key) || key.includes(toneLower)) {
+      return enrichment;
+    }
+  }
+
+  return DEFAULT_TONE_ENRICHMENT;
+}
+
+/**
+ * Detect if text-only design is appropriate based on research data and context
+ * Returns { textOnly: boolean, reasoning: string }
+ */
+function shouldBeTextOnly(
+  trend: {
+    visualStyle?: string;
+    designStyle?: string;
+    textLayout?: { reasoning?: string };
+  },
+  nicheStyle?: Partial<import('./types').NicheStyleProfile>,
+  tone?: string
+): { textOnly: boolean; reasoning: string } {
+  // Check if research explicitly indicates text-only
+  if (trend.visualStyle) {
+    const vs = trend.visualStyle.toLowerCase();
+    if (vs.includes('text only') || vs.includes('typography only') || vs.includes('text-only')) {
+      return {
+        textOnly: true,
+        reasoning: 'Research indicates text-only designs perform well for this niche'
+      };
+    }
+    if (vs.includes('minimal') && vs.includes('clean') && !vs.includes('icon') && !vs.includes('illustration')) {
+      return {
+        textOnly: true,
+        reasoning: 'Research suggests minimal clean typography approach'
+      };
+    }
+  }
+
+  // Check niche style patterns from image analysis
+  if (nicheStyle?.layoutPatterns?.iconUsage === 'none') {
+    return {
+      textOnly: true,
+      reasoning: 'Analyzed products in this niche predominantly use text-only designs'
+    };
+  }
+
+  // Check if agent provided explicit reasoning for text-only
+  if (trend.textLayout?.reasoning) {
+    const reasoning = trend.textLayout.reasoning.toLowerCase();
+    if (reasoning.includes('text only') || reasoning.includes('typography focus')) {
+      return {
+        textOnly: true,
+        reasoning: trend.textLayout.reasoning
+      };
+    }
+  }
+
+  // Professional tone can work well text-only
+  if (tone && tone.toLowerCase() === 'professional') {
+    // But only if there's some supporting signal
+    const toneEnrichment = getToneEnrichment(tone);
+    if (!toneEnrichment.preferVisuals) {
+      return {
+        textOnly: false, // Still default to visuals, but with lower preference
+        reasoning: 'Professional tone - visuals optional but can add credibility'
+      };
+    }
+  }
+
+  // Default: include visuals
+  return {
+    textOnly: false,
+    reasoning: 'No strong indication for text-only - include visual elements for market appeal'
+  };
+}
+
 /**
  * Build typography settings from available data
  *
@@ -439,6 +647,7 @@ type NicheDefaults = NicheStyleResult;
  * 2. trend data - from Gemini text-based research
  * 3. user style - explicit user preference
  * 4. nicheDefaults - from agent-based web research (NOT hardcoded)
+ * 5. tone enrichment - infer from sentiment when research is thin
  *
  * Note: nicheStyle comes from getSmartStyleProfile which ensures freshness:
  * - Fresh cache (<1 week) → used directly
@@ -452,40 +661,73 @@ function buildTypography(
   trend: { typographyStyle?: string; visualStyle?: string; designStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
   userStyle?: string,
-  nicheDefaults?: NicheDefaults
+  nicheDefaults?: NicheDefaults,
+  tone?: string
 ): DesignBrief['style']['typography'] {
   let primary = nicheDefaults?.typography || 'bold readable sans-serif';
   const forbidden: string[] = [];
   const effects: string[] = nicheDefaults?.effects ? [...nicheDefaults.effects] : [];
 
+  // Track if we got specific typography from research
+  let hasSpecificTypography = false;
+
   if (nicheStyle?.dominantTypography?.primary) {
     primary = nicheStyle.dominantTypography.primary;
+    hasSpecificTypography = true;
   } else if (trend.typographyStyle) {
     primary = trend.typographyStyle;
+    hasSpecificTypography = true;
   } else if (trend.visualStyle) {
     // Extract typography hints from visual style
     if (trend.visualStyle.toLowerCase().includes('vintage')) {
       primary = 'vintage serif with slight wear';
       effects.push('distressed');
+      hasSpecificTypography = true;
     } else if (trend.visualStyle.toLowerCase().includes('modern')) {
       primary = 'clean modern sans-serif';
+      hasSpecificTypography = true;
     } else if (trend.visualStyle.toLowerCase().includes('playful')) {
       primary = 'rounded friendly sans-serif';
+      hasSpecificTypography = true;
     } else if (trend.visualStyle.toLowerCase().includes('retro')) {
       primary = 'retro display typeface';
       effects.push('shadow');
+      hasSpecificTypography = true;
     }
   } else if (userStyle) {
     if (userStyle.toLowerCase().includes('vintage')) {
       primary = 'vintage serif with character';
       effects.push('distressed');
+      hasSpecificTypography = true;
     } else if (userStyle.toLowerCase().includes('minimalist')) {
       primary = 'thin clean sans-serif';
+      hasSpecificTypography = true;
     } else if (userStyle.toLowerCase().includes('bold')) {
       primary = 'extra bold impact style';
+      hasSpecificTypography = true;
     }
   }
-  // Note: If none of the above match, nicheDefaults.typography is already set
+
+  // TONE ENRICHMENT: When research data is thin, use tone to enhance typography
+  if (tone && !hasSpecificTypography) {
+    const toneEnrichment = getToneEnrichment(tone);
+
+    // Add tone-based typography hints
+    if (toneEnrichment.typographyHints.length > 0) {
+      primary = `${primary} with ${toneEnrichment.typographyHints.join(', ')} qualities`;
+      console.log(`[DesignExecutor] Typography enriched with tone "${tone}": ${primary}`);
+    }
+
+    // Add tone-based effects if we don't have enough effects
+    if (effects.length < 2 && toneEnrichment.effects.length > 0) {
+      for (const effect of toneEnrichment.effects) {
+        if (!effects.includes(effect)) {
+          effects.push(effect);
+        }
+      }
+      console.log(`[DesignExecutor] Added tone-based effects for "${tone}": ${effects.join(', ')}`);
+    }
+  }
 
   // Add forbidden based on nicheStyle.moodAesthetic.avoid
   if (nicheStyle?.moodAesthetic?.avoid) {
@@ -563,19 +805,25 @@ function buildColorApproach(
 /**
  * Build aesthetic settings from available data
  * Uses agent-researched niche style when research data is incomplete
+ * Enriches with tone-appropriate keywords when research is thin
  */
 function buildAesthetic(
   trend: { visualStyle?: string; designStyle?: string; niche?: string },
   nicheStyle?: Partial<import('./types').NicheStyleProfile>,
   userStyle?: string,
-  nicheDefaults?: NicheDefaults
+  nicheDefaults?: NicheDefaults,
+  tone?: string
 ): DesignBrief['style']['aesthetic'] {
   let primary = nicheDefaults?.aesthetic || 'clean professional';
   let keywords: string[] = ['professional', 'readable'];
   const forbidden: string[] = [];
 
+  // Track if we got specific aesthetic from research
+  let hasSpecificAesthetic = false;
+
   if (nicheStyle?.moodAesthetic?.primary) {
     primary = nicheStyle.moodAesthetic.primary;
+    hasSpecificAesthetic = true;
     if (nicheStyle.moodAesthetic.avoid) {
       forbidden.push(...nicheStyle.moodAesthetic.avoid);
     }
@@ -583,14 +831,38 @@ function buildAesthetic(
     // Use the rich visual style directly - don't compress it!
     primary = trend.visualStyle;
     keywords = extractKeywordsFromStyle(trend.visualStyle);
+    hasSpecificAesthetic = true;
   } else if (trend.designStyle) {
     primary = trend.designStyle;
     keywords = extractKeywordsFromStyle(trend.designStyle);
+    hasSpecificAesthetic = true;
   } else if (userStyle) {
     primary = userStyle;
     keywords = extractKeywordsFromStyle(userStyle);
+    hasSpecificAesthetic = true;
   }
-  // Note: If none of the above match, nicheDefaults.aesthetic is already set
+
+  // TONE ENRICHMENT: When research data is thin, use tone to enhance aesthetic
+  if (tone && !hasSpecificAesthetic) {
+    const toneEnrichment = getToneEnrichment(tone);
+
+    // Enhance primary aesthetic with tone
+    if (primary === 'clean professional' || primary === nicheDefaults?.aesthetic) {
+      // Replace generic aesthetic with tone-specific one
+      primary = `${toneEnrichment.aestheticKeywords[0] || 'engaging'} ${primary}`;
+      console.log(`[DesignExecutor] Aesthetic enriched with tone "${tone}": ${primary}`);
+    }
+
+    // Add tone-appropriate keywords
+    if (toneEnrichment.aestheticKeywords.length > 0) {
+      for (const keyword of toneEnrichment.aestheticKeywords) {
+        if (!keywords.includes(keyword)) {
+          keywords.push(keyword);
+        }
+      }
+      console.log(`[DesignExecutor] Added tone-based keywords for "${tone}": ${keywords.join(', ')}`);
+    }
+  }
 
   // Extract keywords from nicheStyle illustration subjects
   if (nicheStyle?.illustrationStyle?.subjectMatter?.length) {
@@ -606,11 +878,15 @@ function buildAesthetic(
 
 /**
  * Build layout settings from available data
- * Priority: trend.textLayout (agent-determined) > nicheStyle > defaults
+ * Priority: trend.textLayout (agent-determined) > nicheStyle > tone > defaults
+ *
+ * KEY CHANGE: Default to including visual elements unless there's a strong reason not to
+ * Text-only designs are allowed when research or reasoning supports it
  */
 function buildLayout(
   trend: {
     visualStyle?: string;
+    designStyle?: string;
     textLayout?: {
       positioning?: string;
       emphasis?: string;
@@ -618,12 +894,20 @@ function buildLayout(
       reasoning?: string;
     };
   },
-  nicheStyle?: Partial<import('./types').NicheStyleProfile>
+  nicheStyle?: Partial<import('./types').NicheStyleProfile>,
+  tone?: string
 ): DesignBrief['style']['layout'] {
   let composition = 'centered, balanced composition';
   let textPlacement = 'centered';
-  let includeIcon = false;
+  let includeIcon = true;  // DEFAULT TO TRUE - visual elements help designs stand out
   let iconStyle: string | undefined;
+
+  // Check if text-only is appropriate based on research/reasoning
+  const textOnlyDecision = shouldBeTextOnly(trend, nicheStyle, tone);
+  if (textOnlyDecision.textOnly) {
+    includeIcon = false;
+    console.log(`[DesignExecutor] Text-only design: ${textOnlyDecision.reasoning}`);
+  }
 
   // PRIORITY 1: Use agent-determined text layout from research
   if (trend.textLayout) {
@@ -655,19 +939,40 @@ function buildLayout(
   else if (nicheStyle?.layoutPatterns) {
     composition = nicheStyle.layoutPatterns.dominant || composition;
     textPlacement = nicheStyle.layoutPatterns.textPlacement || textPlacement;
-    includeIcon = nicheStyle.layoutPatterns.iconUsage === 'common';
-    if (includeIcon && nicheStyle.illustrationStyle?.dominant) {
-      iconStyle = nicheStyle.illustrationStyle.dominant;
+
+    // Only override includeIcon if niche data explicitly says 'common' or 'none'
+    if (nicheStyle.layoutPatterns.iconUsage === 'common') {
+      includeIcon = true;
+      if (nicheStyle.illustrationStyle?.dominant) {
+        iconStyle = nicheStyle.illustrationStyle.dominant;
+      }
+    } else if (nicheStyle.layoutPatterns.iconUsage === 'none') {
+      includeIcon = false;
+      console.log(`[DesignExecutor] Niche data indicates icons are not used in this niche`);
+    }
+    // 'rare' leaves default (true) - we still include icons but might be more subtle
+  }
+
+  // Detect if visual style suggests specific icon style
+  if (trend.visualStyle && includeIcon) {
+    const vs = trend.visualStyle.toLowerCase();
+    if (vs.includes('illustration') || vs.includes('icon') || vs.includes('graphic')) {
+      iconStyle = vs.includes('simple') ? 'simple line art' : 'detailed illustration';
     }
   }
 
-  // Detect if visual style suggests icons
-  if (trend.visualStyle) {
-    const vs = trend.visualStyle.toLowerCase();
-    if (vs.includes('illustration') || vs.includes('icon') || vs.includes('graphic')) {
-      includeIcon = true;
-      iconStyle = vs.includes('simple') ? 'simple line art' : 'detailed illustration';
+  // TONE-BASED ICON STYLE: When we're including icons but don't have a specific style
+  if (includeIcon && !iconStyle && tone) {
+    const toneEnrichment = getToneEnrichment(tone);
+    if (toneEnrichment.iconStyle) {
+      iconStyle = toneEnrichment.iconStyle;
+      console.log(`[DesignExecutor] Using tone-based icon style for "${tone}": ${iconStyle}`);
     }
+  }
+
+  // Final fallback for icon style when we're including icons
+  if (includeIcon && !iconStyle) {
+    iconStyle = 'complementary illustration that enhances the text message';
   }
 
   return {
