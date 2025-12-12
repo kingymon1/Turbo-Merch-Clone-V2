@@ -868,9 +868,11 @@ model MerchDesign {
   // Generated assets
   imageUrl          String
   imagePrompt       String
+  listingBrand      String?         // Brand name for the listing
   listingTitle      String
   listingBullets    String[]
   listingDesc       String
+  listingKeywords   String[]        // Keywords for Amazon search
 
   // Performance tracking
   approved          Boolean  @default(false)

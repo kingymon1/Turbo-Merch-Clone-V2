@@ -74,6 +74,7 @@ const MerchGenerator: React.FC = () => {
   const [imageModel, setImageModel] = useState<'gemini' | 'dalle3'>('gemini');
 
   // Editable result fields
+  const [editableBrand, setEditableBrand] = useState('');
   const [editableTitle, setEditableTitle] = useState('');
   const [editableBullets, setEditableBullets] = useState<string[]>([]);
   const [editableDesc, setEditableDesc] = useState('');
@@ -95,6 +96,7 @@ const MerchGenerator: React.FC = () => {
   // Update editable fields when design changes
   useEffect(() => {
     if (generatedDesign) {
+      setEditableBrand(generatedDesign.listingBrand || '');
       setEditableTitle(generatedDesign.listingTitle);
       setEditableBullets([...generatedDesign.listingBullets]);
       setEditableDesc(generatedDesign.listingDesc);
@@ -184,6 +186,10 @@ const MerchGenerator: React.FC = () => {
     setTargetNiche('');
     setTone('Let AI decide');
     setAdditionalInstructions('');
+    setEditableBrand('');
+    setEditableTitle('');
+    setEditableBullets([]);
+    setEditableDesc('');
   };
 
   // Dominate feature handlers
@@ -541,9 +547,25 @@ const MerchGenerator: React.FC = () => {
             </div>
 
             <div className="space-y-4">
+              {/* Brand */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Listing Title</label>
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Brand</label>
+                  <CopyButton field="brand" text={editableBrand} />
+                </div>
+                <input
+                  type="text"
+                  value={editableBrand}
+                  onChange={(e) => setEditableBrand(e.target.value)}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm"
+                  placeholder="Brand name"
+                />
+              </div>
+
+              {/* Title */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Title</label>
                   <CopyButton field="title" text={editableTitle} />
                 </div>
                 <textarea
@@ -554,28 +576,43 @@ const MerchGenerator: React.FC = () => {
                 />
               </div>
 
+              {/* Bullet 1 */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Bullet Points</label>
-                  <CopyButton field="bullets" text={editableBullets.join('\n')} />
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Bullet 1</label>
+                  <CopyButton field="bullet1" text={editableBullets[0] || ''} />
                 </div>
-                <div className="space-y-2">
-                  {editableBullets.map((bullet, index) => (
-                    <input
-                      key={index}
-                      type="text"
-                      value={bullet}
-                      onChange={(e) => {
-                        const newBullets = [...editableBullets];
-                        newBullets[index] = e.target.value;
-                        setEditableBullets(newBullets);
-                      }}
-                      className="w-full px-4 py-2 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all text-sm"
-                    />
-                  ))}
-                </div>
+                <textarea
+                  value={editableBullets[0] || ''}
+                  onChange={(e) => {
+                    const newBullets = [...editableBullets];
+                    newBullets[0] = e.target.value;
+                    setEditableBullets(newBullets);
+                  }}
+                  rows={2}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none text-sm"
+                />
               </div>
 
+              {/* Bullet 2 */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Bullet 2</label>
+                  <CopyButton field="bullet2" text={editableBullets[1] || ''} />
+                </div>
+                <textarea
+                  value={editableBullets[1] || ''}
+                  onChange={(e) => {
+                    const newBullets = [...editableBullets];
+                    newBullets[1] = e.target.value;
+                    setEditableBullets(newBullets);
+                  }}
+                  rows={2}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none text-sm"
+                />
+              </div>
+
+              {/* Description */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-sm font-bold text-gray-700 dark:text-gray-300">Description</label>
@@ -584,7 +621,7 @@ const MerchGenerator: React.FC = () => {
                 <textarea
                   value={editableDesc}
                   onChange={(e) => setEditableDesc(e.target.value)}
-                  rows={5}
+                  rows={4}
                   className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none text-sm"
                 />
               </div>
@@ -677,6 +714,11 @@ const MerchGenerator: React.FC = () => {
                   />
                 </div>
                 <div className="mt-2">
+                  {design.listingBrand && (
+                    <p className="text-xs text-brand-500 dark:text-brand-400 truncate font-medium">
+                      {design.listingBrand}
+                    </p>
+                  )}
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
                     {design.phrase}
                   </p>

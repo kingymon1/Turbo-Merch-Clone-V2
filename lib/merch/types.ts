@@ -13,15 +13,19 @@ export interface MerchDesign {
   tone?: string;
   imageUrl: string;
   imagePrompt: string;
+  listingBrand?: string;       // Brand name for the listing
   listingTitle: string;
   listingBullets: string[];
   listingDesc: string;
+  listingKeywords?: string[];  // Keywords for Amazon search
   approved: boolean;
   approvedAt?: Date;
   userRating?: number;
   views: number;
   sales: number;
   parentId?: string;
+  // Library integration
+  libraryDesignId?: string;    // ID of the corresponding DesignHistory record
 }
 
 export interface ManualSpecs {

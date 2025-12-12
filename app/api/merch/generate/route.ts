@@ -365,9 +365,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     // ========================================
     // STEP 4: Generate listing (Enhanced with keyword intelligence)
     // ========================================
+    let listingBrand: string = '';
     let listingTitle: string;
     let listingBullets: string[];
     let listingDesc: string;
+    let listingKeywords: string[] = [];
 
     if (USE_MOCK_DATA) {
       const mockData = generateMockData(
@@ -376,9 +378,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         concept.style || 'Bold Modern',
         concept.tone || 'Funny'
       );
+      listingBrand = `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Design Co`;
       listingTitle = mockData.listing.title;
       listingBullets = mockData.listing.bullets;
       listingDesc = mockData.listing.description;
+      listingKeywords = [concept.phrase, concept.niche, 'shirt', 'gift', 'funny'];
     } else {
       try {
         // Use enhanced listing if enabled
@@ -392,9 +396,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             concept.style
           );
 
+          listingBrand = enhancedListing.brand || `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Merch`;
           listingTitle = enhancedListing.title;
           listingBullets = enhancedListing.bullets;
           listingDesc = enhancedListing.description;
+          listingKeywords = enhancedListing.keywords || [];
 
           // Track enhanced listing data
           sourceData.enhancedListing = {
@@ -413,9 +419,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             concept.tone,
             concept.style
           );
+          listingBrand = listing.brand || `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Merch`;
           listingTitle = listing.title;
           listingBullets = listing.bullets;
           listingDesc = listing.description;
+          listingKeywords = listing.keywords || [];
         }
       } catch (error) {
         console.error('[Merch Generate] Listing generation failed:', error);
@@ -428,9 +436,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             concept.tone,
             concept.style
           );
+          listingBrand = listing.brand || `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Merch`;
           listingTitle = listing.title;
           listingBullets = listing.bullets;
           listingDesc = listing.description;
+          listingKeywords = listing.keywords || [];
         } catch (fallbackError) {
           console.error('[Merch Generate] Fallback listing also failed:', fallbackError);
           const mockData = generateMockData(
@@ -439,19 +449,45 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             concept.style || 'Bold Modern',
             concept.tone || 'Funny'
           );
+          listingBrand = `${concept.niche.charAt(0).toUpperCase() + concept.niche.slice(1)} Design Co`;
           listingTitle = mockData.listing.title;
           listingBullets = mockData.listing.bullets;
           listingDesc = mockData.listing.description;
+          listingKeywords = [concept.phrase, concept.niche, 'shirt', 'gift', 'funny'];
           isTest = true;
         }
       }
     }
 
-    console.log(`[Merch Generate] Listing generated`);
+    console.log(`[Merch Generate] Listing generated with brand: ${listingBrand}`);
 
     // ========================================
-    // STEP 5: Save to database
+    // STEP 5: Save to database (MerchDesign + DesignHistory for Library)
     // ========================================
+
+    // First, get the user's database ID for DesignHistory
+    let dbUser = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+    if (!dbUser) {
+      dbUser = await prisma.user.findUnique({
+        where: { clerkId: userId },
+      });
+    }
+
+    // Calculate retention period based on tier (same as trend scanner)
+    const userTier = (dbUser?.subscriptionTier || 'free') as any;
+    const retentionDaysMap: Record<string, number> = {
+      free: 7,
+      starter: 30,
+      pro: 90,
+      business: 365,
+      enterprise: 365,
+    };
+    const retentionDays = retentionDaysMap[userTier] || 7;
+    const expiresAt = new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000);
+
+    // Create the MerchDesign record
     const savedDesign = await prisma.merchDesign.create({
       data: {
         userId,
@@ -465,9 +501,11 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         tone: concept.tone,
         imageUrl,
         imagePrompt,
+        listingBrand,
         listingTitle,
         listingBullets,
         listingDesc,
+        listingKeywords,
         approved: false,
         views: 0,
         sales: 0,
@@ -475,7 +513,62 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       },
     });
 
-    console.log(`[Merch Generate] Design saved with ID: ${savedDesign.id}`);
+    console.log(`[Merch Generate] MerchDesign saved with ID: ${savedDesign.id}`);
+
+    // Also save to DesignHistory (Library) for persistence with same benefits as trend scanner
+    let libraryDesignId: string | undefined;
+    let libraryError: string | undefined;
+
+    if (!dbUser) {
+      console.warn(`[Merch Generate] No dbUser found for userId: ${userId} - skipping Library save`);
+      libraryError = 'User not found in database';
+    } else {
+      try {
+        console.log(`[Merch Generate] Saving to Library for user: ${dbUser.id}`);
+        const designHistoryRecord = await prisma.designHistory.create({
+          data: {
+            userId: dbUser.id,
+            runId: savedDesign.id, // Link to MerchDesign
+            runConfig: {
+              tierAtCreation: userTier,
+              source: 'merch-generator',
+              mode,
+              savedAt: new Date().toISOString(),
+            },
+            niche: concept.niche,
+            slogan: concept.phrase,
+            designCount: 1,
+            targetMarket: mode === 'autopilot' ? 'Autopilot Discovery' : 'Manual Design',
+            listingData: {
+              brand: listingBrand,
+              title: listingTitle,
+              bullet1: listingBullets[0] || '',
+              bullet2: listingBullets[1] || '',
+              description: listingDesc,
+              keywords: listingKeywords,
+              imagePrompt,
+              designText: concept.phrase,
+            },
+            artPrompt: {
+              prompt: imagePrompt,
+              style: concept.style || '',
+            },
+            imageUrl,
+            imageQuality: 'standard',
+            canDownload: true,
+            promptMode: promptMode || 'advanced',
+            expiresAt,
+          },
+        });
+
+        libraryDesignId = designHistoryRecord.id;
+        console.log(`[Merch Generate] DesignHistory (Library) saved with ID: ${libraryDesignId}`);
+      } catch (err: any) {
+        console.error('[Merch Generate] Failed to save to Library:', err?.message || err);
+        libraryError = err?.message || 'Unknown error saving to library';
+        // Continue without failing - MerchDesign is the primary record
+      }
+    }
 
     // PHASE 8: Record generation for diversity tracking (non-blocking)
     if (mode === 'autopilot' && !USE_MOCK_DATA) {
@@ -513,20 +606,25 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       tone: savedDesign.tone ?? undefined,
       imageUrl: savedDesign.imageUrl,
       imagePrompt: savedDesign.imagePrompt,
+      listingBrand: savedDesign.listingBrand ?? undefined,
       listingTitle: savedDesign.listingTitle,
       listingBullets: savedDesign.listingBullets,
       listingDesc: savedDesign.listingDesc,
+      listingKeywords: savedDesign.listingKeywords ?? [],
       approved: savedDesign.approved,
       approvedAt: savedDesign.approvedAt ?? undefined,
       userRating: savedDesign.userRating ?? undefined,
       views: savedDesign.views,
       sales: savedDesign.sales,
       parentId: savedDesign.parentId ?? undefined,
+      libraryDesignId,
     };
 
     return NextResponse.json({
       success: true,
       design,
+      librarySaved: !!libraryDesignId,
+      libraryError: libraryError || undefined,
     });
   } catch (error) {
     console.error('[Merch Generate] Error:', error);
@@ -585,9 +683,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         tone: d.tone,
         imageUrl: d.imageUrl,
         imagePrompt: d.imagePrompt,
+        listingBrand: (d as any).listingBrand,
         listingTitle: d.listingTitle,
         listingBullets: d.listingBullets,
         listingDesc: d.listingDesc,
+        listingKeywords: (d as any).listingKeywords || [],
         approved: d.approved,
         views: d.views,
         sales: d.sales,
