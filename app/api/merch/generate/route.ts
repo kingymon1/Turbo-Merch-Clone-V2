@@ -517,8 +517,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
 
     // Also save to DesignHistory (Library) for persistence with same benefits as trend scanner
     let libraryDesignId: string | undefined;
-    if (dbUser) {
+    let libraryError: string | undefined;
+
+    if (!dbUser) {
+      console.warn(`[Merch Generate] No dbUser found for userId: ${userId} - skipping Library save`);
+      libraryError = 'User not found in database';
+    } else {
       try {
+        console.log(`[Merch Generate] Saving to Library for user: ${dbUser.id}`);
         const designHistoryRecord = await prisma.designHistory.create({
           data: {
             userId: dbUser.id,
@@ -557,8 +563,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
 
         libraryDesignId = designHistoryRecord.id;
         console.log(`[Merch Generate] DesignHistory (Library) saved with ID: ${libraryDesignId}`);
-      } catch (libraryError) {
-        console.error('[Merch Generate] Failed to save to Library (non-blocking):', libraryError);
+      } catch (err: any) {
+        console.error('[Merch Generate] Failed to save to Library:', err?.message || err);
+        libraryError = err?.message || 'Unknown error saving to library';
         // Continue without failing - MerchDesign is the primary record
       }
     }
@@ -616,6 +623,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     return NextResponse.json({
       success: true,
       design,
+      librarySaved: !!libraryDesignId,
+      libraryError: libraryError || undefined,
     });
   } catch (error) {
     console.error('[Merch Generate] Error:', error);
