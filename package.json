@@ -29,6 +29,7 @@
     "react-dom": "^18.3.1",
     "stripe": "^17.5.0",
     "zod": "^4.1.13"
+    "openai": "^4.78.0",
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
