@@ -221,3 +221,87 @@ export interface KeywordIntelligence {
     examples: string[];
   }[];
 }
+
+// ============================================================================
+// DESIGN FORM - Simple form-based design specification
+// ============================================================================
+// This replaces the complex DesignBrief for prompt generation.
+// AI fills this form like a human would, with strict character limits.
+// The form is then converted to a clean ~50 word prompt.
+
+/**
+ * Character limits for each form field.
+ * Aggressive limits force brevity and clarity.
+ */
+export const DESIGN_FORM_LIMITS = {
+  exactText: 40,              // ~6 words
+  style: 25,                  // 1-3 descriptive words
+  imageFeature: 50,           // One visual element
+  niche: 15,                  // Single word/short phrase
+  tone: 10,                   // One word
+  additionalInstructions: 60, // Technical notes
+} as const;
+
+/**
+ * The form that AI fills to create a design.
+ * Character limits enforce brevity.
+ * Total: ~200 chars max
+ */
+export interface DesignForm {
+  // Text to render on the design
+  // null = explicit "no text" design choice (not a fallback)
+  exactText: string | null;
+
+  // Visual style in 1-3 words (e.g., "Ugly Christmas", "Vintage Retro")
+  style: string;
+
+  // One visual element to include (e.g., "3 snowmen in winter scene")
+  // null = text-only design
+  imageFeature: string | null;
+
+  // Target audience niche (e.g., "christmas", "fishing", "nurse")
+  niche: string;
+
+  // Emotional tone (e.g., "funny", "heartfelt", "proud")
+  tone: string;
+
+  // Technical instructions (e.g., "on black background", "no mockup")
+  // null = use defaults
+  additionalInstructions: string | null;
+
+  // Model-specific overrides (optional)
+  modelOverrides?: {
+    ideogram?: {
+      styleType?: 'DESIGN' | 'GENERAL' | 'REALISTIC';
+      magicPrompt?: 'ON' | 'OFF';
+    };
+    gptImage?: {
+      background?: 'black' | 'white' | 'transparent';
+    };
+    imagen?: {
+      // Future: Imagen-specific options
+    };
+    dalle3?: {
+      style?: 'vivid' | 'natural';
+    };
+  };
+}
+
+/**
+ * Result of form-filling operation
+ */
+export interface FormFillerResult {
+  form: DesignForm;
+  tokensUsed: number;
+  model: string;
+}
+
+/**
+ * Style context from database for form-filling
+ */
+export interface StyleContext {
+  dominantTypography?: string;
+  colorPalette?: string[];
+  moodAesthetic?: string;
+  avoidStyles?: string[];
+}
