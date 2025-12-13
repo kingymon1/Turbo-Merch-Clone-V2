@@ -74,6 +74,7 @@ const MerchGenerator: React.FC = () => {
   const [tone, setTone] = useState('Let AI decide');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
   const [imageModel, setImageModel] = useState<'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3'>('gemini');
+  const [useSimplePrompts, setUseSimplePrompts] = useState(false);
 
   // Editable result fields
   const [editableBrand, setEditableBrand] = useState('');
@@ -125,7 +126,11 @@ const MerchGenerator: React.FC = () => {
     setGeneratedDesign(null);
 
     try {
-      const requestBody: any = { mode, imageModel };
+      const requestBody: any = {
+        mode,
+        imageModel,
+        promptMode: useSimplePrompts ? 'simple' : 'advanced',
+      };
 
       if (mode === 'autopilot') {
         requestBody.riskLevel = riskLevel;
@@ -352,6 +357,29 @@ const MerchGenerator: React.FC = () => {
               </div>
             </div>
 
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+              <div>
+                <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                  Simple Prompts
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Use shorter, cleaner prompts (~50 words vs ~500)
+                </p>
+              </div>
+              <button
+                onClick={() => setUseSimplePrompts(!useSimplePrompts)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  useSimplePrompts ? 'bg-brand-600' : 'bg-gray-300 dark:bg-dark-600'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                    useSimplePrompts ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+
             <button
               onClick={handleGenerate}
               disabled={isGenerating}
@@ -479,6 +507,29 @@ const MerchGenerator: React.FC = () => {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-dark-700 rounded-lg">
+              <div>
+                <label className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                  Simple Prompts
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Use shorter, cleaner prompts (~50 words vs ~500)
+                </p>
+              </div>
+              <button
+                onClick={() => setUseSimplePrompts(!useSimplePrompts)}
+                className={`relative w-12 h-6 rounded-full transition-colors ${
+                  useSimplePrompts ? 'bg-brand-600' : 'bg-gray-300 dark:bg-dark-600'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                    useSimplePrompts ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
 
             <button
