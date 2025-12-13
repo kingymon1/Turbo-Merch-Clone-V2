@@ -48,6 +48,12 @@ import {
   ExplorationResult,
 } from './diversity-engine';
 
+// NEW IMPORTS for form-based system (Phase 10)
+import { DesignForm, FormFillerResult } from './types';
+import { fillDesignForm } from './form-filler';
+import { buildSimplePrompt, buildModelSpecificPrompt } from './simple-prompt-builder';
+import { getOrResearchStyleContext } from './style-research';
+
 // Track applied insights for logging
 // Maps from InsightApplication (from insight-applier) to simplified format for storage
 interface AppliedInsight {
@@ -730,4 +736,110 @@ function buildAutopilotMarketplaceContext(marketplaceData: OptimizedKeywords): s
   }
 
   return sections.join('\n');
+}
+
+// ============================================================================
+// PHASE 10: FORM-BASED GENERATION (Simple Prompt System)
+// ============================================================================
+// This new system replaces complex prompt engineering with a simple form.
+// The AI fills a form like a human would, with strict character limits.
+// The form is then converted to a clean ~50 word prompt.
+
+/**
+ * Result of form-based generation
+ */
+export interface FormBasedGenerationResult {
+  // The filled design form
+  designForm: DesignForm;
+
+  // The simple prompt built from the form (~50 words)
+  imagePrompt: string;
+
+  // Original trend data (for listing generation)
+  trend: TrendData;
+
+  // Source of the concept
+  source: string;
+
+  // Form-filler metadata
+  formFillerResult: FormFillerResult;
+
+  // Legacy concept (for backward compatibility)
+  concept: DesignConcept;
+}
+
+/**
+ * Generate a design using the new form-based system.
+ *
+ * This is the new recommended way to generate designs.
+ * It produces cleaner, simpler prompts that work better with image models.
+ *
+ * Flow:
+ * 1. Run existing research (unchanged)
+ * 2. Fetch style context from database
+ * 3. Fill design form using GPT-4.1-nano
+ * 4. Build simple prompt from form (~50 words)
+ *
+ * @param riskLevel - 0-100, where 0 is safe/evergreen and 100 is viral/risky
+ * @param userId - Optional user ID for per-user diversity tracking
+ * @returns FormBasedGenerationResult with form, prompt, and trend data
+ */
+export async function generateAutopilotConceptWithForm(
+  riskLevel: number,
+  userId?: string
+): Promise<FormBasedGenerationResult> {
+  console.log(`[Autopilot-V2] Generating with form-based system at risk level ${riskLevel}`);
+
+  // STEP 1: Run existing research (reuse existing function)
+  const legacyResult = await generateAutopilotConcept(riskLevel, userId);
+  console.log(`[Autopilot-V2] Research complete: "${legacyResult.concept.phrase}" in ${legacyResult.concept.niche}`);
+
+  // STEP 2: Fetch style context from database
+  const styleContext = await getOrResearchStyleContext(legacyResult.concept.niche);
+  console.log(`[Autopilot-V2] Style context: ${styleContext.dominantTypography || 'default'}`);
+
+  // STEP 3: Fill design form using GPT-4.1-nano
+  const formFillerResult = await fillDesignForm({
+    trendData: {
+      phrase: legacyResult.concept.phrase,
+      topic: legacyResult.trend.topic,
+      niche: legacyResult.concept.niche,
+      audienceProfile: legacyResult.trend.audienceProfile,
+      visualStyle: legacyResult.trend.visualStyle,
+      sentiment: legacyResult.trend.sentiment,
+      designText: legacyResult.trend.designText,
+      keywords: legacyResult.trend.keywords,
+    },
+    styleContext,
+    riskLevel,
+  });
+
+  console.log(`[Autopilot-V2] Form filled: text="${formFillerResult.form.exactText}", style="${formFillerResult.form.style}"`);
+
+  // STEP 4: Build simple prompt from form
+  const imagePrompt = buildSimplePrompt(formFillerResult.form);
+  console.log(`[Autopilot-V2] Simple prompt (${imagePrompt.split(' ').length} words): ${imagePrompt}`);
+
+  return {
+    designForm: formFillerResult.form,
+    imagePrompt,
+    trend: legacyResult.trend,
+    source: `Form-Based (${legacyResult.source})`,
+    formFillerResult,
+    concept: legacyResult.concept,
+  };
+}
+
+/**
+ * Build a model-specific prompt from a form
+ *
+ * @param form - The filled design form
+ * @param model - Target image model
+ * @returns Model-optimized prompt string
+ */
+export function buildPromptForModel(
+  form: DesignForm,
+  model: 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3'
+): string {
+  return buildModelSpecificPrompt(form, model);
 }

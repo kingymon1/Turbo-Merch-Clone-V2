@@ -14,7 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from '@/lib/prisma';
-import { GenerationRequest, GenerationResponse, MerchDesign, DesignBrief } from '@/lib/merch/types';
+import { GenerationRequest, GenerationResponse, MerchDesign, DesignBrief, DesignForm } from '@/lib/merch/types';
 import { createImagePrompt, DesignConcept, buildDesignBriefFromTrend, buildDesignBriefFromManualSpecs } from '@/lib/merch/image-prompter';
 import { generateMerchListing, generateEnhancedListing } from '@/lib/merch/listing-generator';
 import {
@@ -26,11 +26,13 @@ import {
   ImageModel,
   BriefBasedGenerationResult
 } from '@/lib/merch/image-generator';
-import { generateAutopilotConcept } from '@/lib/merch/autopilot-generator';
+import { generateAutopilotConcept, generateAutopilotConceptWithForm, buildPromptForModel } from '@/lib/merch/autopilot-generator';
 import { logInsightUsage } from '@/lib/merch/learning';
 import { getSmartStyleProfile } from '@/lib/merch/style-discovery';
 import { getCrossNicheOpportunities } from '@/lib/merch/cross-niche-engine';
 import { recordGeneration } from '@/lib/merch/diversity-engine';
+import { manualSpecsToDesignForm } from '@/lib/merch/form-filler';
+import { buildSimplePrompt, buildModelSpecificPrompt } from '@/lib/merch/simple-prompt-builder';
 
 // Increase timeout for AI generation (max 300s on Vercel Pro)
 export const maxDuration = 300;
@@ -75,7 +77,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       );
     }
 
-    const body: GenerationRequest = await request.json();
+    const body: GenerationRequest & { useSimplePrompts?: boolean } = await request.json();
     const {
       mode,
       riskLevel,
@@ -86,7 +88,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       useStyleDiscovery = true,
       useCrossNicheBlend = true,
       useBriefSystem = true,
-      promptMode = 'advanced'
+      promptMode = 'advanced',
+      // NEW: Form-based simple prompt system (Phase 10)
+      useSimplePrompts = false,
     } = body;
 
     // Validate request
@@ -112,7 +116,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     }
 
     console.log(`[Merch Generate] Starting ${mode} mode generation`);
-    console.log(`[Merch Generate] Options: model=${imageModel}, briefSystem=${useBriefSystem}, styleDiscovery=${useStyleDiscovery}`);
+    console.log(`[Merch Generate] Options: model=${imageModel}, briefSystem=${useBriefSystem}, styleDiscovery=${useStyleDiscovery}, simplePrompts=${useSimplePrompts}`);
 
     let concept: DesignConcept;
     let sourceData: any = {};
@@ -121,6 +125,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     let designBrief: DesignBrief | null = null;
     let nicheStyle: any = null;
     let crossNicheData: any = null;
+    let designForm: DesignForm | null = null;
+    let simpleImagePrompt: string | null = null;
 
     // ========================================
     // STEP 1: Generate or extract concept
@@ -136,9 +142,49 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
           tone: 'Funny',
         };
         sourceData = { riskLevel, mock: true };
+      } else if (useSimplePrompts) {
+        // ========================================
+        // PHASE 10: Form-Based Simple Prompt System
+        // ========================================
+        console.log(`[Merch Generate] Using form-based simple prompt system`);
+
+        try {
+          const formResult = await generateAutopilotConceptWithForm(riskLevel!, userId);
+
+          concept = formResult.concept;
+          designForm = formResult.designForm;
+          simpleImagePrompt = buildModelSpecificPrompt(formResult.designForm, imageModel as ImageModel);
+
+          console.log(`[Merch Generate] Simple prompt (${simpleImagePrompt.split(' ').length} words): ${simpleImagePrompt}`);
+
+          sourceData = {
+            riskLevel,
+            trend: formResult.trend,
+            source: formResult.source,
+            generatedAt: new Date().toISOString(),
+            // Form-based system data
+            useSimplePrompts: true,
+            designForm: formResult.designForm,
+            simplePromptWords: simpleImagePrompt.split(' ').length,
+            formFillerTokens: formResult.formFillerResult.tokensUsed,
+          };
+        } catch (error) {
+          console.error('[Merch Generate] Form-based generation failed, falling back to legacy:', error);
+          // Fall through to legacy system
+          const autopilotResult = await generateAutopilotConcept(riskLevel!, userId);
+          concept = autopilotResult.concept;
+          sourceData = {
+            riskLevel,
+            trend: autopilotResult.trend,
+            source: autopilotResult.source,
+            generatedAt: new Date().toISOString(),
+            formBasedFailed: true,
+            formBasedError: String(error),
+          };
+        }
       } else {
         try {
-          // PHASE 8: Pass userId to autopilot for per-user diversity tracking
+          // PHASE 8: Pass userId to autopilot for per-user diversity tracking (legacy)
           const autopilotResult = await generateAutopilotConcept(riskLevel!, userId);
           concept = autopilotResult.concept;
 
@@ -185,6 +231,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         }
       }
     } else {
+      // Manual mode
       concept = {
         phrase: specs!.exactText,
         niche: specs!.niche || 'general',
@@ -193,6 +240,16 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         imageFeature: specs!.imageFeature,
       };
       sourceData = { manual: true, userSpecs: specs };
+
+      // PHASE 10: Build simple prompt from manual specs if enabled
+      if (useSimplePrompts) {
+        designForm = manualSpecsToDesignForm(specs!);
+        simpleImagePrompt = buildModelSpecificPrompt(designForm, imageModel as ImageModel);
+        console.log(`[Merch Generate] Manual simple prompt (${simpleImagePrompt.split(' ').length} words): ${simpleImagePrompt}`);
+        sourceData.useSimplePrompts = true;
+        sourceData.designForm = designForm;
+        sourceData.simplePromptWords = simpleImagePrompt.split(' ').length;
+      }
     }
 
     console.log(`[Merch Generate] Concept: "${concept.phrase}" for ${concept.niche}`);
@@ -260,13 +317,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     }
 
     // ========================================
-    // STEP 2: Build Design Brief (Enhanced System)
+    // STEP 2: Build Design Brief OR Use Simple Prompt (Enhanced System)
     // ========================================
     let imagePrompt: string;
     let briefCompliance: any = null;
 
-    if (useBriefSystem && !USE_MOCK_DATA) {
-      // Build DesignBrief from trend data and niche style
+    // PHASE 10: Prioritize simple prompts if available
+    if (simpleImagePrompt) {
+      // Use the simple prompt from form-based system
+      imagePrompt = simpleImagePrompt;
+      console.log(`[Merch Generate] Using simple prompt system (~${imagePrompt.split(' ').length} words)`);
+    } else if (useBriefSystem && !USE_MOCK_DATA) {
+      // Build DesignBrief from trend data and niche style (legacy complex system)
       if (mode === 'autopilot' && sourceData.trend) {
         designBrief = await buildDesignBriefFromTrend(
           {
@@ -301,7 +363,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       imagePrompt = createImagePrompt(concept, mode, specs);
     }
 
-    console.log(`[Merch Generate] Image prompt/brief created`);
+    console.log(`[Merch Generate] Image prompt/brief ready`);
 
     // ========================================
     // STEP 3: Generate image (with model selection)
@@ -313,8 +375,22 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
       imageUrl = generatePlaceholderImage(concept.phrase, concept.style || 'modern');
     } else {
       try {
-        // Use brief-based generation if we have a brief
-        if (designBrief) {
+        // PHASE 10: Use simple prompt directly when available
+        if (simpleImagePrompt) {
+          console.log(`[Merch Generate] Using simple prompt generation with ${imageModel}`);
+
+          // Simple prompt goes directly to image model - no brief wrapping
+          const imageResult = await generateMerchImage(
+            simpleImagePrompt,
+            concept.style || 'Bold Modern',
+            concept.phrase,
+            'black',
+            'simple' // Force simple mode since we already have a clean prompt
+          );
+          imageUrl = imageResult.imageUrl;
+
+        } else if (designBrief) {
+          // Legacy brief-based generation
           console.log(`[Merch Generate] Using brief-based generation with ${imageModel}`);
 
           const briefResult = await generateMerchImageFromBrief(
@@ -337,7 +413,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
             console.log(`[Merch Generate] Brief compliance: ${briefCompliance.overallScore * 100}%`);
           }
         } else {
-          // Legacy generation
+          // Legacy generation without brief
           const imageResult = await generateMerchImage(
             imagePrompt,
             concept.style || 'Bold Modern',
