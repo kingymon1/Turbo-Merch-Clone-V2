@@ -107,6 +107,9 @@ Required environment variables for full functionality:
 - `IDEOGRAM_API_KEY` - Ideogram image generation API
 - `DATABASE_URL` - Prisma database connection
 
+Optional feature flags:
+- `STYLE_INTEL_MERCH_ENABLED` - Enable StyleIntel integration in merch pipeline (default: false)
+
 ## Common Commands
 
 ```bash
@@ -365,3 +368,71 @@ Body: {"action": "init-style-tables"}
 - Safe to run multiple times (idempotent upserts)
 - Confidence increases with each re-discovery
 - Runs on Perplexity API (same as niche style researcher)
+
+### StyleIntel Pipeline Integration
+
+**Implementation** (`lib/style-intel/service.ts`, `lib/merch/style-intel-integration.ts`):
+
+The StyleIntel service connects the pre-mined StyleRecipeLibrary to the live merch generator pipeline.
+
+**Feature Flag**: `STYLE_INTEL_MERCH_ENABLED`
+- Default: `false` (disabled)
+- Set to `true` to enable StyleIntel in the merch pipeline
+
+**How It Works**:
+1. When a DesignBrief is created (autopilot or manual mode)
+2. `maybeApplyStyleIntel(brief)` is called
+3. If enabled, queries StyleRecipeLibrary for matching recipes based on:
+   - Niche (partial match on `nicheHints`, `displayName`, `category`)
+   - Tone (partial match)
+   - Garment color (match against `recommendedGarmentColors`)
+   - Text length (prefer simpler recipes for longer text)
+   - Risk level (low risk = simpler recipes, high risk = complex recipes)
+4. Selected recipe is attached to brief as `styleSpec`
+5. Tracking metadata added as `styleIntelMeta`
+
+**Files**:
+- `lib/style-intel/service.ts` - StyleIntelService with `selectStyleSpec()` and `isEnabledForPipeline()`
+- `lib/merch/style-intel-integration.ts` - Integration helpers (`maybeApplyStyleIntel`, `formatStyleRecipeForPrompt`)
+- `lib/merch/types.ts` - `StyleIntelMeta` interface, `styleSpec` field on DesignBrief
+
+**Downstream Usage**:
+When `styleSpec` is present on a DesignBrief:
+- **FormFiller** (`lib/merch/form-filler.ts`): Includes recipe guidance in AI prompts
+- **SimplePromptBuilder** (`lib/merch/simple-prompt-builder.ts`): `buildModelSpecificPromptWithStyleSpec()` uses recipe for typography, layout, and effects
+- **API Response**: `design.sourceData.styleIntel` shows usage status
+
+**API Response Format**:
+```json
+{
+  "design": {
+    "sourceData": {
+      "styleIntel": {
+        "attempted": true,
+        "used": true,
+        "recipeId": "retro-vintage-001",
+        "recipeName": "Retro Vintage Badge"
+      }
+    }
+  }
+}
+```
+
+Or when fallback occurs:
+```json
+{
+  "sourceData": {
+    "styleIntel": {
+      "attempted": true,
+      "used": false,
+      "fallbackReason": "disabled_for_pipeline"
+    }
+  }
+}
+```
+
+**Fallback Reasons**:
+- `disabled_for_pipeline` - Feature flag is off
+- `no_recipe_found` - No matching recipes in database
+- `db_error:...` - Database query failed
+- `not_attempted` - StyleIntel was never called (legacy code path)
