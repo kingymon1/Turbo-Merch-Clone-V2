@@ -22,6 +22,7 @@ import {
   runStyleMiner,
   getStyleMinerStatus,
 } from '@/lib/style-intel/style-miner-service';
+import prisma from '@/lib/prisma';
 
 // Extended timeout for collection
 export const maxDuration = 300;
@@ -143,6 +144,48 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'style-mine-status':
         // Style Miner: Get database status
         result = await getStyleMinerStatus();
+        break;
+
+      case 'init-style-tables':
+        // Create StyleRecipeLibrary and StylePrinciple tables if they don't exist
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "StyleRecipeLibrary" (
+            "id" TEXT NOT NULL,
+            "displayName" TEXT NOT NULL,
+            "category" TEXT NOT NULL,
+            "nicheHints" TEXT[],
+            "tone" TEXT[],
+            "complexity" TEXT NOT NULL,
+            "rawJson" JSONB NOT NULL,
+            "sourceTypes" TEXT[],
+            "references" TEXT[],
+            "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+            "timesValidated" INTEGER NOT NULL DEFAULT 1,
+            "lastValidated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "StyleRecipeLibrary_pkey" PRIMARY KEY ("id")
+          );
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "StylePrinciple" (
+            "id" TEXT NOT NULL,
+            "contextJson" JSONB NOT NULL,
+            "recommendations" JSONB NOT NULL,
+            "rationale" TEXT,
+            "sourceReferences" TEXT[],
+            "timesValidated" INTEGER NOT NULL DEFAULT 1,
+            "lastValidated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "StylePrinciple_pkey" PRIMARY KEY ("id")
+          );
+        `);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StyleRecipeLibrary_category_idx" ON "StyleRecipeLibrary"("category");`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StyleRecipeLibrary_confidence_idx" ON "StyleRecipeLibrary"("confidence");`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StyleRecipeLibrary_createdAt_idx" ON "StyleRecipeLibrary"("createdAt");`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StylePrinciple_createdAt_idx" ON "StylePrinciple"("createdAt");`);
+        result = { tablesCreated: true };
         break;
 
       default:
