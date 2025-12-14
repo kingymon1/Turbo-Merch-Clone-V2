@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "db:push": "prisma db push",
+    "db:setup": "prisma db push && tsx scripts/set-admin.ts",
+    "set-admin": "tsx scripts/set-admin.ts",
     "postinstall": "prisma generate",
     "start": "next start",
     "lint": "next lint",
