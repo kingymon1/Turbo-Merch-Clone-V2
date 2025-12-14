@@ -1359,20 +1359,147 @@ export function realtimeToNicheStyleProfile(
 }
 
 /**
- * Smart style fetcher that uses cached profiles when fresh,
- * or performs real-time analysis when needed.
+ * Blend realtime and cached style profiles
  *
- * NEW: Now accepts phrase parameter for trend-relevant image analysis.
- * The phrase is used to search for more specific products when doing
- * real-time analysis (e.g., "Fishing Dad" instead of just "fishing").
+ * The realtime profile is the PRIMARY source (fresh analysis).
+ * The cached profile provides CONTEXT and validation.
  *
- * Priority order:
- * 1. Fresh cached profile (< maxAgeHours old) - use directly
- * 2. No cache or stale cache - perform real-time analysis with phrase context
- * 3. If real-time fails but stale cache exists - use stale cache
- * 4. Nothing available - return null
+ * Weights: 70% realtime, 30% cached (configurable)
+ */
+function blendStyleProfiles(
+  realtime: NicheStyleProfile,
+  cached: NicheStyleProfile | null,
+  weights: { realtime: number; cached: number } = { realtime: 0.7, cached: 0.3 }
+): NicheStyleProfile {
+  // If no cache, just return realtime
+  if (!cached) {
+    console.log(`[StyleBlend] No cache available, using 100% realtime`);
+    return realtime;
+  }
+
+  console.log(`[StyleBlend] Blending profiles (${weights.realtime * 100}% realtime, ${weights.cached * 100}% cached)`);
+
+  // Blend arrays by taking from both, prioritizing realtime
+  const blendArrays = (rt: string[], ca: string[], maxItems: number = 5): string[] => {
+    const rtItems = rt.slice(0, Math.ceil(maxItems * weights.realtime));
+    const caItems = ca.filter(item => !rtItems.includes(item)).slice(0, Math.floor(maxItems * weights.cached));
+    return [...rtItems, ...caItems].slice(0, maxItems);
+  };
+
+  // Blend confidence - realtime weighted but boosted if consistent with cache
+  const consistencyBonus = calculateConsistency(realtime, cached);
+  const blendedConfidence = Math.min(
+    1.0,
+    (realtime.confidence * weights.realtime + cached.confidence * weights.cached) + (consistencyBonus * 0.1)
+  );
+
+  return {
+    niche: realtime.niche,
+    sampleSize: realtime.sampleSize + cached.sampleSize,
+    lastAnalyzed: realtime.lastAnalyzed,
+    confidence: blendedConfidence,
+
+    dominantTypography: {
+      // Realtime primary takes precedence
+      primary: realtime.dominantTypography.primary,
+      secondary: cached.dominantTypography.secondary || realtime.dominantTypography.secondary,
+      examples: blendArrays(
+        realtime.dominantTypography.examples,
+        cached.dominantTypography.examples,
+        5
+      )
+    },
+
+    colorPalette: {
+      primary: blendArrays(realtime.colorPalette.primary, cached.colorPalette.primary, 4),
+      accent: blendArrays(realtime.colorPalette.accent, cached.colorPalette.accent, 4),
+      background: blendArrays(realtime.colorPalette.background, cached.colorPalette.background, 3),
+      seasonalVariants: cached.colorPalette.seasonalVariants // Preserve accumulated seasonal data
+    },
+
+    layoutPatterns: {
+      dominant: realtime.layoutPatterns.dominant,
+      alternatives: blendArrays(
+        realtime.layoutPatterns.alternatives,
+        cached.layoutPatterns.alternatives,
+        4
+      ),
+      textPlacement: realtime.layoutPatterns.textPlacement,
+      iconUsage: realtime.layoutPatterns.iconUsage
+    },
+
+    illustrationStyle: {
+      dominant: realtime.illustrationStyle.dominant,
+      subjectMatter: blendArrays(
+        realtime.illustrationStyle.subjectMatter,
+        cached.illustrationStyle.subjectMatter,
+        6
+      )
+    },
+
+    moodAesthetic: {
+      primary: realtime.moodAesthetic.primary,
+      secondary: realtime.moodAesthetic.secondary || cached.moodAesthetic.secondary,
+      avoid: blendArrays(realtime.moodAesthetic.avoid, cached.moodAesthetic.avoid, 5)
+    }
+  };
+}
+
+/**
+ * Calculate consistency between realtime and cached profiles
+ * Returns 0-1 score (1 = highly consistent, 0 = completely different)
+ */
+function calculateConsistency(realtime: NicheStyleProfile, cached: NicheStyleProfile): number {
+  let matches = 0;
+  let checks = 0;
+
+  // Check typography match
+  checks++;
+  if (realtime.dominantTypography.primary.toLowerCase().includes(cached.dominantTypography.primary.toLowerCase().split(' ')[0]) ||
+      cached.dominantTypography.primary.toLowerCase().includes(realtime.dominantTypography.primary.toLowerCase().split(' ')[0])) {
+    matches++;
+  }
+
+  // Check color overlap
+  checks++;
+  const rtColors = new Set(realtime.colorPalette.primary.map(c => c.toLowerCase()));
+  const caColors = cached.colorPalette.primary.map(c => c.toLowerCase());
+  if (caColors.some(c => rtColors.has(c))) {
+    matches++;
+  }
+
+  // Check layout match
+  checks++;
+  if (realtime.layoutPatterns.dominant === cached.layoutPatterns.dominant) {
+    matches++;
+  }
+
+  // Check mood match
+  checks++;
+  if (realtime.moodAesthetic.primary === cached.moodAesthetic.primary) {
+    matches++;
+  }
+
+  return matches / checks;
+}
+
+/**
+ * Smart style fetcher - ALWAYS does real-time analysis, uses cache as context.
  *
- * Write-back: Every real-time analysis writes learnings to database
+ * ARCHITECTURE (Updated):
+ * - Cache is for LONG-TERM LEARNING, not quick answers
+ * - Each generation does FRESH real-time analysis
+ * - Cached data INFORMS and VALIDATES, doesn't replace research
+ * - System learns over time but stays dynamic per-generation
+ *
+ * Flow:
+ * 1. Fetch cached profile as background context (non-blocking)
+ * 2. Perform real-time analysis (primary source)
+ * 3. Blend real-time findings with cached knowledge (70/30 weight)
+ * 4. Write back learnings to database (fire-and-forget)
+ * 5. Return blended profile
+ *
+ * Fallback: If real-time fails, use cache with reduced confidence
  */
 export async function getSmartStyleProfile(
   niche: string,
@@ -1380,49 +1507,40 @@ export async function getSmartStyleProfile(
     maxCacheAgeHours?: number;
     enableRealtime?: boolean;
     maxRealtimeImages?: number;
-    phrase?: string;  // NEW: specific phrase/trend for targeted image search
+    phrase?: string;  // Specific phrase/trend for targeted image search
+    blendWeights?: { realtime: number; cached: number };
   } = {}
 ): Promise<{
   profile: NicheStyleProfile | null;
-  source: 'fresh-cache' | 'realtime' | 'stale-cache' | 'none';
+  source: 'realtime-blended' | 'realtime-only' | 'cache-fallback' | 'none';
   confidence: number;
+  consistency?: number;  // How consistent realtime was with cache
 }> {
   const {
-    maxCacheAgeHours = 168, // 1 week
     enableRealtime = true,
     maxRealtimeImages = 5,
-    phrase
+    phrase,
+    blendWeights = { realtime: 0.7, cached: 0.3 }
   } = options;
 
   const searchContext = phrase ? `"${phrase}" in ${niche}` : `niche: "${niche}"`;
-  console.log(`[SmartStyle] Fetching style for ${searchContext}`);
+  console.log(`[SmartStyle] Fetching style for ${searchContext} (always-fresh mode)`);
 
-  // Step 1: Check for cached profile
-  const stored = await prisma.nicheStyleProfile.findUnique({
-    where: { niche }
-  });
-
-  if (stored) {
-    const ageMs = Date.now() - stored.lastAnalyzedAt.getTime();
-    const maxAgeMs = maxCacheAgeHours * 60 * 60 * 1000;
-
-    if (ageMs < maxAgeMs) {
-      // Fresh cache - use it
-      console.log(`[SmartStyle] Using fresh cached profile (age: ${Math.round(ageMs / 3600000)}h)`);
-      const profile = await getNicheStyleProfile(niche);
-      return {
-        profile,
-        source: 'fresh-cache',
-        confidence: profile?.confidence || 0.5
-      };
+  // Step 1: Fetch cached profile as CONTEXT (non-blocking fetch)
+  // This is for blending, not as primary source
+  let cachedProfile: NicheStyleProfile | null = null;
+  try {
+    cachedProfile = await getNicheStyleProfile(niche);
+    if (cachedProfile) {
+      console.log(`[SmartStyle] Loaded cached profile for context (samples: ${cachedProfile.sampleSize})`);
     }
-
-    console.log(`[SmartStyle] Cache is stale (age: ${Math.round(ageMs / 3600000)}h)`);
+  } catch (err) {
+    console.warn(`[SmartStyle] Failed to load cached profile:`, err);
   }
 
-  // Step 2: Try real-time analysis with phrase context
+  // Step 2: ALWAYS do real-time analysis (this is the PRIMARY source)
   if (enableRealtime) {
-    console.log(`[SmartStyle] Attempting real-time analysis...`);
+    console.log(`[SmartStyle] Performing real-time analysis (primary source)...`);
     const realtime = await analyzeNicheStyleRealtime(niche, {
       maxImages: maxRealtimeImages,
       phrase,  // Pass phrase for targeted search
@@ -1430,23 +1548,32 @@ export async function getSmartStyleProfile(
     });
 
     if (realtime) {
-      console.log(`[SmartStyle] Real-time analysis successful`);
+      const realtimeProfile = realtimeToNicheStyleProfile(realtime);
+
+      // Step 3: Blend realtime with cached context
+      const blendedProfile = blendStyleProfiles(realtimeProfile, cachedProfile, blendWeights);
+
+      // Calculate consistency for debugging/tracking
+      const consistency = cachedProfile ? calculateConsistency(realtimeProfile, cachedProfile) : 0;
+
+      console.log(`[SmartStyle] Real-time analysis successful, blended with cache (consistency: ${Math.round(consistency * 100)}%)`);
+
       return {
-        profile: realtimeToNicheStyleProfile(realtime),
-        source: 'realtime',
-        confidence: realtime.confidence
+        profile: blendedProfile,
+        source: cachedProfile ? 'realtime-blended' : 'realtime-only',
+        confidence: blendedProfile.confidence,
+        consistency
       };
     }
   }
 
-  // Step 3: Fall back to stale cache if available
-  if (stored) {
-    console.log(`[SmartStyle] Falling back to stale cache`);
-    const profile = await getNicheStyleProfile(niche);
+  // Step 3: Fallback - If real-time fails, use cache with reduced confidence
+  if (cachedProfile) {
+    console.log(`[SmartStyle] Real-time failed, falling back to cached profile`);
     return {
-      profile,
-      source: 'stale-cache',
-      confidence: (profile?.confidence || 0.5) * 0.7 // Reduce confidence for stale data
+      profile: cachedProfile,
+      source: 'cache-fallback',
+      confidence: cachedProfile.confidence * 0.6 // Significant reduction - we wanted fresh data
     };
   }
 

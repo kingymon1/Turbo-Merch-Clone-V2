@@ -2133,19 +2133,19 @@ export const performDesignResearch = async (trend: TrendData, promptMode: Prompt
     const date = getCurrentDateContext();
 
     // Adjust instructions based on prompt mode
+    // NOTE: Simple mode = shorter prompts, NOT simpler designs. Style comes from research.
     const modeInstruction = promptMode === 'simple'
         ? `
-        **MODE: SIMPLE & CLEAN**
-        - Prioritize BOLD, MINIMALIST archetypes.
-        - Avoid overly complex or distressed styles unless essential for the trend.
-        - Focus on readability and immediate visual impact.
-        - If selecting "dynamic", write a prompt structure that is short, punchy, and direct (~50 words).
+        **MODE: CONCISE PROMPTS**
+        - Select archetypes that best match the trend's aesthetic (any style is valid).
+        - If selecting "dynamic", write a prompt structure that is short and direct (~50 words).
+        - The prompt should be concise but still capture the full creative vision.
         `
         : `
-        **MODE: ADVANCED & DETAILED**
-        - Prioritize RICH, TEXTURED, and DETAILED archetypes.
-        - Encourage complex compositions and intricate details.
+        **MODE: DETAILED PROMPTS**
+        - Select archetypes that best match the trend's aesthetic.
         - If selecting "dynamic", write a prompt structure that is descriptive and atmospheric (~150+ words).
+        - Include rich detail about textures, effects, and composition.
         `;
 
     // Prepare Archetype descriptions for the AI
@@ -2391,10 +2391,8 @@ const createEnhancedDesignPrompt = async (research: DesignResearch, promptMode: 
     }
 
     // 3. Append Technical & Compliance Enforcers (Redundant safety net)
-    // Adjust detail level based on promptMode
-    const detailInstruction = promptMode === 'simple'
-        ? "STYLE: Keep it SIMPLE, CLEAN, and BOLD. Minimalist vector style. High contrast. No tiny details."
-        : "STYLE: Highly detailed, professional vector art. Intricate textures, complex shading, and depth.";
+    // NOTE: promptMode controls prompt LENGTH, not design style. Style comes from research.
+    const detailInstruction = "STYLE: Professional vector art quality. Bold, print-ready design.";
 
     prompt += `
 
