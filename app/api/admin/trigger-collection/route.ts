@@ -20,6 +20,7 @@ import {
 } from '@/lib/merch/learning';
 import {
   runStyleMiner,
+  runStyleMinerAuto,
   getStyleMinerStatus,
 } from '@/lib/style-intel/style-miner-service';
 import prisma from '@/lib/prisma';
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!action) {
       return NextResponse.json(
-        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights, style-mine, style-mine-status)' },
+        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights, style-mine, style-mine-auto, style-mine-status)' },
         { status: 400 }
       );
     }
@@ -138,6 +139,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           errors: miningResult.totalErrors,
           duration: `${miningResult.duration}ms`,
           dbTotals: miningResult.dbTotals,
+        };
+        break;
+
+      case 'style-mine-auto':
+        // Style Miner Auto: Process a chunk of URLs, skip recently mined ones
+        // Safe to call repeatedly - picks up where it left off
+        const autoGroup = body.group || 'all';
+        const maxUrls = body.maxUrls || 5;
+        const skipRecentHours = body.skipRecentHours || 24;
+        const autoResult = await runStyleMinerAuto(autoGroup, maxUrls, skipRecentHours);
+        result = {
+          recipesUpserted: autoResult.totalRecipes,
+          principlesUpserted: autoResult.totalPrinciples,
+          errors: autoResult.totalErrors,
+          duration: `${autoResult.duration}ms`,
+          dbTotals: autoResult.dbTotals,
+          urlsProcessed: autoResult.urlsProcessed,
+          urlsSkipped: autoResult.urlsSkipped,
+          urlsRemaining: autoResult.urlsRemaining,
+          isComplete: autoResult.isComplete,
         };
         break;
 

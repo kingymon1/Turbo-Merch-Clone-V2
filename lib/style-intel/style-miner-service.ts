@@ -26,6 +26,10 @@ const PERPLEXITY_MODEL = 'sonar';
 const API_TIMEOUT_MS = 120000;
 const REQUEST_DELAY_MS = 2000;
 
+// Auto-mining configuration
+const MAX_URLS_PER_CHUNK = 5; // Safe limit to stay under 300s timeout
+const SKIP_RECENT_HOURS = 24; // Don't re-mine URLs mined within this window
+
 // =============================================================================
 // SCHEMA DEFINITIONS FOR LLM
 // =============================================================================
@@ -576,6 +580,140 @@ export async function runStyleMiner(
       recipes: finalRecipeCount,
       principles: finalPrincipleCount,
     },
+  };
+}
+
+/**
+ * Get URLs that were mined recently (within skipHours)
+ */
+async function getRecentlyMinedUrls(skipHours: number): Promise<Set<string>> {
+  const cutoff = new Date(Date.now() - skipHours * 60 * 60 * 1000);
+
+  // Get all recipes updated after cutoff and extract their reference URLs
+  const recentRecipes = await prisma.styleRecipeLibrary.findMany({
+    where: {
+      lastValidated: { gte: cutoff }
+    },
+    select: { references: true }
+  });
+
+  const minedUrls = new Set<string>();
+  for (const recipe of recentRecipes) {
+    for (const url of recipe.references) {
+      minedUrls.add(url);
+    }
+  }
+
+  return minedUrls;
+}
+
+export interface AutoMiningResult extends MiningResult {
+  urlsProcessed: number;
+  urlsSkipped: number;
+  urlsRemaining: number;
+  isComplete: boolean;
+}
+
+/**
+ * Run the style miner in auto mode - processes a chunk of URLs that haven't been mined recently.
+ * Safe to call repeatedly - will pick up where it left off.
+ *
+ * @param group Source group to mine ('all', 'design_guides', etc.)
+ * @param maxUrls Maximum URLs to process this call (default: 5)
+ * @param skipRecentHours Skip URLs mined within this many hours (default: 24)
+ */
+export async function runStyleMinerAuto(
+  group: string = 'all',
+  maxUrls: number = MAX_URLS_PER_CHUNK,
+  skipRecentHours: number = SKIP_RECENT_HOURS
+): Promise<AutoMiningResult> {
+  console.log(`[StyleMiner] Auto-mining (group: ${group}, max: ${maxUrls} URLs, skip recent ${skipRecentHours}h)`);
+
+  if (!process.env.PERPLEXITY_API_KEY) {
+    throw new Error('PERPLEXITY_API_KEY environment variable is not set');
+  }
+
+  const sources = loadSources();
+  const allUrls = getUrlsForGroups(sources, group);
+
+  if (allUrls.length === 0) {
+    throw new Error(`No URLs found for group: ${group}`);
+  }
+
+  // Get recently mined URLs to skip
+  const recentlyMined = await getRecentlyMinedUrls(skipRecentHours);
+
+  // Filter to URLs that need mining
+  const urlsToMine = allUrls.filter(({ url }) => !recentlyMined.has(url));
+  const urlsSkipped = allUrls.length - urlsToMine.length;
+
+  // Take only maxUrls
+  const chunk = urlsToMine.slice(0, maxUrls);
+  const urlsRemaining = urlsToMine.length - chunk.length;
+
+  console.log(`[StyleMiner] ${allUrls.length} total, ${urlsSkipped} recently mined, processing ${chunk.length}, ${urlsRemaining} remaining`);
+
+  if (chunk.length === 0) {
+    // All URLs have been mined recently
+    const finalRecipeCount = await prisma.styleRecipeLibrary.count();
+    const finalPrincipleCount = await prisma.stylePrinciple.count();
+
+    return {
+      totalRecipes: 0,
+      totalPrinciples: 0,
+      totalErrors: 0,
+      duration: 0,
+      dbTotals: { recipes: finalRecipeCount, principles: finalPrincipleCount },
+      urlsProcessed: 0,
+      urlsSkipped,
+      urlsRemaining: 0,
+      isComplete: true,
+    };
+  }
+
+  const startTime = Date.now();
+  let totalRecipes = 0;
+  let totalPrinciples = 0;
+  let totalErrors = 0;
+
+  for (let i = 0; i < chunk.length; i++) {
+    const { url, group: urlGroup } = chunk[i];
+
+    const result = await mineUrl(url, urlGroup);
+
+    if (result.error) {
+      console.error(`[StyleMiner] Error mining ${url}: ${result.error}`);
+      totalErrors++;
+    } else {
+      console.log(`[StyleMiner] ${url}: +${result.recipesCount} recipes, +${result.principlesCount} principles`);
+      totalRecipes += result.recipesCount;
+      totalPrinciples += result.principlesCount;
+    }
+
+    // Rate limiting between requests
+    if (i < chunk.length - 1) {
+      await delay(REQUEST_DELAY_MS);
+    }
+  }
+
+  const finalRecipeCount = await prisma.styleRecipeLibrary.count();
+  const finalPrincipleCount = await prisma.stylePrinciple.count();
+
+  const duration = Date.now() - startTime;
+  const isComplete = urlsRemaining === 0;
+
+  console.log(`[StyleMiner] Chunk complete in ${duration}ms. ${isComplete ? 'All URLs processed!' : `${urlsRemaining} URLs remaining.`}`);
+
+  return {
+    totalRecipes,
+    totalPrinciples,
+    totalErrors,
+    duration,
+    dbTotals: { recipes: finalRecipeCount, principles: finalPrincipleCount },
+    urlsProcessed: chunk.length,
+    urlsSkipped,
+    urlsRemaining,
+    isComplete,
   };
 }
 
