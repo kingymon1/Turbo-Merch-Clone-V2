@@ -3,6 +3,11 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { getUserUsageSummary } from '@/lib/usage';
 import prisma from '@/lib/prisma';
 
+// Auto-admin emails - these users are automatically granted admin access
+const AUTO_ADMIN_EMAILS = [
+  'dave-king1@hotmail.co.uk',
+];
+
 /**
  * GET /api/user
  * Fetches current user's subscription and usage data
@@ -55,6 +60,7 @@ export async function GET() {
       const clerkUser = await currentUser();
       const email = clerkUser?.emailAddresses?.[0]?.emailAddress || `${userId}@temp.local`;
       const name = clerkUser?.firstName || clerkUser?.username || null;
+      const shouldBeAdmin = AUTO_ADMIN_EMAILS.includes(email.toLowerCase());
 
       const newUser = await prisma.user.create({
         data: {
@@ -64,6 +70,7 @@ export async function GET() {
           name,
           subscriptionTier: 'free',
           subscriptionStatus: 'active',
+          isAdmin: shouldBeAdmin,
         },
       });
 
@@ -88,6 +95,15 @@ export async function GET() {
           periodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
+    }
+
+    // Auto-promote to admin if email is in the auto-admin list
+    if (!user.isAdmin && AUTO_ADMIN_EMAILS.includes(user.email.toLowerCase())) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { isAdmin: true },
+      });
+      user.isAdmin = true;
     }
 
     // Fetch usage summary using the database user ID (not Clerk ID)

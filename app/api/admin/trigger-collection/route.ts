@@ -18,6 +18,12 @@ import {
   validateAllInsights,
   getInsightsSummary,
 } from '@/lib/merch/learning';
+import {
+  runStyleMiner,
+  runStyleMinerAuto,
+  getStyleMinerStatus,
+} from '@/lib/style-intel/style-miner-service';
+import prisma from '@/lib/prisma';
 
 // Extended timeout for collection
 export const maxDuration = 300;
@@ -45,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!action) {
       return NextResponse.json(
-        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights)' },
+        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights, style-mine, style-mine-auto, style-mine-status)' },
         { status: 400 }
       );
     }
@@ -120,6 +126,87 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'insights':
         // Phase 6: Get insights summary
         result = await getInsightsSummary();
+        break;
+
+      case 'style-mine':
+        // Style Miner: Mine design intelligence from configured URLs
+        const passes = body.passes || 1;
+        const group = body.group || 'all';
+        const miningResult = await runStyleMiner(passes, group);
+        result = {
+          recipesUpserted: miningResult.totalRecipes,
+          principlesUpserted: miningResult.totalPrinciples,
+          errors: miningResult.totalErrors,
+          duration: `${miningResult.duration}ms`,
+          dbTotals: miningResult.dbTotals,
+        };
+        break;
+
+      case 'style-mine-auto':
+        // Style Miner Auto: Process a chunk of URLs, skip recently mined ones
+        // Safe to call repeatedly - picks up where it left off
+        const autoGroup = body.group || 'all';
+        const maxUrls = body.maxUrls || 5;
+        const skipRecentHours = body.skipRecentHours || 24;
+        const autoResult = await runStyleMinerAuto(autoGroup, maxUrls, skipRecentHours);
+        result = {
+          recipesUpserted: autoResult.totalRecipes,
+          principlesUpserted: autoResult.totalPrinciples,
+          errors: autoResult.totalErrors,
+          duration: `${autoResult.duration}ms`,
+          dbTotals: autoResult.dbTotals,
+          urlsProcessed: autoResult.urlsProcessed,
+          urlsSkipped: autoResult.urlsSkipped,
+          urlsRemaining: autoResult.urlsRemaining,
+          isComplete: autoResult.isComplete,
+        };
+        break;
+
+      case 'style-mine-status':
+        // Style Miner: Get database status
+        result = await getStyleMinerStatus();
+        break;
+
+      case 'init-style-tables':
+        // Create StyleRecipeLibrary and StylePrinciple tables if they don't exist
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "StyleRecipeLibrary" (
+            "id" TEXT NOT NULL,
+            "displayName" TEXT NOT NULL,
+            "category" TEXT NOT NULL,
+            "nicheHints" TEXT[],
+            "tone" TEXT[],
+            "complexity" TEXT NOT NULL,
+            "rawJson" JSONB NOT NULL,
+            "sourceTypes" TEXT[],
+            "references" TEXT[],
+            "confidence" DOUBLE PRECISION NOT NULL DEFAULT 0.5,
+            "timesValidated" INTEGER NOT NULL DEFAULT 1,
+            "lastValidated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "StyleRecipeLibrary_pkey" PRIMARY KEY ("id")
+          );
+        `);
+        await prisma.$executeRawUnsafe(`
+          CREATE TABLE IF NOT EXISTS "StylePrinciple" (
+            "id" TEXT NOT NULL,
+            "contextJson" JSONB NOT NULL,
+            "recommendations" JSONB NOT NULL,
+            "rationale" TEXT,
+            "sourceReferences" TEXT[],
+            "timesValidated" INTEGER NOT NULL DEFAULT 1,
+            "lastValidated" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT "StylePrinciple_pkey" PRIMARY KEY ("id")
+          );
+        `);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StyleRecipeLibrary_category_idx" ON "StyleRecipeLibrary"("category");`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StyleRecipeLibrary_confidence_idx" ON "StyleRecipeLibrary"("confidence");`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StyleRecipeLibrary_createdAt_idx" ON "StyleRecipeLibrary"("createdAt");`);
+        await prisma.$executeRawUnsafe(`CREATE INDEX IF NOT EXISTS "StylePrinciple_createdAt_idx" ON "StylePrinciple"("createdAt");`);
+        result = { tablesCreated: true };
         break;
 
       default:
