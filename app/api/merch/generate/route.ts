@@ -198,22 +198,21 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
     console.log(`[Merch Generate] Concept: "${concept.phrase}" for ${concept.niche}`);
 
     // ========================================
-    // STEP 1.5: Enhanced - Fetch niche style profile with REAL-TIME IMAGE ANALYSIS
+    // STEP 1.5: Enhanced - Fetch niche style profile with ALWAYS-FRESH ANALYSIS
     // ========================================
     // Uses smart style fetcher that:
-    // 1. Uses fresh cached profiles when available
-    // 2. Performs REAL-TIME Claude Vision analysis when cache is stale/missing
-    // 3. Falls back to stale cache if real-time fails
-    // NEW: Now passes phrase for trend-relevant image search (e.g., "Fishing Dad" not just "fishing")
+    // 1. ALWAYS performs real-time Claude Vision analysis (primary source)
+    // 2. Uses cached data as CONTEXT for blending (70/30 weight)
+    // 3. Falls back to cache only if real-time fails
+    // Cache is for LONG-TERM LEARNING, not quick answers
     if (useStyleDiscovery && concept.niche && concept.niche !== 'general') {
       try {
         console.log(`[Merch Generate] Fetching smart style profile for niche: ${concept.niche}, phrase: ${concept.phrase || 'N/A'}`);
 
         const styleResult = await getSmartStyleProfile(concept.niche, {
-          maxCacheAgeHours: 168, // 1 week cache freshness
           enableRealtime: true,  // Enable real-time Claude Vision analysis
           maxRealtimeImages: 5,  // Analyze up to 5 images for speed
-          phrase: concept.phrase // NEW: Pass phrase for targeted image search
+          phrase: concept.phrase // Pass phrase for targeted image search
         });
 
         if (styleResult.profile) {
@@ -225,9 +224,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
           sourceData.nicheStyleConfidence = styleResult.confidence;
 
           // Track if real-time analysis was used (important for debugging)
-          if (styleResult.source === 'realtime') {
+          if (styleResult.source === 'realtime-blended' || styleResult.source === 'realtime-only') {
             sourceData.realtimeVisionUsed = true;
-            console.log(`[Merch Generate] ✓ Real-time Claude Vision analysis applied`);
+            console.log(`[Merch Generate] ✓ Real-time Claude Vision analysis applied (${styleResult.source})`);
+            if (styleResult.consistency !== undefined) {
+              console.log(`[Merch Generate] Cache consistency: ${Math.round(styleResult.consistency * 100)}%`);
+            }
           }
         } else {
           console.log(`[Merch Generate] No style profile available for "${concept.niche}"`);
