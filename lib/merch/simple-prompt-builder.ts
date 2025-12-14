@@ -11,6 +11,8 @@
  */
 
 import { DesignForm, ImageModel } from './types';
+import type { StyleRecipe } from '../style-intel/types';
+import { formatStyleRecipeForPrompt } from './style-intel-integration';
 
 /**
  * Build a simple, clean prompt from a DesignForm
@@ -256,4 +258,199 @@ export function getReferenceForm(): DesignForm {
     tone: 'funny',
     additionalInstructions: 'on black background',
   };
+}
+
+// =============================================================================
+// STYLE INTEL ENHANCED PROMPT BUILDERS
+// These functions incorporate StyleRecipe data when available
+// =============================================================================
+
+/**
+ * Build a simple prompt enhanced with StyleRecipe information
+ *
+ * When styleSpec is provided, adds style-specific guidance to the prompt:
+ * - Typography hints (e.g., "bold uppercase sans-serif")
+ * - Layout guidance (e.g., "centered badge composition")
+ * - Color hints (e.g., "high-contrast warm palette")
+ * - Effect hints (e.g., "subtle halftone, light texture")
+ *
+ * @param form - The filled design form
+ * @param styleSpec - Optional StyleRecipe from StyleIntel
+ * @param targetModel - Optional target model for adjustments
+ * @returns Enhanced prompt string
+ */
+export function buildSimplePromptWithStyleSpec(
+  form: DesignForm,
+  styleSpec?: StyleRecipe,
+  targetModel?: ImageModel
+): string {
+  // Start with the base prompt
+  const parts: string[] = [];
+
+  // 1. Start with base
+  parts.push('a t-shirt design');
+
+  // 2. Background - extract from additionalInstructions or use styleSpec recommendation
+  let background = extractBackground(form.additionalInstructions);
+  if (styleSpec?.color?.recommendedGarmentColors?.length && background === 'black') {
+    // Use first recommended garment color if it's a valid background
+    const recommended = styleSpec.color.recommendedGarmentColors[0].toLowerCase();
+    if (['black', 'white', 'dark', 'light'].some(c => recommended.includes(c))) {
+      background = recommended.includes('white') || recommended.includes('light') ? 'white' : 'black';
+    }
+  }
+  parts.push(`on ${background} background`);
+
+  // 3. Style - enhanced with StyleRecipe if available
+  if (styleSpec) {
+    const formatted = formatStyleRecipeForPrompt(styleSpec);
+    // Build a rich style description
+    const styleDesc = `${form.style || styleSpec.meta.displayName} style with ${formatted.typography} typography`;
+    parts.push(styleDesc);
+  } else if (form.style) {
+    const styleText = form.style.toLowerCase().includes('style')
+      ? form.style
+      : `${form.style} style`;
+    parts.push(styleText);
+  }
+
+  // 4. Text (if present)
+  if (form.exactText) {
+    parts.push(`The text '${form.exactText}'`);
+  }
+
+  // 5. Image feature (if present)
+  if (form.imageFeature) {
+    parts.push(`featuring ${form.imageFeature}`);
+  }
+
+  // 6. StyleSpec-based enhancements (when no explicit additionalInstructions)
+  if (styleSpec && !form.additionalInstructions) {
+    const formatted = formatStyleRecipeForPrompt(styleSpec);
+    // Add layout hint
+    if (formatted.layout && !formatted.layout.includes('centered composition')) {
+      parts.push(formatted.layout);
+    }
+    // Add effects hint
+    if (formatted.effectsHint && formatted.effectsHint !== 'clean without excessive effects') {
+      parts.push(formatted.effectsHint);
+    }
+  } else {
+    // 6. Additional instructions (excluding background which we handled)
+    const cleanedInstructions = cleanAdditionalInstructions(form.additionalInstructions);
+    if (cleanedInstructions) {
+      parts.push(cleanedInstructions);
+    }
+  }
+
+  // 7. End with "No Mockup" to prevent t-shirt renders
+  parts.push('No Mockup');
+
+  // Join with periods and clean up
+  return parts
+    .filter((p) => p && p.trim())
+    .join('. ')
+    .replace(/\.\./g, '.')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Build a model-specific prompt enhanced with StyleRecipe
+ *
+ * @param form - The filled design form
+ * @param model - Target image model
+ * @param styleSpec - Optional StyleRecipe from StyleIntel
+ * @returns Model-optimized enhanced prompt string
+ */
+export function buildModelSpecificPromptWithStyleSpec(
+  form: DesignForm,
+  model: ImageModel,
+  styleSpec?: StyleRecipe
+): string {
+  // If no styleSpec, fall back to regular model-specific prompt
+  if (!styleSpec) {
+    return buildModelSpecificPrompt(form, model);
+  }
+
+  const basePrompt = buildSimplePromptWithStyleSpec(form, styleSpec, model);
+
+  switch (model) {
+    case 'ideogram':
+      return buildIdeogramPromptWithStyleSpec(form, basePrompt, styleSpec);
+
+    case 'gpt-image-1':
+      return buildGptImagePromptWithStyleSpec(form, basePrompt, styleSpec);
+
+    case 'dalle3':
+      return buildDalle3PromptWithStyleSpec(form, basePrompt, styleSpec);
+
+    case 'gemini':
+    default:
+      return basePrompt;
+  }
+}
+
+/**
+ * Build Ideogram-optimized prompt with StyleSpec
+ */
+function buildIdeogramPromptWithStyleSpec(
+  form: DesignForm,
+  basePrompt: string,
+  styleSpec: StyleRecipe
+): string {
+  let prompt = basePrompt;
+
+  // Ideogram prefers explicit text rendering instructions
+  if (form.exactText) {
+    // Use typography hints from styleSpec
+    const typo = styleSpec.typography;
+    const weight = typo.fontWeight || 'bold';
+    const transform = typo.textTransform === 'uppercase' ? 'uppercase' : '';
+    prompt = prompt.replace(
+      `The text '${form.exactText}'`,
+      `with ${weight} ${transform} readable text that says "${form.exactText}"`
+    );
+  }
+
+  return prompt;
+}
+
+/**
+ * Build GPT Image 1 optimized prompt with StyleSpec
+ */
+function buildGptImagePromptWithStyleSpec(
+  form: DesignForm,
+  basePrompt: string,
+  styleSpec: StyleRecipe
+): string {
+  let prompt = basePrompt;
+
+  // Handle transparent background override
+  if (form.modelOverrides?.gptImage?.background === 'transparent') {
+    prompt = prompt.replace('on black background', 'on transparent background');
+    prompt = prompt.replace('on white background', 'on transparent background');
+  }
+
+  return prompt;
+}
+
+/**
+ * Build DALL-E 3 optimized prompt with StyleSpec
+ */
+function buildDalle3PromptWithStyleSpec(
+  form: DesignForm,
+  basePrompt: string,
+  styleSpec: StyleRecipe
+): string {
+  let prompt = basePrompt;
+
+  // Add style hint if using vivid style
+  if (form.modelOverrides?.dalle3?.style === 'vivid') {
+    prompt += '. Vivid colors, high contrast';
+  } else if (styleSpec.color.contrastLevel === 'high') {
+    prompt += '. High contrast design';
+  }
+
+  return prompt;
 }

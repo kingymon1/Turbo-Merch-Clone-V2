@@ -524,8 +524,8 @@ export async function generateMerchImageFromManualSpecs(
   model: ImageModel = 'gemini',
   promptMode: PromptMode = 'advanced'
 ): Promise<BriefBasedGenerationResult> {
-  // Build brief from manual specs
-  const brief = buildDesignBriefFromManualSpecs(specs, nicheStyle);
+  // Build brief from manual specs (async due to StyleIntel integration)
+  const brief = await buildDesignBriefFromManualSpecs(specs, nicheStyle);
 
   return generateMerchImageFromBrief(brief, model, promptMode);
 }

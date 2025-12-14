@@ -1,3 +1,21 @@
+import type { StyleRecipe } from '../style-intel/types';
+
+// =============================================================================
+// STYLE INTEL META - Tracking StyleIntelService usage
+// =============================================================================
+
+/**
+ * Metadata about StyleIntel service usage in a generation
+ */
+export interface StyleIntelMeta {
+  attempted: boolean;         // Whether StyleIntel was attempted
+  used: boolean;              // Whether a StyleRecipe was actually used
+  fallbackReason?: string;    // Why fallback occurred (if used=false)
+  logs?: string[];            // Decision trace for debugging
+  recipeId?: string;          // ID of the selected recipe (if used)
+  recipeName?: string;        // Display name of the selected recipe
+}
+
 export interface MerchDesign {
   id: string;
   createdAt: Date;
@@ -130,6 +148,12 @@ export interface DesignBrief {
     styleConfidence: number;    // Overall confidence in style choices
     originalTrendData?: any;    // Raw trend data for reference
   };
+
+  // STYLE INTELLIGENCE - Pre-mined design recipes (optional)
+  styleSpec?: StyleRecipe;      // Selected recipe from StyleIntelService
+
+  // Style Intel tracking metadata
+  styleIntelMeta?: StyleIntelMeta;
 }
 
 // Result of design execution

@@ -15,6 +15,7 @@ import {
   FormFillerResult,
   StyleContext,
 } from './types';
+import type { StyleRecipe } from '../style-intel/types';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -37,6 +38,9 @@ export interface FormFillerInput {
   // From style database (NicheStyleProfile)
   styleContext?: StyleContext;
 
+  // From StyleIntel service (pre-mined recipes)
+  styleSpec?: StyleRecipe;
+
   // User settings
   riskLevel: number; // 0-100 (affects idea selection, not quality)
 
@@ -53,10 +57,10 @@ export interface FormFillerInput {
 export async function fillDesignForm(
   input: FormFillerInput
 ): Promise<FormFillerResult> {
-  const { trendData, styleContext, riskLevel, overrides } = input;
+  const { trendData, styleContext, styleSpec, riskLevel, overrides } = input;
 
-  const systemPrompt = buildSystemPrompt(riskLevel);
-  const userPrompt = buildUserPrompt(trendData, styleContext);
+  const systemPrompt = buildSystemPrompt(riskLevel, styleSpec);
+  const userPrompt = buildUserPrompt(trendData, styleContext, styleSpec);
 
   const response = await openai.chat.completions.create({
     model: 'gpt-4.1-nano',
@@ -144,13 +148,29 @@ export async function fillDesignForm(
 /**
  * Build the system prompt for the form filler
  */
-function buildSystemPrompt(riskLevel: number): string {
+function buildSystemPrompt(riskLevel: number, styleSpec?: StyleRecipe): string {
   const riskDescription =
     riskLevel < 30
       ? 'Safe (0-30): Focus on proven, evergreen ideas with existing market demand. Stick to what works.'
       : riskLevel < 70
         ? 'Balanced (30-70): Mix proven concepts with some creativity. Test variations on successful themes.'
         : 'Experimental (70-100): First-mover opportunities, emerging trends, novel combinations. Be creative.';
+
+  // Add StyleIntel guidance if available
+  let styleIntelGuidance = '';
+  if (styleSpec) {
+    styleIntelGuidance = `
+STYLE INTELLIGENCE (Pre-Mined Design Recipe - USE THIS):
+A proven style recipe "${styleSpec.meta.displayName}" has been selected for this design.
+- Typography: ${styleSpec.typography.fontCategory} ${styleSpec.typography.fontWeight || ''} ${styleSpec.typography.textTransform || ''}
+- Layout: ${styleSpec.layout.composition}, ${styleSpec.layout.hierarchyType || 'standard hierarchy'}
+- Color scheme: ${styleSpec.color.schemeType} ${styleSpec.color.colorMood ? `(${styleSpec.color.colorMood})` : ''}
+${styleSpec.effects.halftone?.enabled ? '- Include halftone effect' : ''}
+${styleSpec.effects.texture?.enabled ? `- Apply ${styleSpec.effects.texture.type || 'distressed'} texture` : ''}
+${styleSpec.effects.shadow?.enabled ? '- Add shadow effect' : ''}
+Use this recipe to guide your style decisions. Match the tone to this recipe.
+`;
+  }
 
   return `You are a t-shirt design decision maker. Your job is to fill out a design form based on research data.
 
@@ -162,7 +182,7 @@ CRITICAL RULES:
 5. style should be 1-3 descriptive words max (e.g., "Ugly Christmas", "Vintage Retro", "Bold Modern").
 6. imageFeature describes ONE visual element concisely, not a detailed scene.
 7. additionalInstructions should only include technical notes like "on black background".
-
+${styleIntelGuidance}
 CHARACTER LIMITS (STRICT):
 - exactText: ${DESIGN_FORM_LIMITS.exactText} chars max
 - style: ${DESIGN_FORM_LIMITS.style} chars max
@@ -184,7 +204,8 @@ Return ONLY valid JSON matching the schema. No explanations.`;
  */
 function buildUserPrompt(
   trendData: FormFillerInput['trendData'],
-  styleContext?: StyleContext
+  styleContext?: StyleContext,
+  styleSpec?: StyleRecipe
 ): string {
   const parts: string[] = ['Research data:'];
 
@@ -226,6 +247,27 @@ function buildUserPrompt(
     }
     if (styleContext.avoidStyles?.length) {
       parts.push(`Avoid: ${styleContext.avoidStyles.join(', ')}`);
+    }
+  }
+
+  // Add StyleIntel recipe guidance if available
+  if (styleSpec) {
+    parts.push('');
+    parts.push('PRE-MINED STYLE RECIPE (high priority):');
+    parts.push(`Recipe: "${styleSpec.meta.displayName}" (${styleSpec.meta.category})`);
+    if (styleSpec.meta.nicheHints?.length) {
+      parts.push(`Best for: ${styleSpec.meta.nicheHints.join(', ')}`);
+    }
+    if (styleSpec.meta.tone?.length) {
+      parts.push(`Tone: ${styleSpec.meta.tone.join(', ')}`);
+    }
+    // Include layout guidance
+    if (styleSpec.layout.composition) {
+      parts.push(`Layout: ${styleSpec.layout.composition}`);
+    }
+    // Include recommended garment colors
+    if (styleSpec.color.recommendedGarmentColors?.length) {
+      parts.push(`Best on: ${styleSpec.color.recommendedGarmentColors.join(' or ')} shirts`);
     }
   }
 
