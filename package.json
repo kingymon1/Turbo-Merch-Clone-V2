@@ -14,7 +14,10 @@
     "test:coverage": "vitest run --coverage",
     "bootstrap:status": "tsx scripts/bootstrap-marketplace.ts --status",
     "bootstrap:quick": "tsx scripts/bootstrap-marketplace.ts --quick",
-    "bootstrap:full": "tsx scripts/bootstrap-marketplace.ts"
+    "bootstrap:full": "tsx scripts/bootstrap-marketplace.ts",
+    "style-miner:warmup": "tsx scripts/style-intel/run-style-miner.ts --passes=3 --group=all",
+    "style-miner:once": "tsx scripts/style-intel/run-style-miner.ts --passes=1 --group=all",
+    "style-miner:status": "tsx scripts/style-intel/run-style-miner.ts --status"
   },
  "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

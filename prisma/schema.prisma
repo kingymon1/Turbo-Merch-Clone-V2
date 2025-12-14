@@ -1211,3 +1211,65 @@ model DiscoveredNiche {
   @@index([timesUsed])
   @@index([trendDirection])
 }
+
+// ============================================================================
+// STYLE INTEL (Pre-mined Design Knowledge)
+// ============================================================================
+// These models store design knowledge mined from external sources (design guides,
+// template galleries, market examples). Populated by the Style Miner job.
+// Completely decoupled from runtime pipelines - safe to run multiple times.
+
+// Reusable style recipes extracted from design guides and templates
+model StyleRecipeLibrary {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Recipe identification
+  displayName   String   // Human-readable recipe name
+  category      String   // 'typography-focused' | 'minimalist' | 'vintage' | 'streetwear' | etc.
+  nicheHints    String[] // Niches this recipe works well for
+  tone          String[] // 'playful' | 'bold' | 'elegant' | 'edgy' | etc.
+  complexity    String   // 'simple' | 'moderate' | 'complex'
+
+  // Full recipe data as flexible JSON
+  rawJson       Json     // Complete StyleRecipe object with all details
+
+  // Source tracking
+  sourceTypes   String[] // 'design_guide' | 'template_gallery' | 'market_example'
+  references    String[] // URLs where this recipe was discovered
+
+  // Confidence and validation
+  confidence    Float    @default(0.5) // 0-1 confidence in this recipe
+  timesValidated Int     @default(1)   // How many sources confirmed this recipe
+  lastValidated DateTime @default(now())
+
+  @@index([category])
+  @@index([confidence])
+  @@index([createdAt])
+}
+
+// Global design principles extracted from authoritative sources
+model StylePrinciple {
+  id               String   @id // Stable identifier (e.g., "contrast-readability-rule")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Principle context (when this principle applies)
+  contextJson      Json     // {textLength?: 'short'|'medium'|'long', garmentColors?: string[], nicheRisk?: 'low'|'medium'|'high'}
+
+  // What to do
+  recommendations  Json     // Structured recommendations for this context
+
+  // Why
+  rationale        String?  @db.Text // Human-readable explanation
+
+  // Source tracking
+  sourceReferences String[] // URLs that support this principle
+
+  // Validation
+  timesValidated   Int      @default(1)
+  lastValidated    DateTime @default(now())
+
+  @@index([createdAt])
+}
