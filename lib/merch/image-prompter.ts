@@ -433,7 +433,7 @@ export async function createImagePromptHybrid(
       let brief: DesignBrief;
 
       if (mode === 'manual' && specs) {
-        brief = buildDesignBriefFromManualSpecs(specs, nicheStyle);
+        brief = await buildDesignBriefFromManualSpecs(specs, nicheStyle);
       } else {
         brief = await buildDesignBriefFromTrend(
           {
