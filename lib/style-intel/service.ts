@@ -73,6 +73,35 @@ function partialMatch(haystack: string | undefined | null, needle: string): bool
 }
 
 /**
+ * Tone synonyms for better matching
+ * Maps common tone names to their synonyms for flexible matching
+ */
+const TONE_SYNONYMS: Record<string, string[]> = {
+  funny: ['humor', 'humorous', 'comedic', 'comedy', 'witty', 'playful', 'lighthearted'],
+  humor: ['funny', 'humorous', 'comedic', 'comedy', 'witty', 'playful', 'lighthearted'],
+  serious: ['professional', 'formal', 'corporate', 'business'],
+  professional: ['serious', 'formal', 'corporate', 'business'],
+  inspirational: ['motivational', 'uplifting', 'positive', 'encouraging'],
+  motivational: ['inspirational', 'uplifting', 'positive', 'encouraging'],
+  edgy: ['bold', 'aggressive', 'intense', 'provocative'],
+  bold: ['edgy', 'aggressive', 'intense', 'strong'],
+  cute: ['adorable', 'sweet', 'charming', 'lovely'],
+  retro: ['vintage', 'nostalgic', 'classic', 'throwback'],
+  vintage: ['retro', 'nostalgic', 'classic', 'throwback'],
+  minimal: ['minimalist', 'simple', 'clean', 'modern'],
+  minimalist: ['minimal', 'simple', 'clean', 'modern'],
+};
+
+/**
+ * Expand a tone to include its synonyms
+ */
+function expandToneSynonyms(tone: string): string[] {
+  const lower = tone.toLowerCase();
+  const synonyms = TONE_SYNONYMS[lower] || [];
+  return [lower, ...synonyms];
+}
+
+/**
  * Check if any item in an array partially matches
  */
 function arrayPartialMatch(arr: string[] | undefined | null, needle: string): boolean {
@@ -99,9 +128,13 @@ function scoreRecipe(recipe: StyleRecipe, ctx: StyleContext): number {
     }
   }
 
-  // Tone match
+  // Tone match (with synonyms)
   if (ctx.tone) {
-    if (arrayPartialMatch(recipe.meta.tone, ctx.tone)) {
+    const toneVariants = expandToneSynonyms(ctx.tone);
+    const hasMatch = recipe.meta.tone?.some(t =>
+      toneVariants.some(v => t.toLowerCase().includes(v) || v.includes(t.toLowerCase()))
+    );
+    if (hasMatch) {
       score += 20;
     }
   }
@@ -193,6 +226,7 @@ async function selectStyleSpec(ctx: StyleContext): Promise<StyleSpecResult> {
 
   logs.push(`enabled_for_pipeline=${ctx.pipeline}`);
   logs.push(`context: niche=${ctx.niche || 'none'}, tone=${ctx.tone || 'none'}, garment=${ctx.garmentColor || 'none'}`);
+  console.log(`[StyleIntel] Context: niche="${ctx.niche || 'none'}", tone="${ctx.tone || 'none'}", garment="${ctx.garmentColor || 'none'}"`);
 
   try {
     // Build query filters
@@ -223,11 +257,13 @@ async function selectStyleSpec(ctx: StyleContext): Promise<StyleSpecResult> {
     }
 
     if (ctx.tone) {
+      const toneVariants = expandToneSynonyms(ctx.tone);
       orConditions.push({
         tone: {
-          hasSome: [ctx.tone.toLowerCase()],
+          hasSome: toneVariants,
         },
       });
+      logs.push(`tone_variants: [${toneVariants.join(', ')}]`);
     }
 
     // Query recipes - if we have filters use them, otherwise get all
@@ -245,6 +281,7 @@ async function selectStyleSpec(ctx: StyleContext): Promise<StyleSpecResult> {
       });
 
       logs.push(`found ${recipes.length} recipes matching filters`);
+      console.log(`[StyleIntel] Found ${recipes.length} recipes matching filters`);
     }
 
     // If no filtered results, get top recipes by confidence
@@ -257,6 +294,7 @@ async function selectStyleSpec(ctx: StyleContext): Promise<StyleSpecResult> {
         take: 20,
       });
       logs.push(`no filter matches, using top ${recipes.length} by confidence`);
+      console.log(`[StyleIntel] No filter matches, using top ${recipes.length} by confidence`);
     }
 
     if (recipes.length === 0) {
