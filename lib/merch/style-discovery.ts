@@ -1437,10 +1437,10 @@ function blendStyleProfiles(
       )
     },
 
-    designMood: {
-      primary: realtime.designMood.primary,
-      secondary: realtime.designMood.secondary || cached.designMood.secondary,
-      avoid: blendArrays(realtime.designMood.avoid, cached.designMood.avoid, 5)
+    moodAesthetic: {
+      primary: realtime.moodAesthetic.primary,
+      secondary: realtime.moodAesthetic.secondary || cached.moodAesthetic.secondary,
+      avoid: blendArrays(realtime.moodAesthetic.avoid, cached.moodAesthetic.avoid, 5)
     }
   };
 }
@@ -1476,7 +1476,7 @@ function calculateConsistency(realtime: NicheStyleProfile, cached: NicheStylePro
 
   // Check mood match
   checks++;
-  if (realtime.designMood.primary === cached.designMood.primary) {
+  if (realtime.moodAesthetic.primary === cached.moodAesthetic.primary) {
     matches++;
   }
 
