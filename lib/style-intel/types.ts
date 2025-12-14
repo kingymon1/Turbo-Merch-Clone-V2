@@ -264,6 +264,8 @@ export interface StyleIntelSources {
   design_guides: string[];
   /** URLs to template gallery pages */
   template_galleries: string[];
+  /** URLs to inspiration gallery pages */
+  inspiration_galleries: string[];
   /** URLs to market example pages (Amazon, Etsy searches) */
   market_examples: string[];
 }

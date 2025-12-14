@@ -189,7 +189,7 @@ export function getUrlsForGroups(
   sources: StyleIntelSources,
   group: string
 ): Array<{ url: string; group: SourceGroup }> {
-  const allGroups: SourceGroup[] = ['design_guides', 'template_galleries', 'market_examples'];
+  const allGroups: SourceGroup[] = ['design_guides', 'template_galleries', 'inspiration_galleries', 'market_examples'];
   const selectedGroups = group === 'all' ? allGroups : [group as SourceGroup];
 
   const urls: Array<{ url: string; group: SourceGroup }> = [];
@@ -587,7 +587,7 @@ export async function getStyleMinerStatus(): Promise<{
   principleCount: number;
   avgConfidence: number;
   categoryBreakdown: Array<{ category: string; count: number }>;
-  sourceConfig: { design_guides: number; template_galleries: number; market_examples: number };
+  sourceConfig: { design_guides: number; template_galleries: number; inspiration_galleries: number; market_examples: number };
   recommendation: string;
 }> {
   const recipeCount = await prisma.styleRecipeLibrary.count();
@@ -603,12 +603,13 @@ export async function getStyleMinerStatus(): Promise<{
     orderBy: { _count: { id: 'desc' } },
   });
 
-  let sourceConfig = { design_guides: 0, template_galleries: 0, market_examples: 0 };
+  let sourceConfig = { design_guides: 0, template_galleries: 0, inspiration_galleries: 0, market_examples: 0 };
   try {
     const sources = loadSources();
     sourceConfig = {
       design_guides: sources.design_guides.length,
       template_galleries: sources.template_galleries.length,
+      inspiration_galleries: sources.inspiration_galleries?.length || 0,
       market_examples: sources.market_examples.length,
     };
   } catch {
