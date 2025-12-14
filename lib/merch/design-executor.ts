@@ -12,6 +12,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { DesignBrief, DesignExecutionResult } from './types';
 import { getNicheStyleFromResearch, NicheStyleResult } from './niche-style-researcher';
+import { maybeApplyStyleIntel } from './style-intel-integration';
 
 // Initialize Anthropic client
 const getAnthropicClient = (): Anthropic => {
@@ -395,7 +396,8 @@ export async function createDesignBriefFromTrend(
 
   const styleConfidence = nicheStyle?.confidence || (trend.visualStyle ? 0.7 : nicheDefaults.confidence);
 
-  return {
+  // Build the base brief
+  let brief: DesignBrief = {
     text: {
       exact: text,
       preserveCase: true
@@ -423,6 +425,11 @@ export async function createDesignBriefFromTrend(
       originalTrendData: trend
     }
   };
+
+  // Apply StyleIntel if enabled (adds styleSpec and styleIntelMeta)
+  brief = await maybeApplyStyleIntel(brief);
+
+  return brief;
 }
 
 // ============================================================================

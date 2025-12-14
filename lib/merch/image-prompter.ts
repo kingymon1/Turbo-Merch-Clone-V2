@@ -11,6 +11,7 @@
 
 import { ManualSpecs, DesignBrief, DesignExecutionResult, NicheStyleProfile } from './types';
 import { executeDesignBrief, createDesignBriefFromTrend } from './design-executor';
+import { maybeApplyStyleIntel } from './style-intel-integration';
 
 export interface DesignConcept {
   phrase: string;
@@ -217,11 +218,13 @@ export async function buildDesignBriefFromTrend(
 /**
  * Create a DesignBrief for manual mode
  * User specifications take priority
+ *
+ * NOW ASYNC: Applies StyleIntel if enabled
  */
-export function buildDesignBriefFromManualSpecs(
+export async function buildDesignBriefFromManualSpecs(
   specs: ManualSpecs,
   nicheStyle?: Partial<NicheStyleProfile>
-): DesignBrief {
+): Promise<DesignBrief> {
   const niche = specs.niche || 'general';
   const tone = specs.tone || 'funny';
 
@@ -237,7 +240,7 @@ export function buildDesignBriefFromManualSpecs(
   // Build layout
   const layout = buildLayoutFromStyle(specs.style, specs.imageFeature);
 
-  const brief: DesignBrief = {
+  let brief: DesignBrief = {
     text: {
       exact: specs.exactText,
       preserveCase: true
@@ -276,6 +279,9 @@ export function buildDesignBriefFromManualSpecs(
       ];
     }
   }
+
+  // Apply StyleIntel if enabled (adds styleSpec and styleIntelMeta)
+  brief = await maybeApplyStyleIntel(brief);
 
   return brief;
 }

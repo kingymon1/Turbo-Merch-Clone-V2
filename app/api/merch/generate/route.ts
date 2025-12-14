@@ -350,7 +350,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
           crossNicheData ? { text: undefined, style: crossNicheData.styleBlendRatio } : undefined
         );
       } else if (mode === 'manual' && specs) {
-        designBrief = buildDesignBriefFromManualSpecs(specs, nicheStyle);
+        designBrief = await buildDesignBriefFromManualSpecs(specs, nicheStyle);
       }
 
       if (designBrief) {
@@ -358,6 +358,30 @@ export async function POST(request: NextRequest): Promise<NextResponse<Generatio
         console.log(`[Merch Generate] Design brief created with source: ${designBrief.style.source}`);
         sourceData.briefSystem = true;
         sourceData.briefId = designBrief._meta.briefId;
+
+        // Add StyleIntel status to sourceData
+        if (designBrief.styleIntelMeta) {
+          sourceData.styleIntel = {
+            attempted: designBrief.styleIntelMeta.attempted,
+            used: designBrief.styleIntelMeta.used,
+            fallbackReason: designBrief.styleIntelMeta.fallbackReason ?? null,
+            recipeId: designBrief.styleIntelMeta.recipeId,
+            recipeName: designBrief.styleIntelMeta.recipeName,
+          };
+
+          if (designBrief.styleIntelMeta.used) {
+            console.log(`[Merch Generate] StyleIntel: Used recipe "${designBrief.styleIntelMeta.recipeName}"`);
+          } else {
+            console.log(`[Merch Generate] StyleIntel: Not used (reason: ${designBrief.styleIntelMeta.fallbackReason})`);
+          }
+        } else {
+          // StyleIntel was not attempted (feature likely disabled)
+          sourceData.styleIntel = {
+            attempted: false,
+            used: false,
+            fallbackReason: 'not_attempted',
+          };
+        }
       } else {
         imagePrompt = createImagePrompt(concept, mode, specs);
       }
