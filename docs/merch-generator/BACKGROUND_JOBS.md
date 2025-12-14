@@ -1,7 +1,7 @@
 # Merch Generator Background Jobs
 
 > **Last Updated:** December 2024
-> **Version:** Phase 6 Complete
+> **Version:** Phase 7 - Style Intelligence
 
 ---
 
@@ -13,42 +13,43 @@
 4. [analyze-niches](#4-analyze-niches)
 5. [moonshot-trends](#5-moonshot-trends)
 6. [learn-and-extract](#6-learn-and-extract)
-7. [Manual Triggers](#7-manual-triggers)
-8. [Data Retention](#8-data-retention)
-9. [Troubleshooting](#9-troubleshooting)
+7. [style-miner](#7-style-miner)
+8. [Manual Triggers](#8-manual-triggers)
+9. [Data Retention](#9-data-retention)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
 ## 1. Overview
 
-The Merch Generator uses 4 background cron jobs to build market intelligence and extract learning patterns. These jobs run on Vercel Cron.
+The Merch Generator uses 5 background jobs to build market intelligence, extract learning patterns, and mine design knowledge. Four jobs run on Vercel Cron; one (Style Miner) runs manually or on-demand.
 
 ### Purpose
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                   BACKGROUND JOB ECOSYSTEM                    │
-├──────────────────────────────────────────────────────────────┤
-│                                                               │
-│  DATA COLLECTION              INTELLIGENCE                    │
-│  ┌─────────────┐             ┌─────────────┐                 │
-│  │ collect-    │────────────▶│ analyze-    │                 │
-│  │ trends      │  MarketData │ niches      │                 │
-│  └─────────────┘             └──────┬──────┘                 │
-│        │                            │                         │
-│        │                            │ NicheTrend              │
-│  ┌─────▼───────┐                    │                         │
-│  │ moonshot-   │                    ▼                         │
-│  │ trends      │────────────▶ ┌─────────────┐                │
-│  └─────────────┘  MarketData │ learn-and-  │                 │
-│                              │ extract     │                  │
-│                              └──────┬──────┘                  │
-│                                     │                         │
-│                                     ▼                         │
-│                              ProvenInsight                    │
-│                              (Permanent)                      │
-│                                                               │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                     BACKGROUND JOB ECOSYSTEM                        │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  DATA COLLECTION              INTELLIGENCE         STYLE INTEL     │
+│  ┌─────────────┐             ┌─────────────┐      ┌─────────────┐  │
+│  │ collect-    │────────────▶│ analyze-    │      │ style-      │  │
+│  │ trends      │  MarketData │ niches      │      │ miner       │  │
+│  └─────────────┘             └──────┬──────┘      └──────┬──────┘  │
+│        │                            │                     │         │
+│        │                            │ NicheTrend          │         │
+│  ┌─────▼───────┐                    │                     ▼         │
+│  │ moonshot-   │                    ▼              StyleRecipeLib   │
+│  │ trends      │────────────▶ ┌─────────────┐     StylePrinciple   │
+│  └─────────────┘  MarketData │ learn-and-  │      (Permanent)      │
+│                              │ extract     │                        │
+│                              └──────┬──────┘                        │
+│                                     │                               │
+│                                     ▼                               │
+│                              ProvenInsight                          │
+│                              (Permanent)                            │
+│                                                                     │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Cost Impact
@@ -389,7 +390,181 @@ The extraction engine requires:
 
 ---
 
-## 7. Manual Triggers
+## 7. style-miner
+
+**Endpoint:** `POST /api/admin/trigger-collection` (action: `style-mine`)
+**Files:**
+- `lib/style-intel/style-miner-service.ts` (core logic)
+- `scripts/style-intel/run-style-miner.ts` (CLI)
+- `app/admin/page.tsx` (UI)
+**Schedule:** Manual / On-demand
+
+### What It Does
+
+Mines design intelligence from external sources (design guides, template galleries, market examples) and populates the style intelligence database.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    STYLE MINER FLOW                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  config/style-intel-sources.json                            │
+│  ├─ design_guides[]                                         │
+│  ├─ template_galleries[]                                    │
+│  └─ market_examples[]                                       │
+│              │                                               │
+│              ▼                                               │
+│  ┌───────────────────┐                                      │
+│  │  Perplexity API   │  Read URL content + extract          │
+│  │  (sonar model)    │  design knowledge                    │
+│  └─────────┬─────────┘                                      │
+│            │                                                 │
+│            ▼                                                 │
+│  ┌───────────────────┐    ┌───────────────────┐            │
+│  │ StyleRecipeLibrary│    │  StylePrinciple   │            │
+│  │ - typography      │    │ - context rules   │            │
+│  │ - layout          │    │ - recommendations │            │
+│  │ - color           │    │ - rationale       │            │
+│  │ - effects         │    │ - source refs     │            │
+│  └───────────────────┘    └───────────────────┘            │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Source Configuration
+
+Edit `config/style-intel-sources.json` to add/remove URLs:
+
+```json
+{
+  "design_guides": [
+    "https://www.designity.com/blog/t-shirt-graphic-design-101",
+    "https://www.printful.com/blog/t-shirt-design-ideas"
+  ],
+  "template_galleries": [
+    "https://www.canva.com/t-shirts/templates/",
+    "https://www.freepik.com/free-photos-vectors/typography-tshirt-design"
+  ],
+  "market_examples": []
+}
+```
+
+### Database Models
+
+#### StyleRecipeLibrary
+
+Reusable design directions (typography, layout, color, effects):
+
+```prisma
+model StyleRecipeLibrary {
+  id            String   @id @default(cuid())
+  displayName   String   // "Bold Vintage Typography"
+  category      String   // 'typography-focused' | 'minimalist' | 'vintage'
+  nicheHints    String[] // ["fishing", "camping", "outdoor"]
+  tone          String[] // ["bold", "rugged", "nostalgic"]
+  complexity    String   // 'simple' | 'moderate' | 'complex'
+  rawJson       Json     // Full StyleRecipe object
+  sourceTypes   String[] // ['design_guide', 'template_gallery']
+  references    String[] // URLs where discovered
+  confidence    Float    // 0-1 confidence score
+  timesValidated Int     // Increases with each re-discovery
+}
+```
+
+#### StylePrinciple
+
+Contextual design rules:
+
+```prisma
+model StylePrinciple {
+  id               String   @id // "contrast-readability-rule"
+  contextJson      Json     // {textLength: 'short', garmentColors: ['black']}
+  recommendations  Json     // {typography: {fontWeight: 'bold'}, dos: [...]}
+  rationale        String?  // "High contrast ensures readability"
+  sourceReferences String[] // URLs supporting this principle
+  timesValidated   Int      // Validation count
+}
+```
+
+### Running the Style Miner
+
+#### Option 1: Admin UI (Recommended)
+
+Navigate to `/admin` (requires `isAdmin: true` on user):
+
+1. View current database status
+2. Select passes (1-5) and source group
+3. Click "Run Miner"
+4. Monitor results
+
+#### Option 2: CLI
+
+```bash
+# Single pass over all sources
+npm run style-miner:once
+
+# Warmup with 3 passes (recommended for initial population)
+npm run style-miner:warmup
+
+# Check database status
+npm run style-miner:status
+
+# Custom options
+npx tsx scripts/style-intel/run-style-miner.ts --passes=5 --group=design_guides
+```
+
+#### Option 3: API
+
+```bash
+# Run style miner (1 pass, all groups)
+curl -X POST https://your-domain.com/api/admin/trigger-collection \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "style-mine", "passes": 1, "group": "all"}'
+
+# Get status only
+curl -X POST https://your-domain.com/api/admin/trigger-collection \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "style-mine-status"}'
+```
+
+### Response Example
+
+```json
+{
+  "success": true,
+  "action": "style-mine",
+  "result": {
+    "recipesUpserted": 12,
+    "principlesUpserted": 8,
+    "errors": 2,
+    "duration": "45230ms",
+    "dbTotals": {
+      "recipes": 47,
+      "principles": 23
+    }
+  },
+  "duration": "45345ms"
+}
+```
+
+### How Confidence Works
+
+- **Initial extraction:** 0.5 confidence
+- **Each re-discovery:** +0.1 confidence (capped at 0.95)
+- **Multiple sources:** Higher confidence = more reliable pattern
+
+### Best Practices
+
+1. **Initial Warmup:** Run 3 passes on first setup
+2. **Periodic Refresh:** Run monthly to pick up new design trends
+3. **Add Market Examples:** Populate `market_examples` with Amazon/Etsy URLs for real-world validation
+4. **Monitor Categories:** Use status to see distribution of recipe categories
+
+---
+
+## 8. Manual Triggers
 
 ### Admin Endpoint
 
@@ -447,10 +622,12 @@ curl -X POST https://your-domain.com/api/admin/trigger-collection \
 | `learn` | Extraction only |
 | `validate` | Validation only |
 | `insights` | Get summary (no processing) |
+| `style-mine` | Run style miner (accepts `passes`, `group`) |
+| `style-mine-status` | Get style intelligence status |
 
 ---
 
-## 8. Data Retention
+## 9. Data Retention
 
 ### Smart Cleanup Philosophy
 
@@ -527,7 +704,7 @@ export async function cleanOldMarketData() {
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 ### Common Issues
 

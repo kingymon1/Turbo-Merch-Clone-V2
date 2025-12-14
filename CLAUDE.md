@@ -288,3 +288,64 @@ The system uses Claude Vision to analyze actual MBA product images and learn sty
 - Fresh cache (<1 week): Use immediately
 - Stale cache: Trigger real-time analysis, use cache as fallback
 - No cache: Real-time analysis, create new profile
+
+### Style Miner (Pre-Mined Design Intelligence)
+
+**Implementation** (`lib/style-intel/`):
+
+A standalone job that mines design knowledge from external sources BEFORE live pipelines need it.
+
+**Philosophy**:
+- Pre-populate style intelligence before going live
+- Mine authoritative design guides and template galleries
+- Build a library of reusable style recipes and principles
+- Run periodically to keep design knowledge fresh
+
+**Files**:
+- `lib/style-intel/types.ts` - TypeScript types for StyleRecipe and StylePrinciple
+- `lib/style-intel/style-miner-service.ts` - Core mining logic
+- `scripts/style-intel/run-style-miner.ts` - CLI script
+- `config/style-intel-sources.json` - URL configuration (editable)
+- `app/admin/page.tsx` - Admin UI for running miner
+
+**Database Models**:
+- `StyleRecipeLibrary` - Reusable design directions (typography, layout, color, effects)
+- `StylePrinciple` - Contextual design rules with rationale
+
+**Running the Style Miner**:
+
+```bash
+# CLI
+npm run style-miner:warmup    # 3 passes (recommended for initial setup)
+npm run style-miner:once      # 1 pass
+npm run style-miner:status    # Check database status
+
+# UI
+# Navigate to /admin (requires isAdmin: true)
+
+# API
+POST /api/admin/trigger-collection
+Body: {"action": "style-mine", "passes": 3, "group": "all"}
+```
+
+**Source Configuration** (`config/style-intel-sources.json`):
+```json
+{
+  "design_guides": ["https://..."],
+  "template_galleries": ["https://..."],
+  "market_examples": []
+}
+```
+
+**How It Works**:
+1. Reads URLs from config file
+2. Uses Perplexity API (sonar model) to read and analyze each URL
+3. Extracts StyleRecipe and StylePrinciple objects
+4. Upserts to database (merges with existing, increases confidence)
+5. Multiple passes increase confidence through validation
+
+**Key Characteristics**:
+- Completely decoupled from runtime pipelines
+- Safe to run multiple times (idempotent upserts)
+- Confidence increases with each re-discovery
+- Runs on Perplexity API (same as niche style researcher)
