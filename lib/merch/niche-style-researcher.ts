@@ -11,6 +11,25 @@
  * - Stored data is CONTEXT (informs, doesn't replace)
  * - System makes decisions autonomously
  * - Gets smarter over time without getting stale
+ *
+ * STYLE INTELLIGENCE ARCHITECTURE:
+ * This agent is a CONTEXT PROVIDER, not the final style authority.
+ * When STYLE_INTEL_MERCH_ENABLED is true:
+ * - StyleIntelService is the authoritative style selector
+ * - This agent provides high-level style hints (typography mood, color mood, aesthetic)
+ * - Downstream, StyleIntelService uses this context + other signals to select a StyleRecipe
+ * - The selected StyleRecipe contains concrete style decisions (font category, effects, layout)
+ *
+ * This agent should focus on discovering:
+ * - What's TRENDING in the market (not picking final fonts/effects)
+ * - High-level mood and aesthetic descriptors
+ * - Color palettes and general typography direction
+ * - Signals that help StyleIntel make better recipe selections
+ *
+ * It should NOT try to:
+ * - Make final typography decisions (that's StyleRecipe's job)
+ * - Lock in specific effects (halftone, distress levels)
+ * - Define exact layout compositions
  */
 
 import { prisma } from '@/lib/prisma';
@@ -224,7 +243,16 @@ async function researchNicheStyle(niche: string, context: StoredContext): Promis
       messages: [
         {
           role: 'system',
-          content: `You are a merchandise design researcher. Your job is to discover CURRENT visual style patterns for specific niches by analyzing what's selling in that market.
+          content: `You are a merchandise design researcher. Your job is to discover CURRENT visual style TRENDS and PATTERNS for specific niches by analyzing what's selling in that market.
+
+IMPORTANT: Your role is to provide HIGH-LEVEL STYLE INTELLIGENCE, not final design decisions.
+- Describe general aesthetic directions (e.g., "vintage with wear", "bold modern", "playful cartoon")
+- Identify color moods and palette directions (e.g., "warm earthy tones", "high-contrast bold")
+- Note typography tendencies (e.g., "serif fonts popular", "distressed block letters trending")
+- Your output informs a downstream Style Intelligence system that will select specific design recipes
+
+You are a CONTEXT PROVIDER that helps the system understand what's working in the market.
+The final concrete style decisions (exact font categories, effect parameters, layouts) are made by a StyleRecipe system downstream.
 
 You may receive context about what has historically worked. Use it as background, but prioritize discovering what's CURRENTLY trending - styles evolve.
 
@@ -299,24 +327,29 @@ NOTE: This is historical data. Current trends may differ. Prioritize what you fi
 `;
   }
 
-  return `Research CURRENT t-shirt design style patterns for the "${niche}" niche.
+  return `Research CURRENT t-shirt design style TRENDS and PATTERNS for the "${niche}" niche.
 
 Look at what's ACTUALLY SELLING RIGHT NOW on Amazon Merch, Etsy, and POD marketplaces in 2024-2025.
 ${contextSection}
+CONTEXT: Your findings will be used by a Style Intelligence system to select appropriate design recipes.
+Focus on providing HIGH-LEVEL SIGNALS about market trends, not exact specifications.
+
 For the "${niche}" audience, discover:
 
-1. TYPOGRAPHY: What font styles are currently popular? (bold sans-serif, vintage serif, script, etc.)
-2. EFFECTS: What design effects are selling? (distressed, clean, gradient, halftone, etc.)
-3. COLOR PALETTE: What colors work for this audience? (list 3-5 specific colors)
+1. TYPOGRAPHY: What typography DIRECTION is trending? (e.g., "bold blocky", "vintage serif", "handwritten feel")
+   - Focus on the mood/vibe, not specific font names
+2. EFFECTS: What visual effects are POPULAR? (distressed, clean, gradient, halftone, etc.)
+   - Note general trends, the system will map to specific implementations
+3. COLOR PALETTE: What color MOODS work? (list 3-5 colors that represent the palette direction)
 4. MOOD: What's the emotional tone? (rugged, playful, professional, rebellious, etc.)
-5. SHIRT COLOR: What background color sells best? (black, white, navy, heather grey, etc.)
-6. AESTHETIC: What's the overall vibe? (1-2 sentence description)
+5. SHIRT COLOR: What background sells best? (black, white, navy, heather grey, etc.)
+6. AESTHETIC: What's the overall vibe? (1-2 sentence description of the dominant aesthetic)
 
 If you notice trends DIFFERENT from the historical context provided, include those - we want to catch emerging shifts.
 
 Return JSON in this exact format:
 {
-  "typography": "description of typography that works for ${niche}",
+  "typography": "high-level typography direction for ${niche}",
   "effects": ["effect1", "effect2"],
   "colorPalette": ["color1", "color2", "color3"],
   "mood": "emotional tone description",

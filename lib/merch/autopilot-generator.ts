@@ -13,6 +13,33 @@
  *
  * Phase 7A Enhancement: Now integrates marketplace intelligence from MBA products
  * to inject proven keywords and patterns into the generation process.
+ *
+ * STYLE INTELLIGENCE ARCHITECTURE:
+ * This generator is the ORCHESTRATOR of the design pipeline. Its role in StyleIntel:
+ *
+ * 1. CONTEXT PROVIDER - This generator provides rich context for StyleIntel:
+ *    - niche (from diversity engine, cached data, or fallback)
+ *    - tone (from trend research, insights, or inference)
+ *    - riskLevel (from user input)
+ *    - visual style hints (from trend research)
+ *
+ * 2. DOES NOT SELECT STYLES - When STYLE_INTEL_MERCH_ENABLED is true:
+ *    - StyleIntelService selects the appropriate StyleRecipe
+ *    - This happens downstream in createDesignBriefFromTrend() via maybeApplyStyleIntel()
+ *    - The generator passes context, StyleIntel makes the style decision
+ *
+ * 3. STYLE INFERENCE IS CONTEXT, NOT DECISION:
+ *    - extractDesignConcept() infers style/tone from trends
+ *    - These are HIGH-LEVEL HINTS that help StyleIntel select recipes
+ *    - They do NOT override StyleRecipe when one is selected
+ *
+ * 4. FORM-BASED SYSTEM (Phase 10):
+ *    - generateAutopilotConceptWithForm() uses fillDesignForm() which receives styleSpec
+ *    - The styleSpec is passed through and used by FormFiller for final decisions
+ *
+ * When STYLE_INTEL_MERCH_ENABLED is false:
+ * - Behavior unchanged from previous implementation
+ * - Style decisions come from research agents directly
  */
 
 import { searchTrends } from '@/services/geminiService';
@@ -118,6 +145,13 @@ function selectNicheForRiskFallback(riskLevel: number): string {
  * Extract the best design concept from trend data
  * Phase 6: Now accepts insight guidance to influence style/tone selection
  * Phase 7B: Now validates and cleans phrase for compliance
+ *
+ * STYLE INTELLIGENCE NOTE:
+ * The style and tone extracted here are HIGH-LEVEL HINTS, not final decisions.
+ * When STYLE_INTEL_MERCH_ENABLED is true:
+ * - These values help StyleIntelService select an appropriate StyleRecipe
+ * - The actual style implementation comes from the selected StyleRecipe
+ * - This function provides CONTEXT, not final style authority
  */
 function extractDesignConcept(
   trend: TrendData,

@@ -6,6 +6,24 @@
  *
  * This is the key innovation: instead of complex prompt engineering,
  * the AI fills a simple form like a human would.
+ *
+ * STYLE INTELLIGENCE ARCHITECTURE:
+ * When STYLE_INTEL_MERCH_ENABLED is true and a styleSpec is passed:
+ * - The styleSpec (StyleRecipe) is the AUTHORITATIVE source for style decisions
+ * - This agent should IMPLEMENT the recipe, not re-decide style
+ * - The form's "style" field should align with the recipe's direction
+ * - Research data (trendData, styleContext) provides context (niche, tone, audience)
+ *
+ * The agent's role when styleSpec is present:
+ * - Read the StyleRecipe's typography, layout, color, effects guidance
+ * - Match the form's style and tone to the recipe's characteristics
+ * - Use research data for niche, audience context only
+ * - Do NOT try to override or re-invent style decisions
+ *
+ * When styleSpec is ABSENT:
+ * - Use styleContext and trendData as primary style sources
+ * - Make style decisions based on research data
+ * - Behavior unchanged from pre-StyleIntel implementation
  */
 
 import OpenAI from 'openai';
@@ -160,15 +178,37 @@ function buildSystemPrompt(riskLevel: number, styleSpec?: StyleRecipe): string {
   let styleIntelGuidance = '';
   if (styleSpec) {
     styleIntelGuidance = `
-STYLE INTELLIGENCE (Pre-Mined Design Recipe - USE THIS):
-A proven style recipe "${styleSpec.meta.displayName}" has been selected for this design.
-- Typography: ${styleSpec.typography.fontCategory} ${styleSpec.typography.fontWeight || ''} ${styleSpec.typography.textTransform || ''}
-- Layout: ${styleSpec.layout.composition}, ${styleSpec.layout.hierarchyType || 'standard hierarchy'}
-- Color scheme: ${styleSpec.color.schemeType} ${styleSpec.color.colorMood ? `(${styleSpec.color.colorMood})` : ''}
-${styleSpec.effects.halftone?.enabled ? '- Include halftone effect' : ''}
-${styleSpec.effects.texture?.enabled ? `- Apply ${styleSpec.effects.texture.type || 'distressed'} texture` : ''}
-${styleSpec.effects.shadow?.enabled ? '- Add shadow effect' : ''}
-Use this recipe to guide your style decisions. Match the tone to this recipe.
+═══════════════════════════════════════════════════════════════
+STYLE INTELLIGENCE RECIPE (AUTHORITATIVE - MUST FOLLOW)
+═══════════════════════════════════════════════════════════════
+
+A proven StyleRecipe "${styleSpec.meta.displayName}" has been selected by the Style Intelligence system.
+This recipe is AUTHORITATIVE for style decisions. You must IMPLEMENT it, not re-decide style.
+
+TYPOGRAPHY (FOLLOW THIS):
+- Category: ${styleSpec.typography.fontCategory}
+- Weight: ${styleSpec.typography.fontWeight || 'bold'}
+- Transform: ${styleSpec.typography.textTransform || 'mixed'}
+
+LAYOUT (FOLLOW THIS):
+- Composition: ${styleSpec.layout.composition}
+- Hierarchy: ${styleSpec.layout.hierarchyType || 'text-primary'}
+
+COLOR (FOLLOW THIS):
+- Scheme: ${styleSpec.color.schemeType}
+- Mood: ${styleSpec.color.colorMood || 'balanced'}
+
+EFFECTS TO APPLY:
+${styleSpec.effects.halftone?.enabled ? `- Halftone: ${styleSpec.effects.halftone.density || 'medium'} density` : ''}
+${styleSpec.effects.texture?.enabled ? `- Texture: ${styleSpec.effects.texture.type || 'distressed'}` : ''}
+${styleSpec.effects.shadow?.enabled ? `- Shadow: ${styleSpec.effects.shadow.type || 'drop'}` : ''}
+${!styleSpec.effects.halftone?.enabled && !styleSpec.effects.texture?.enabled && !styleSpec.effects.shadow?.enabled ? '- Clean style, no heavy effects' : ''}
+
+INSTRUCTIONS:
+- Your "style" field should reflect this recipe (e.g., "${styleSpec.meta.displayName}" or similar)
+- Your "tone" should align with the recipe's mood
+- Use research data ONLY for niche, audience, text content context
+- Do NOT override recipe style decisions based on research data
 `;
   }
 
@@ -253,13 +293,15 @@ function buildUserPrompt(
   // Add StyleIntel recipe guidance if available
   if (styleSpec) {
     parts.push('');
-    parts.push('PRE-MINED STYLE RECIPE (high priority):');
+    parts.push('═══════════════════════════════════════════════════════════════');
+    parts.push('STYLE RECIPE (AUTHORITATIVE - USE THIS FOR STYLE DECISIONS):');
+    parts.push('═══════════════════════════════════════════════════════════════');
     parts.push(`Recipe: "${styleSpec.meta.displayName}" (${styleSpec.meta.category})`);
     if (styleSpec.meta.nicheHints?.length) {
       parts.push(`Best for: ${styleSpec.meta.nicheHints.join(', ')}`);
     }
     if (styleSpec.meta.tone?.length) {
-      parts.push(`Tone: ${styleSpec.meta.tone.join(', ')}`);
+      parts.push(`Tone direction: ${styleSpec.meta.tone.join(', ')}`);
     }
     // Include layout guidance
     if (styleSpec.layout.composition) {
@@ -269,6 +311,9 @@ function buildUserPrompt(
     if (styleSpec.color.recommendedGarmentColors?.length) {
       parts.push(`Best on: ${styleSpec.color.recommendedGarmentColors.join(' or ')} shirts`);
     }
+    parts.push('');
+    parts.push('IMPORTANT: Your "style" field should align with this recipe.');
+    parts.push('Use research data above for niche/audience context only.');
   }
 
   parts.push('');

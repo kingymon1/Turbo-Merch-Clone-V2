@@ -7,6 +7,27 @@
  *
  * Key principle: The executor is a DISCIPLINED translator, not a creative.
  * All creative decisions were made during research. The executor FOLLOWS.
+ *
+ * STYLE INTELLIGENCE ARCHITECTURE:
+ * When STYLE_INTEL_MERCH_ENABLED is true:
+ * - DesignBriefs may contain a `styleSpec` (StyleRecipe from StyleIntelService)
+ * - When styleSpec is present, it is the AUTHORITATIVE source for:
+ *   - Typography (fontCategory, fontWeight, textTransform)
+ *   - Layout (composition, hierarchyType)
+ *   - Color approach (schemeType, colorMood, contrastLevel)
+ *   - Effects (halftone, texture, shadow, outline, aging)
+ * - The executor should IMPLEMENT the styleSpec, not re-decide these values
+ * - Research data (typography, colorApproach in brief.style) becomes SUPPLEMENTARY
+ *   context when styleSpec is present
+ *
+ * The StyleIntel integration happens via:
+ * 1. maybeApplyStyleIntel() called in createDesignBriefFromTrend()
+ * 2. styleSpec attached to brief if a matching recipe is found
+ * 3. styleIntelMeta tracks what happened (used/fallback reason)
+ *
+ * When styleSpec is ABSENT (feature disabled or no match):
+ * - Executor uses brief.style data as before (research-driven)
+ * - No behavior change from pre-StyleIntel implementation
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -168,6 +189,50 @@ export async function executeDesignBrief(
  * Build the executor prompt with all requirements
  */
 function buildExecutorPrompt(brief: DesignBrief, requirements: string[]): string {
+  // Check if StyleSpec is present (from StyleIntel)
+  const hasStyleSpec = brief.styleSpec != null;
+
+  // Build StyleSpec section if present
+  let styleSpecSection = '';
+  if (hasStyleSpec && brief.styleSpec) {
+    const spec = brief.styleSpec;
+    styleSpecSection = `
+═══════════════════════════════════════════════════════════════
+STYLE INTELLIGENCE RECIPE (AUTHORITATIVE)
+═══════════════════════════════════════════════════════════════
+
+A pre-mined StyleRecipe has been selected: "${spec.meta.displayName}"
+This recipe is the AUTHORITATIVE source for concrete style decisions.
+
+TYPOGRAPHY (from StyleRecipe):
+- Category: ${spec.typography.fontCategory}
+- Weight: ${spec.typography.fontWeight || 'bold'}
+- Transform: ${spec.typography.textTransform || 'mixed'}
+
+LAYOUT (from StyleRecipe):
+- Composition: ${spec.layout.composition}
+- Hierarchy: ${spec.layout.hierarchyType || 'text-primary'}
+
+COLOR (from StyleRecipe):
+- Scheme: ${spec.color.schemeType}
+- Mood: ${spec.color.colorMood || 'balanced'}
+- Contrast: ${spec.color.contrastLevel || 'high'}
+${spec.color.primaryColors?.length ? `- Primary Colors: ${spec.color.primaryColors.join(', ')}` : ''}
+
+EFFECTS (from StyleRecipe):
+${spec.effects.halftone?.enabled ? `- Halftone: ${spec.effects.halftone.density || 'medium'} density` : ''}
+${spec.effects.texture?.enabled ? `- Texture: ${spec.effects.texture.type || 'distressed'}` : ''}
+${spec.effects.shadow?.enabled ? `- Shadow: ${spec.effects.shadow.type || 'drop'}` : ''}
+${spec.effects.outline?.enabled ? '- Text outline: enabled' : ''}
+${spec.effects.aging?.enabled ? '- Vintage aging: enabled' : ''}
+${!spec.effects.halftone?.enabled && !spec.effects.texture?.enabled && !spec.effects.shadow?.enabled ? '- Clean, without heavy effects' : ''}
+
+IMPORTANT: The StyleRecipe values above OVERRIDE any conflicting research data below.
+Use the brief's style section as supplementary context, not as primary direction.
+
+`;
+  }
+
   return `You are a DESIGN EXECUTOR. Your job is to translate a Design Brief into an image generation prompt.
 
 CRITICAL RULES:
@@ -176,6 +241,7 @@ CRITICAL RULES:
 3. The text "${brief.text.exact}" MUST appear in the prompt VERBATIM
 4. Every style requirement is MANDATORY, not a suggestion
 5. Forbidden elements are STRICTLY prohibited
+${hasStyleSpec ? '6. When StyleRecipe is present, it is AUTHORITATIVE for typography, layout, color, and effects' : ''}
 
 ═══════════════════════════════════════════════════════════════
 DESIGN BRIEF
@@ -215,7 +281,7 @@ CONTEXT:
 - Tone: ${brief.context.tone}
 ${brief.context.seasonalModifier ? `- Seasonal: ${brief.context.seasonalModifier}` : ''}
 ${brief.context.crossNicheBlend?.length ? `- Cross-Niche Blend: ${brief.context.crossNicheBlend.join(' + ')}` : ''}
-
+${styleSpecSection}
 ═══════════════════════════════════════════════════════════════
 COMPLIANCE CHECKLIST
 ═══════════════════════════════════════════════════════════════
@@ -241,32 +307,56 @@ The prompt must include these negative constraints to avoid low-quality output:
 - DO NOT create: poorly rendered text, childish scribbles, low-effort templates
 - DO NOT create: blurry elements, pixelated graphics, MS Paint quality, default system fonts
 
-IMPORTANT - RESEARCH DATA PRIORITY:
+IMPORTANT - STYLE AUTHORITY PRIORITY:
+${hasStyleSpec ? `- A StyleRecipe ("${brief.styleSpec?.meta.displayName}") has been selected by the Style Intelligence system
+- The StyleRecipe is AUTHORITATIVE for typography, layout, color, and effects
+- Research data provides supplementary context (niche, audience, tone)
+- DO NOT override StyleRecipe decisions with research data or your own ideas
+- The StyleRecipe was mined from proven design patterns - trust it` : `- No StyleRecipe was applied - use the research data as the primary style source
 - The style requirements above come from REAL market research
 - DO NOT override or "enhance" the research data with generic quality instructions
 - If the research says "vintage distressed" - use that, don't add "3D effects"
 - If the research says "minimalist clean" - honor that, don't add "gradients and shadows"
-- Trust the research data - it knows what sells in this niche
+- Trust the research data - it knows what sells in this niche`}
 
 PROMPT STRUCTURE (MANDATORY):
 1. Text requirement MUST come FIRST (loudest part of prompt)
-2. Style direction follows research brief EXACTLY
+2. Style direction follows ${hasStyleSpec ? 'StyleRecipe specifications' : 'research brief'} EXACTLY
 3. Quality floor constraints come LAST as negative/avoid instructions
 
-REMEMBER: You are an EXECUTOR, not a creative director. The brief IS the creative direction.`;
+REMEMBER: You are an EXECUTOR, not a creative director. ${hasStyleSpec ? 'The StyleRecipe IS the style authority. The brief provides context.' : 'The brief IS the creative direction.'}`;
 }
 
 /**
  * Build compliance requirements from the brief
+ * When StyleRecipe is present, includes StyleRecipe-specific requirements
  */
 function buildComplianceRequirements(brief: DesignBrief): string[] {
   const requirements: string[] = [
     `Text "${brief.text.exact}" appears EXACTLY as specified`,
-    `Typography is ${brief.style.typography.required}`,
-    `Color palette includes: ${brief.style.colorApproach.palette.join(', ')}`,
-    `Overall aesthetic is: ${brief.style.aesthetic.primary}`,
-    `Composition follows: ${brief.style.layout.composition}`
   ];
+
+  // Add StyleRecipe compliance if present (authoritative)
+  if (brief.styleSpec) {
+    const spec = brief.styleSpec;
+    requirements.push(`Typography follows StyleRecipe: ${spec.typography.fontCategory} ${spec.typography.fontWeight || 'bold'}`);
+    requirements.push(`Layout follows StyleRecipe: ${spec.layout.composition}`);
+    requirements.push(`Color scheme follows StyleRecipe: ${spec.color.schemeType}`);
+    if (spec.effects.texture?.enabled) {
+      requirements.push(`Texture effect applied: ${spec.effects.texture.type || 'distressed'}`);
+    }
+    if (spec.effects.halftone?.enabled) {
+      requirements.push(`Halftone effect applied: ${spec.effects.halftone.density || 'medium'}`);
+    }
+    // Research data becomes supplementary
+    requirements.push(`Research context honored: ${brief.context.niche} niche, ${brief.context.tone} tone`);
+  } else {
+    // No StyleRecipe - use research data as primary source
+    requirements.push(`Typography is ${brief.style.typography.required}`);
+    requirements.push(`Color palette includes: ${brief.style.colorApproach.palette.join(', ')}`);
+    requirements.push(`Overall aesthetic is: ${brief.style.aesthetic.primary}`);
+    requirements.push(`Composition follows: ${brief.style.layout.composition}`);
+  }
 
   if (brief.style.typography.forbidden?.length) {
     requirements.push(`Typography does NOT include: ${brief.style.typography.forbidden.join(', ')}`);
