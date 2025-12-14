@@ -392,16 +392,16 @@ The extraction engine requires:
 
 ## 7. style-miner
 
-**Endpoint:** `POST /api/admin/trigger-collection` (action: `style-mine`)
+**Endpoint:** `POST /api/admin/trigger-collection` (actions: `style-mine`, `style-mine-auto`, `style-mine-status`, `init-style-tables`)
 **Files:**
 - `lib/style-intel/style-miner-service.ts` (core logic)
 - `scripts/style-intel/run-style-miner.ts` (CLI)
-- `app/admin/page.tsx` (UI)
+- `app/admin/page.tsx` (UI with Auto Mine button)
 **Schedule:** Manual / On-demand
 
 ### What It Does
 
-Mines design intelligence from external sources (design guides, template galleries, market examples) and populates the style intelligence database.
+Mines design intelligence from external sources (design guides, template galleries, inspiration galleries, market examples) and populates the style intelligence database.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -411,6 +411,7 @@ Mines design intelligence from external sources (design guides, template galleri
 │  config/style-intel-sources.json                            │
 │  ├─ design_guides[]                                         │
 │  ├─ template_galleries[]                                    │
+│  ├─ inspiration_galleries[]                                 │
 │  └─ market_examples[]                                       │
 │              │                                               │
 │              ▼                                               │
@@ -439,11 +440,17 @@ Edit `config/style-intel-sources.json` to add/remove URLs:
 {
   "design_guides": [
     "https://www.designity.com/blog/t-shirt-graphic-design-101",
-    "https://www.printful.com/blog/t-shirt-design-ideas"
+    "https://www.printful.com/blog/t-shirt-design-ideas",
+    "https://www.twincitytees.com/blog/how-to-make-halftones",
+    "https://printify.com/blog/t-shirt-design-placement-guide/"
   ],
   "template_galleries": [
     "https://www.canva.com/t-shirts/templates/",
     "https://www.freepik.com/free-photos-vectors/typography-tshirt-design"
+  ],
+  "inspiration_galleries": [
+    "https://psd.fanextra.com/articles/30-stylish-typography-t-shirts/",
+    "https://muz.li/inspiration/t-shirt/"
   ],
   "market_examples": []
 }
@@ -488,14 +495,21 @@ model StylePrinciple {
 
 ### Running the Style Miner
 
-#### Option 1: Admin UI (Recommended)
+#### Option 1: Admin UI - Auto Mine (Recommended)
 
 Navigate to `/admin` (requires `isAdmin: true` on user):
 
-1. View current database status
-2. Select passes (1-5) and source group
-3. Click "Run Miner"
-4. Monitor results
+1. View current database status (recipes, principles, confidence)
+2. Select source group (All Sources, Design Guides, etc.)
+3. Click **"Auto Mine All"** button
+4. Watch live progress (chunks completed, URLs remaining)
+5. Optionally click "Stop" to abort
+
+**Why Auto Mine?**
+- Processes URLs in safe chunks of 5 (won't timeout on Vercel)
+- Skips URLs mined within the last 24 hours
+- Automatically continues until all URLs are processed
+- Shows real-time progress with URLs remaining count
 
 #### Option 2: CLI
 
@@ -516,34 +530,50 @@ npx tsx scripts/style-intel/run-style-miner.ts --passes=5 --group=design_guides
 #### Option 3: API
 
 ```bash
-# Run style miner (1 pass, all groups)
+# Auto-mine (recommended) - processes 5 URLs at a time, won't timeout
+curl -X POST https://your-domain.com/api/admin/trigger-collection \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "style-mine-auto", "group": "all"}'
+
+# Manual run (may timeout with many URLs)
 curl -X POST https://your-domain.com/api/admin/trigger-collection \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"action": "style-mine", "passes": 1, "group": "all"}'
 
-# Get status only
+# Get status
 curl -X POST https://your-domain.com/api/admin/trigger-collection \
   -H "Authorization: Bearer $CRON_SECRET" \
   -H "Content-Type: application/json" \
   -d '{"action": "style-mine-status"}'
+
+# Initialize tables (first-time setup)
+curl -X POST https://your-domain.com/api/admin/trigger-collection \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "init-style-tables"}'
 ```
 
-### Response Example
+### Response Example (Auto Mine)
 
 ```json
 {
   "success": true,
-  "action": "style-mine",
+  "action": "style-mine-auto",
   "result": {
-    "recipesUpserted": 12,
-    "principlesUpserted": 8,
-    "errors": 2,
+    "recipesUpserted": 8,
+    "principlesUpserted": 12,
+    "errors": 0,
     "duration": "45230ms",
     "dbTotals": {
       "recipes": 47,
-      "principles": 23
-    }
+      "principles": 35
+    },
+    "urlsProcessed": 5,
+    "urlsSkipped": 10,
+    "urlsRemaining": 7,
+    "isComplete": false
   },
   "duration": "45345ms"
 }
@@ -623,7 +653,9 @@ curl -X POST https://your-domain.com/api/admin/trigger-collection \
 | `validate` | Validation only |
 | `insights` | Get summary (no processing) |
 | `style-mine` | Run style miner (accepts `passes`, `group`) |
+| `style-mine-auto` | Auto-mine in chunks (accepts `group`, `maxUrls`, `skipRecentHours`) |
 | `style-mine-status` | Get style intelligence status |
+| `init-style-tables` | Create database tables (first-time setup) |
 
 ---
 
