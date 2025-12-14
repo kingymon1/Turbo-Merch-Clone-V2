@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Database, Play, RefreshCw, AlertCircle, CheckCircle, Loader2, ArrowLeft } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Database, Play, RefreshCw, AlertCircle, CheckCircle, Loader2, ArrowLeft, Zap } from 'lucide-react';
 import Link from 'next/link';
 
 interface StyleMinerStatus {
@@ -9,7 +9,12 @@ interface StyleMinerStatus {
   principleCount: number;
   avgConfidence: number;
   categoryBreakdown: Array<{ category: string; count: number }>;
-  sourceConfig: { design_guides: number; template_galleries: number; market_examples: number };
+  sourceConfig: {
+    design_guides: number;
+    template_galleries: number;
+    inspiration_galleries: number;
+    market_examples: number
+  };
   recommendation: string;
 }
 
@@ -25,9 +30,25 @@ interface MiningResult {
       recipes: number;
       principles: number;
     };
+    // Auto-mining specific fields
+    urlsProcessed?: number;
+    urlsSkipped?: number;
+    urlsRemaining?: number;
+    isComplete?: boolean;
   };
   duration: string;
   error?: string;
+}
+
+interface AutoMiningProgress {
+  totalProcessed: number;
+  totalRecipes: number;
+  totalPrinciples: number;
+  totalErrors: number;
+  chunksCompleted: number;
+  isRunning: boolean;
+  isComplete: boolean;
+  currentChunk?: MiningResult;
 }
 
 export default function AdminToolsPage() {
@@ -39,6 +60,11 @@ export default function AdminToolsPage() {
   const [error, setError] = useState<string | null>(null);
   const [passes, setPasses] = useState(1);
   const [group, setGroup] = useState('all');
+
+  // Auto-mining state
+  const [autoMining, setAutoMining] = useState(false);
+  const [autoProgress, setAutoProgress] = useState<AutoMiningProgress | null>(null);
+  const abortRef = useRef(false);
 
   // Check if user is admin
   useEffect(() => {
@@ -97,7 +123,6 @@ export default function AdminToolsPage() {
       const data = await response.json();
       setMiningResult(data);
       if (data.success) {
-        // Refresh status after mining
         fetchStatus();
       } else {
         setError(data.error || 'Mining failed');
@@ -108,6 +133,72 @@ export default function AdminToolsPage() {
     } finally {
       setMining(false);
     }
+  };
+
+  const runAutoMiner = async () => {
+    setAutoMining(true);
+    setMiningResult(null);
+    setError(null);
+    abortRef.current = false;
+
+    const progress: AutoMiningProgress = {
+      totalProcessed: 0,
+      totalRecipes: 0,
+      totalPrinciples: 0,
+      totalErrors: 0,
+      chunksCompleted: 0,
+      isRunning: true,
+      isComplete: false,
+    };
+    setAutoProgress(progress);
+
+    try {
+      let complete = false;
+
+      while (!complete && !abortRef.current) {
+        const response = await fetch('/api/admin/trigger-collection', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'style-mine-auto', group }),
+        });
+        const data: MiningResult = await response.json();
+
+        if (!data.success) {
+          setError(data.error || 'Auto-mining failed');
+          break;
+        }
+
+        // Update progress
+        progress.totalProcessed += data.result.urlsProcessed || 0;
+        progress.totalRecipes += data.result.recipesUpserted;
+        progress.totalPrinciples += data.result.principlesUpserted;
+        progress.totalErrors += data.result.errors;
+        progress.chunksCompleted += 1;
+        progress.currentChunk = data;
+        progress.isComplete = data.result.isComplete || false;
+        complete = data.result.isComplete || false;
+
+        setAutoProgress({ ...progress });
+
+        // Small delay between chunks
+        if (!complete && !abortRef.current) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+
+      progress.isRunning = false;
+      setAutoProgress({ ...progress });
+      fetchStatus();
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Auto-mining failed';
+      setError(errorMessage);
+    } finally {
+      setAutoMining(false);
+    }
+  };
+
+  const stopAutoMiner = () => {
+    abortRef.current = true;
   };
 
   // Loading state
@@ -140,6 +231,13 @@ export default function AdminToolsPage() {
       </div>
     );
   }
+
+  const totalSourceUrls = status
+    ? status.sourceConfig.design_guides +
+      status.sourceConfig.template_galleries +
+      status.sourceConfig.inspiration_galleries +
+      status.sourceConfig.market_examples
+    : 0;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-dark-900 py-8 px-4 sm:px-6 lg:px-8">
@@ -192,9 +290,7 @@ export default function AdminToolsPage() {
                   <div className="text-sm text-gray-500 dark:text-gray-400">Avg Confidence</div>
                 </div>
                 <div className="bg-gray-50 dark:bg-dark-900/50 rounded-xl p-4">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {status.sourceConfig.design_guides + status.sourceConfig.template_galleries + status.sourceConfig.market_examples}
-                  </div>
+                  <div className="text-2xl font-bold text-gray-900 dark:text-white">{totalSourceUrls}</div>
                   <div className="text-sm text-gray-500 dark:text-gray-400">Source URLs</div>
                 </div>
               </div>
@@ -226,58 +322,50 @@ export default function AdminToolsPage() {
               </div>
             )}
 
-            {/* Controls */}
+            {/* Auto Mining Controls - Primary */}
             <div className="border-t border-gray-200 dark:border-white/10 pt-6">
-              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">Run Style Miner</h3>
+              <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+                Auto Mine (Recommended)
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                Automatically processes all URLs in chunks. Won&apos;t timeout and picks up where it left off.
+              </p>
               <div className="flex flex-wrap items-end gap-4">
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Passes</label>
-                  <select
-                    value={passes}
-                    onChange={(e) => setPasses(parseInt(e.target.value))}
-                    disabled={mining}
-                    className="px-4 py-2 bg-white dark:bg-dark-900 border border-gray-300 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:opacity-50"
-                  >
-                    <option value={1}>1 pass</option>
-                    <option value={2}>2 passes</option>
-                    <option value={3}>3 passes (warmup)</option>
-                    <option value={5}>5 passes</option>
-                  </select>
-                </div>
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Source Group</label>
                   <select
                     value={group}
                     onChange={(e) => setGroup(e.target.value)}
-                    disabled={mining}
+                    disabled={autoMining || mining}
                     className="px-4 py-2 bg-white dark:bg-dark-900 border border-gray-300 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:opacity-50"
                   >
                     <option value="all">All Sources</option>
                     <option value="design_guides">Design Guides Only</option>
                     <option value="template_galleries">Template Galleries Only</option>
+                    <option value="inspiration_galleries">Inspiration Galleries Only</option>
                     <option value="market_examples">Market Examples Only</option>
                   </select>
                 </div>
-                <button
-                  onClick={runMiner}
-                  disabled={mining}
-                  className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {mining ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Mining...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-4 h-4" />
-                      Run Miner
-                    </>
-                  )}
-                </button>
+                {!autoMining ? (
+                  <button
+                    onClick={runAutoMiner}
+                    disabled={mining}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Zap className="w-4 h-4" />
+                    Auto Mine All
+                  </button>
+                ) : (
+                  <button
+                    onClick={stopAutoMiner}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white font-medium rounded-lg transition-all"
+                  >
+                    Stop
+                  </button>
+                )}
                 <button
                   onClick={fetchStatus}
-                  disabled={mining}
+                  disabled={autoMining || mining}
                   className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 font-medium rounded-lg transition-colors disabled:opacity-50"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -286,8 +374,112 @@ export default function AdminToolsPage() {
               </div>
             </div>
 
-            {/* Mining Result */}
-            {miningResult && (
+            {/* Auto Mining Progress */}
+            {autoProgress && (
+              <div
+                className={`p-4 rounded-xl border ${
+                  autoProgress.isComplete
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  {autoProgress.isRunning ? (
+                    <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 animate-spin" />
+                  ) : autoProgress.isComplete ? (
+                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                  )}
+                  <div className="flex-1">
+                    <h4
+                      className={`font-medium ${
+                        autoProgress.isComplete
+                          ? 'text-green-800 dark:text-green-300'
+                          : 'text-blue-800 dark:text-blue-300'
+                      }`}
+                    >
+                      {autoProgress.isRunning
+                        ? 'Auto Mining in Progress...'
+                        : autoProgress.isComplete
+                        ? 'Auto Mining Complete!'
+                        : 'Auto Mining Stopped'}
+                    </h4>
+                    <div className="mt-2 text-sm space-y-1">
+                      <p className={autoProgress.isComplete ? 'text-green-700 dark:text-green-400' : 'text-blue-700 dark:text-blue-400'}>
+                        Chunks completed: {autoProgress.chunksCompleted}
+                      </p>
+                      <p className={autoProgress.isComplete ? 'text-green-700 dark:text-green-400' : 'text-blue-700 dark:text-blue-400'}>
+                        URLs processed: {autoProgress.totalProcessed}
+                      </p>
+                      <p className={autoProgress.isComplete ? 'text-green-700 dark:text-green-400' : 'text-blue-700 dark:text-blue-400'}>
+                        Recipes added: {autoProgress.totalRecipes} | Principles added: {autoProgress.totalPrinciples}
+                      </p>
+                      {autoProgress.totalErrors > 0 && (
+                        <p className="text-yellow-700 dark:text-yellow-400">
+                          Errors: {autoProgress.totalErrors}
+                        </p>
+                      )}
+                      {autoProgress.currentChunk?.result && !autoProgress.isComplete && (
+                        <p className="text-blue-600 dark:text-blue-300 font-medium pt-1">
+                          {autoProgress.currentChunk.result.urlsRemaining} URLs remaining...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Manual Controls - Secondary */}
+            <div className="border-t border-gray-200 dark:border-white/10 pt-6">
+              <details className="group">
+                <summary className="text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer hover:text-gray-900 dark:hover:text-white">
+                  Manual Mining (Advanced)
+                </summary>
+                <div className="mt-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                    Run all URLs at once. May timeout on Vercel if too many URLs.
+                  </p>
+                  <div className="flex flex-wrap items-end gap-4">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Passes</label>
+                      <select
+                        value={passes}
+                        onChange={(e) => setPasses(parseInt(e.target.value))}
+                        disabled={mining || autoMining}
+                        className="px-4 py-2 bg-white dark:bg-dark-900 border border-gray-300 dark:border-white/10 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:opacity-50"
+                      >
+                        <option value={1}>1 pass</option>
+                        <option value={2}>2 passes</option>
+                        <option value={3}>3 passes (warmup)</option>
+                        <option value={5}>5 passes</option>
+                      </select>
+                    </div>
+                    <button
+                      onClick={runMiner}
+                      disabled={mining || autoMining}
+                      className="inline-flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-500 hover:to-brand-400 text-white font-medium rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {mining ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Mining...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-4 h-4" />
+                          Run Manual
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </div>
+
+            {/* Mining Result (Manual) */}
+            {miningResult && !autoProgress && (
               <div
                 className={`p-4 rounded-xl border ${
                   miningResult.success
@@ -325,7 +517,7 @@ export default function AdminToolsPage() {
             )}
 
             {/* Error Display */}
-            {error && !miningResult && (
+            {error && !miningResult && !autoProgress && (
               <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
@@ -340,7 +532,7 @@ export default function AdminToolsPage() {
         {status && (
           <div className="mt-6 bg-white dark:bg-dark-800 rounded-2xl shadow-lg border border-gray-200 dark:border-white/10 p-6">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Source Configuration</h3>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900 dark:text-white">{status.sourceConfig.design_guides}</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">Design Guides</div>
@@ -348,6 +540,10 @@ export default function AdminToolsPage() {
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900 dark:text-white">{status.sourceConfig.template_galleries}</div>
                 <div className="text-sm text-gray-500 dark:text-gray-400">Template Galleries</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-gray-900 dark:text-white">{status.sourceConfig.inspiration_galleries}</div>
+                <div className="text-sm text-gray-500 dark:text-gray-400">Inspiration Galleries</div>
               </div>
               <div className="text-center">
                 <div className="text-xl font-bold text-gray-900 dark:text-white">{status.sourceConfig.market_examples}</div>
