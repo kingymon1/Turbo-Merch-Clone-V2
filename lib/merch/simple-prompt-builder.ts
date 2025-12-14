@@ -8,6 +8,25 @@
  * "a t-shirt design on black background. Ugly Christmas style.
  *  The text 'Chillin' With My Snowmies' featuring 3 snowmen
  *  enjoying a winter scene. No Mockup"
+ *
+ * STYLE INTELLIGENCE INTEGRATION:
+ * This module provides StyleSpec-aware prompt building functions:
+ *
+ * - buildSimplePromptWithStyleSpec(): Incorporates StyleRecipe guidance into prompts
+ * - buildModelSpecificPromptWithStyleSpec(): Model-optimized variants with StyleRecipe
+ *
+ * When styleSpec is present:
+ * - Typography hints from recipe are included (font category, weight, transform)
+ * - Layout guidance from recipe is applied (composition, hierarchy)
+ * - Effect hints from recipe are added (halftone, texture, shadow)
+ * - The recipe's recommended garment colors may influence background
+ *
+ * When styleSpec is ABSENT:
+ * - Uses form data directly (buildSimplePrompt, buildModelSpecificPrompt)
+ * - Behavior unchanged from pre-StyleIntel implementation
+ *
+ * The prompt builder is a FINAL RENDERER - it implements whatever style direction
+ * is passed to it. It does not make style decisions itself.
  */
 
 import { DesignForm, ImageModel } from './types';

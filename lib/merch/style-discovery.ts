@@ -14,6 +14,25 @@
  * 3. Use Claude Vision to analyze typography, colors, layouts, aesthetics
  * 4. Aggregate findings into a NicheStyleProfile
  * 5. Store profile for use during design generation
+ *
+ * STYLE INTELLIGENCE INTEGRATION:
+ * This agent is a VISUAL PATTERN DISCOVERER, not the final style authority.
+ * When STYLE_INTEL_MERCH_ENABLED is true:
+ * - StyleIntelService uses our discovered patterns as input signals
+ * - We provide evidence of what's working visually in the market
+ * - StyleRecipes are pre-mined design templates with proven characteristics
+ * - StyleIntelService matches our discoveries to appropriate recipes
+ *
+ * This agent should focus on:
+ * - Extracting OBSERVABLE patterns from real product images
+ * - Identifying dominant typography styles, color moods, layouts
+ * - Building confidence scores based on consistency across samples
+ * - Providing rich context that helps StyleIntel select better recipes
+ *
+ * It should NOT try to:
+ * - Prescribe specific design specifications
+ * - Override StyleRecipe decisions when STYLE_INTEL is enabled
+ * - Make final decisions about halftone density, shadow parameters, etc.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -344,21 +363,27 @@ async function analyzeSingleImage(
           },
           {
             type: 'text',
-            text: `Analyze this t-shirt design image. Extract style characteristics for a design system.
+            text: `Analyze this t-shirt design image. Extract style PATTERNS and CHARACTERISTICS for a design intelligence system.
+
+YOUR ROLE: You are discovering WHAT'S WORKING in the market, not making final design decisions.
+Your observations will be aggregated across many products to identify patterns.
+A downstream Style Intelligence system will use these patterns to select appropriate design recipes.
+
+Focus on OBSERVABLE patterns, not prescriptive specifications.
 
 Return ONLY valid JSON with this exact structure:
 {
   "typography": {
-    "style": "description of typography style (e.g., 'bold sans-serif', 'vintage script', 'distressed block letters')",
+    "style": "describe the typography approach (e.g., 'bold blocky sans-serif', 'vintage script with wear', 'distressed block letters')",
     "weight": "bold|medium|light|varied",
-    "effects": ["list", "of", "effects", "like distressed, shadow, outline, gradient"],
+    "effects": ["list", "of", "observed effects", "like distressed, shadow, outline, gradient"],
     "hasText": true/false,
     "extractedText": "the actual text on the design if readable"
   },
   "colors": {
-    "primary": ["main colors used"],
-    "accent": ["supporting colors"],
-    "shirtColor": "detected shirt color",
+    "primary": ["main colors observed"],
+    "accent": ["supporting colors observed"],
+    "shirtColor": "detected shirt/background color",
     "mood": "warm|cool|neutral|vibrant|muted|earthy"
   },
   "layout": {
@@ -370,14 +395,14 @@ Return ONLY valid JSON with this exact structure:
     "iconStyle": "if present: minimal|detailed|integrated with text"
   },
   "aesthetic": {
-    "primary": "main aesthetic (e.g., 'vintage americana', 'modern minimalist', 'playful cartoon')",
-    "keywords": ["list", "of", "style", "keywords"],
+    "primary": "main aesthetic observed (e.g., 'vintage americana', 'modern minimalist', 'playful cartoon')",
+    "keywords": ["list", "of", "style", "keywords", "that describe what you see"],
     "mood": "the emotional feel (funny, serious, heartfelt, edgy, professional)",
     "quality": "professional|amateur|mixed"
   }
 }
 
-Be specific and descriptive. Focus on elements that could be replicated in new designs.`
+Be specific and descriptive about what you OBSERVE. Focus on patterns that could inform style recipe selection.`
           }
         ]
       }]

@@ -6,6 +6,41 @@
  * with pre-mined style recipes when the feature is enabled.
  *
  * FEATURE FLAG: STYLE_INTEL_MERCH_ENABLED (default: false)
+ *
+ * ARCHITECTURE:
+ * When enabled, this module connects the Style Intelligence system to the merch pipeline.
+ *
+ * The Style Intelligence system consists of:
+ * 1. StyleRecipeLibrary (database) - Pre-mined design recipes with proven characteristics
+ * 2. StylePrinciple (database) - Contextual design rules with rationale
+ * 3. StyleIntelService - Selects appropriate recipes based on context
+ * 4. This integration module - Bridges StyleIntel with the merch generator
+ *
+ * HOW AGENTS COLLABORATE WITH STYLEINTEL:
+ *
+ * Research Agents (NicheStyleResearcher, StyleDiscovery):
+ * - Provide HIGH-LEVEL style hints and market context
+ * - Discover what's working in the market
+ * - Their output informs StyleIntel's recipe selection
+ * - They do NOT make final style decisions when StyleIntel is enabled
+ *
+ * StyleIntelService:
+ * - Receives context (niche, tone, garment color, text length, risk level)
+ * - Queries StyleRecipeLibrary for matching recipes
+ * - Selects the best recipe based on context signals
+ * - Returns the authoritative StyleRecipe (styleSpec)
+ *
+ * Execution Agents (DesignExecutor, FormFiller, SimplePromptBuilder):
+ * - When styleSpec is present, IMPLEMENT the recipe
+ * - Do NOT re-decide style; the recipe is authoritative
+ * - Use research data for supplementary context (niche, audience, tone)
+ * - Preserve all tracking metadata (styleIntelMeta)
+ *
+ * KEY FUNCTIONS:
+ * - maybeApplyStyleIntel(): Called during DesignBrief creation
+ * - applyStyleIntelWithRisk(): Same with explicit risk level
+ * - formatStyleRecipeForPrompt(): Formats recipe for prompt building
+ * - isStyleIntelEnabled(): Check feature flag status
  */
 
 import { DesignBrief, StyleIntelMeta } from './types';

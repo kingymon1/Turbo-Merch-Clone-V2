@@ -436,3 +436,81 @@ Or when fallback occurs:
 - `no_recipe_found` - No matching recipes in database
 - `db_error:...` - Database query failed
 - `not_attempted` - StyleIntel was never called (legacy code path)
+
+### StyleIntel Agent Collaboration Architecture
+
+When `STYLE_INTEL_MERCH_ENABLED` is true, all agents in the merch pipeline collaborate with the Style Intelligence system. Each agent has a specific role:
+
+**Research Agents (Context Providers)**:
+
+These agents provide HIGH-LEVEL style hints and market context. They do NOT make final style decisions.
+
+| Agent | File | Role | What It Provides |
+|-------|------|------|------------------|
+| NicheStyleResearcher | `lib/merch/niche-style-researcher.ts` | Live market research | Typography mood, color mood, aesthetic hints |
+| StyleDiscovery | `lib/merch/style-discovery.ts` | Visual pattern discovery | Observable patterns from real product images |
+| AutopilotGenerator | `lib/merch/autopilot-generator.ts` | Orchestration | Niche, tone, riskLevel, visual style hints |
+
+**StyleIntelService (The Authority)**:
+
+The `StyleIntelService` (`lib/style-intel/service.ts`) is the AUTHORITATIVE style selector:
+- Receives context from research agents (niche, tone, garment color, text length, risk level)
+- Queries StyleRecipeLibrary for matching pre-mined recipes
+- Selects the best recipe based on context signals
+- Returns the `styleSpec` (StyleRecipe) attached to the DesignBrief
+
+**Execution Agents (Implementers)**:
+
+These agents IMPLEMENT the selected styleSpec. They do NOT re-decide style when styleSpec is present.
+
+| Agent | File | Role | StyleSpec Behavior |
+|-------|------|------|-------------------|
+| DesignExecutor | `lib/merch/design-executor.ts` | Brief → Prompt | StyleRecipe is AUTHORITATIVE; research is supplementary |
+| FormFiller | `lib/merch/form-filler.ts` | Research → Form | Must IMPLEMENT recipe; style field aligns with recipe |
+| SimplePromptBuilder | `lib/merch/simple-prompt-builder.ts` | Form → Prompt | Uses `buildModelSpecificPromptWithStyleSpec()` for recipe guidance |
+
+**Data Flow with StyleIntel Enabled**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        RESEARCH PHASE                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│ AutopilotGenerator → Diversity Engine → Trend Research                  │
+│      ↓                                                                   │
+│ NicheStyleResearcher → Live Perplexity research → Style HINTS           │
+│      ↓                                                                   │
+│ StyleDiscovery → Claude Vision analysis → Visual PATTERNS               │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     STYLE SELECTION (StyleIntelService)                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Context: niche + tone + garment color + text length + risk level        │
+│      ↓                                                                   │
+│ Query StyleRecipeLibrary → Match recipes → Select best                  │
+│      ↓                                                                   │
+│ Attach styleSpec to DesignBrief (AUTHORITATIVE)                         │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        EXECUTION PHASE                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│ DesignExecutor → IMPLEMENTS styleSpec → Prompt with recipe guidance     │
+│      ↓                                                                   │
+│ FormFiller → IMPLEMENTS styleSpec → Style field aligns with recipe      │
+│      ↓                                                                   │
+│ SimplePromptBuilder → IMPLEMENTS styleSpec → Recipe in final prompt     │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**When StyleSpec is Present**:
+- Research data provides CONTEXT (niche, audience, tone)
+- StyleRecipe provides CONCRETE DECISIONS (font category, layout, effects)
+- Execution agents IMPLEMENT the recipe, not re-decide style
+- styleIntelMeta tracks what happened for debugging
+
+**When StyleSpec is Absent** (feature disabled or no match):
+- Research data provides BOTH context AND style decisions
+- Execution agents use research data as primary source
+- Behavior unchanged from pre-StyleIntel implementation
+- styleIntelMeta shows `fallbackReason` for debugging
