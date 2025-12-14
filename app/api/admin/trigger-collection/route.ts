@@ -18,6 +18,10 @@ import {
   validateAllInsights,
   getInsightsSummary,
 } from '@/lib/merch/learning';
+import {
+  runStyleMiner,
+  getStyleMinerStatus,
+} from '@/lib/style-intel/style-miner-service';
 
 // Extended timeout for collection
 export const maxDuration = 300;
@@ -45,7 +49,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (!action) {
       return NextResponse.json(
-        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights)' },
+        { success: false, error: 'action is required (collect, moonshot, analyze, clean, learn, validate, insights, style-mine, style-mine-status)' },
         { status: 400 }
       );
     }
@@ -120,6 +124,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       case 'insights':
         // Phase 6: Get insights summary
         result = await getInsightsSummary();
+        break;
+
+      case 'style-mine':
+        // Style Miner: Mine design intelligence from configured URLs
+        const passes = body.passes || 1;
+        const group = body.group || 'all';
+        const miningResult = await runStyleMiner(passes, group);
+        result = {
+          recipesUpserted: miningResult.totalRecipes,
+          principlesUpserted: miningResult.totalPrinciples,
+          errors: miningResult.totalErrors,
+          duration: `${miningResult.duration}ms`,
+          dbTotals: miningResult.dbTotals,
+        };
+        break;
+
+      case 'style-mine-status':
+        // Style Miner: Get database status
+        result = await getStyleMinerStatus();
         break;
 
       default:
