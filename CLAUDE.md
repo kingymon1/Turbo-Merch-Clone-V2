@@ -526,22 +526,36 @@ These agents IMPLEMENT the selected styleSpec. They do NOT re-decide style when 
 
 A streamlined, one-click merch generation feature that discovers trending topics and creates complete designs.
 
+**Design System Reference**: `docs/simple-style-selector.md`
+
 **UI Controls**:
 - **Category/Niche** (optional): Text input to focus trend search (e.g., "gaming", "fitness", "dogs")
 - **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, DALL-E 3
 
 **Generation Flow**:
 1. **Trend Discovery** - Perplexity API finds currently trending topic with built-in diversity
-2. **Slot Extraction** - Gemini extracts design values (style, textTop, textBottom, aesthetic, color)
-3. **Prompt Display** - Shows completed prompt before image generation
-4. **Image Generation** - Selected model creates the design
-5. **Listing Generation** - Gemini creates brand, title, bullets, description
-6. **Auto-Save** - Design saved to My Library (DesignHistory table)
+2. **Style Selection (Code)** - Weighted random selection from proven style options:
+   - 70% Evergreen (E) options, 30% Emerging (M) options
+   - Selects one TYPOGRAPHY, one EFFECT, one AESTHETIC
+3. **LLM Text Derivation** - Gemini receives pre-selected styles + trend data and derives:
+   - TEXT_TOP (contextually relevant to trend)
+   - TEXT_BOTTOM (contextually relevant - never generic like "Trending Now")
+   - IMAGE_DESCRIPTION (brief, plain language with uplift descriptors)
+4. **Prompt Display** - Shows completed prompt before image generation
+5. **Image Generation** - Selected model creates the design
+6. **Listing Generation** - Gemini creates brand, title, bullets, description
+7. **Auto-Save** - Design saved to My Library (DesignHistory table)
 
-**Prompt Template**:
+**Prompt Template** (from `docs/simple-style-selector.md`):
 ```
-[STYLE] style t-shirt design (no mockup) [STYLE] style typography with the words '[TEXT_TOP]' at the top and '[TEXT_BOTTOM]' at the bottom. Make it in a [AESTHETIC] style using big typography and [STYLE] effects. Add a relevant image in the middle of the design. 4500x5400px use all the canvas. Make it for a [COLOR] shirt.
+[TYPOGRAPHY] t-shirt design (no mockup) [EFFECT] style typography with the words '[TEXT_TOP]' at the top and '[TEXT_BOTTOM]' at the bottom. Make it in a [AESTHETIC] style using big typography and [EFFECT] effects. Add [IMAGE_DESCRIPTION] in the middle of the design. 4500x5400px use all the canvas. Make it for a black shirt.
 ```
+
+**Style Selection Rules**:
+- TYPOGRAPHY, EFFECT, and AESTHETIC are selected by code using weighted random (70% E / 30% M)
+- LLM does NOT choose styles - it only derives text content from the trend
+- All style options are documented in `docs/simple-style-selector.md` with rationale
+- Designs optimized for black shirts (highest contrast, broadest appeal)
 
 **Diversity Mechanism**:
 To avoid repetitive results, the Perplexity query uses random variations:
@@ -561,7 +575,7 @@ Response: {
   "success": true,
   "data": {
     "trendData": { "topic": "...", "summary": "...", "source": "..." },
-    "slotValues": { "style": "...", "textTop": "...", "textBottom": "...", ... },
+    "slotValues": { "typography": "...", "effect": "...", "aesthetic": "...", "textTop": "...", "textBottom": "...", "imageDescription": "..." },
     "prompt": "The complete prompt sent to image model",
     "imageUrl": "Generated image URL or base64",
     "listing": { "brand": "...", "title": "...", "bullet1": "...", "bullet2": "...", "description": "..." },
@@ -573,5 +587,6 @@ Response: {
 **Key Characteristics**:
 - No risk levels, batch modes, or compliance passes - minimal by design
 - Live data only - never uses cached or training data for trends
+- Style selection in code, not LLM - ensures consistency and evidence-backed choices
 - Immediate save to My Library after generation
 - Full transparency - displays exact prompt before image creation
