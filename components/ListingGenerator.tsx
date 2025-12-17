@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { TrendData, GeneratedListing, ProcessingStage, MerchPackage, PromptMode, ImageVersion, AppView } from '../types';
 import { generateListing, generateDesignImageEnhanced } from '../services/geminiService';
-import { Loader2, CheckCircle, Edit3, ShieldCheck, AlertTriangle, FileText, Package, Image as ImageIcon, Download, Save, Lock, RefreshCw, Sparkles, Wand2, Copy } from 'lucide-react';
+import { Loader2, CheckCircle, Edit3, ShieldCheck, AlertTriangle, FileText, Package, Image as ImageIcon, Download, Save, Lock, RefreshCw, Sparkles, Wand2, Copy, ChevronDown, ChevronUp, Cpu } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import ImageRefinementChat from './ImageRefinementChat';
 import VariationsModal from './VariationsModal';
@@ -61,6 +61,9 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
 
   // Variations modal state
   const [showVariationsModal, setShowVariationsModal] = useState(false);
+
+  // Simple Autopilot info panel state
+  const [showAutopilotInfo, setShowAutopilotInfo] = useState(true);
 
   // Download mode state for HD vectorization
   const [showDownloadModal, setShowDownloadModal] = useState(false);
@@ -1045,6 +1048,83 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                  </span>
              </div>
         </div>
+
+        {/* Simple Autopilot Info Panel - shows when viewing a design with autopilot metadata */}
+        {(selectedTrend as any).finalPrompt && (
+          <div className="bg-gradient-to-r from-brand-50 to-cyan-50 dark:from-brand-900/20 dark:to-cyan-900/20 border border-brand-200 dark:border-brand-500/20 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowAutopilotInfo(!showAutopilotInfo)}
+              className="w-full px-4 py-3 flex items-center justify-between hover:bg-brand-100/50 dark:hover:bg-brand-800/20 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Cpu className="w-4 h-4 text-brand-600 dark:text-brand-400" />
+                <span className="text-sm font-semibold text-brand-700 dark:text-brand-300">Simple Autopilot Generation Details</span>
+                {(initialData as any)?.imageModel && (
+                  <span className="text-[10px] px-2 py-0.5 bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded-full border border-brand-500/20 font-medium">
+                    {(initialData as any).imageModel === 'gpt-image-1' ? 'GPT-Image' :
+                     (initialData as any).imageModel === 'ideogram' ? 'Ideogram' :
+                     (initialData as any).imageModel === 'imagen' ? 'Imagen 4' :
+                     (initialData as any).imageModel === 'dalle3' ? 'DALL-E 3' :
+                     (initialData as any).imageModel}
+                  </span>
+                )}
+              </div>
+              {showAutopilotInfo ? <ChevronUp className="w-4 h-4 text-brand-500" /> : <ChevronDown className="w-4 h-4 text-brand-500" />}
+            </button>
+
+            {showAutopilotInfo && (
+              <div className="px-4 pb-4 space-y-3">
+                {/* Trend Research */}
+                {(selectedTrend as any).description && (
+                  <div className="bg-white/50 dark:bg-black/20 rounded-lg p-3">
+                    <label className="text-[10px] font-mono text-brand-600 dark:text-brand-400 uppercase tracking-wider">Discovered Trend</label>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 mt-1">{(selectedTrend as any).description}</p>
+                  </div>
+                )}
+
+                {/* Selected Styles */}
+                {((selectedTrend as any).typography || (selectedTrend as any).effect || (selectedTrend as any).aesthetic) && (
+                  <div className="bg-white/50 dark:bg-black/20 rounded-lg p-3">
+                    <label className="text-[10px] font-mono text-brand-600 dark:text-brand-400 uppercase tracking-wider">Selected Styles</label>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {(selectedTrend as any).typography && (
+                        <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-white/10">
+                          <span className="text-gray-500 dark:text-gray-500">Typography:</span> {(selectedTrend as any).typography}
+                        </span>
+                      )}
+                      {(selectedTrend as any).effect && (
+                        <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-white/10">
+                          <span className="text-gray-500 dark:text-gray-500">Effect:</span> {(selectedTrend as any).effect}
+                        </span>
+                      )}
+                      {(selectedTrend as any).aesthetic && (
+                        <span className="text-xs px-2 py-1 bg-gray-100 dark:bg-white/10 text-gray-700 dark:text-gray-300 rounded border border-gray-200 dark:border-white/10">
+                          <span className="text-gray-500 dark:text-gray-500">Aesthetic:</span> {(selectedTrend as any).aesthetic}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Generated Prompt */}
+                <div className="bg-white/50 dark:bg-black/20 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-mono text-brand-600 dark:text-brand-400 uppercase tracking-wider">Generated Image Prompt</label>
+                    <button
+                      onClick={() => navigator.clipboard.writeText((selectedTrend as any).finalPrompt || '')}
+                      className="text-[10px] text-brand-500 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300 flex items-center gap-1"
+                    >
+                      <Copy className="w-3 h-3" /> Copy
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 font-mono leading-relaxed whitespace-pre-wrap">
+                    {(selectedTrend as any).finalPrompt}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="bg-white dark:bg-dark-800 border border-gray-200 dark:border-white/10 rounded-xl p-6 space-y-6 relative overflow-hidden">
            <div className="absolute top-0 right-0 p-4 opacity-10">
