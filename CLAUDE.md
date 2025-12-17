@@ -84,6 +84,11 @@ When implementing or modifying API integrations, refer to these documentation fi
 
 ## Feature Documentation
 
+### Simple Autopilot
+- **API Route**: `app/api/simple-autopilot/route.ts`
+- **UI Component**: `components/SimpleAutopilot.tsx`
+- **Purpose**: One-click merch generation from trending topics
+
 ### Merch Generator
 - **Architecture**: `docs/merch-generator/ARCHITECTURE.md`
 - **API Reference**: `docs/merch-generator/API_REFERENCE.md`
@@ -514,3 +519,59 @@ These agents IMPLEMENT the selected styleSpec. They do NOT re-decide style when 
 - Execution agents use research data as primary source
 - Behavior unchanged from pre-StyleIntel implementation
 - styleIntelMeta shows `fallbackReason` for debugging
+
+### Simple Autopilot
+
+**Implementation** (`app/api/simple-autopilot/route.ts`, `components/SimpleAutopilot.tsx`):
+
+A streamlined, one-click merch generation feature that discovers trending topics and creates complete designs.
+
+**UI Controls**:
+- **Category/Niche** (optional): Text input to focus trend search (e.g., "gaming", "fitness", "dogs")
+- **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, DALL-E 3
+
+**Generation Flow**:
+1. **Trend Discovery** - Perplexity API finds currently trending topic with built-in diversity
+2. **Slot Extraction** - Gemini extracts design values (style, textTop, textBottom, aesthetic, color)
+3. **Prompt Display** - Shows completed prompt before image generation
+4. **Image Generation** - Selected model creates the design
+5. **Listing Generation** - Gemini creates brand, title, bullets, description
+6. **Auto-Save** - Design saved to My Library (DesignHistory table)
+
+**Prompt Template**:
+```
+[STYLE] style t-shirt design (no mockup) [STYLE] style typography with the words '[TEXT_TOP]' at the top and '[TEXT_BOTTOM]' at the bottom. Make it in a [AESTHETIC] style using big typography and [STYLE] effects. Add a relevant image in the middle of the design. 4500x5400px use all the canvas. Make it for a [COLOR] shirt.
+```
+
+**Diversity Mechanism**:
+To avoid repetitive results, the Perplexity query uses random variations:
+- **Time windows**: "trending right now", "emerging this week", "going viral today", etc.
+- **Angles**: "viral on social media", "breakout trend", "growing interest", etc.
+- **Higher temperature** (0.8) for more variety in responses
+
+**API Endpoint**:
+```
+POST /api/simple-autopilot
+Body: {
+  "category": "optional niche string",
+  "imageModel": "ideogram" | "imagen" | "gpt-image-1" | "dalle3"
+}
+
+Response: {
+  "success": true,
+  "data": {
+    "trendData": { "topic": "...", "summary": "...", "source": "..." },
+    "slotValues": { "style": "...", "textTop": "...", "textBottom": "...", ... },
+    "prompt": "The complete prompt sent to image model",
+    "imageUrl": "Generated image URL or base64",
+    "listing": { "brand": "...", "title": "...", "bullet1": "...", "bullet2": "...", "description": "..." },
+    "savedDesignId": "UUID of saved design"
+  }
+}
+```
+
+**Key Characteristics**:
+- No risk levels, batch modes, or compliance passes - minimal by design
+- Live data only - never uses cached or training data for trends
+- Immediate save to My Library after generation
+- Full transparency - displays exact prompt before image creation
