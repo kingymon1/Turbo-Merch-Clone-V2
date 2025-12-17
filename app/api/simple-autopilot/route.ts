@@ -201,10 +201,10 @@ Return your findings in this exact JSON format:
  * Use Gemini to extract slot values for the design template
  */
 async function extractSlotValues(trendData: { topic: string; summary: string }): Promise<SlotValues> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
 
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not configured');
+    throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
   const prompt = `You are designing a t-shirt based on this trending topic.
@@ -343,10 +343,10 @@ async function generateWithIdeogram(prompt: string): Promise<string> {
 }
 
 async function generateWithImagen(prompt: string): Promise<string> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
 
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not configured');
+    throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
@@ -460,10 +460,10 @@ async function generateWithDalle3(prompt: string): Promise<string> {
  * Generate listing text using Gemini
  */
 async function generateListing(slots: SlotValues): Promise<{ brand: string; title: string; bullet1: string; bullet2: string; description: string }> {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
 
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY not configured');
+    throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
   const prompt = `Generate Amazon merch listing text for a t-shirt with this design:
