@@ -68,12 +68,36 @@ export async function GET(
     const listingData = fullListingData as any;
     const runConfig = fullRunConfig as any;
 
-    return NextResponse.json({
-      id: design.id,
-      createdAt: design.createdAt.getTime(),
-      expiresAt: design.expiresAt?.getTime() || Date.now() + (365 * 24 * 60 * 60 * 1000),
-      tierAtCreation: runConfig?.tierAtCreation || 'free',
-      trend: runConfig?.trend || {
+    // Build trend data - handle Simple Autopilot format differently
+    let trendData;
+    if (runConfig?.mode === 'simple-autopilot') {
+      // Simple Autopilot stores data in a different structure
+      const research = runConfig.research || {};
+      const selectedStyles = runConfig.selectedStyles || {};
+      const llmDerived = runConfig.llmDerived || {};
+
+      trendData = {
+        topic: research.trendTopic || design.niche || 'Unknown',
+        platform: 'Trending',
+        volume: 'High',
+        sentiment: 'Positive',
+        keywords: listingData?.keywords || [],
+        description: research.trendSummary || '',
+        visualStyle: `${selectedStyles.typography || ''} with ${selectedStyles.effect || ''} effects in ${selectedStyles.aesthetic || ''} style`,
+        customerPhrases: [],
+        // Simple Autopilot specific fields
+        source: research.trendSource || 'perplexity',
+        typography: selectedStyles.typography || '',
+        effect: selectedStyles.effect || '',
+        aesthetic: selectedStyles.aesthetic || '',
+        textTop: llmDerived.textTop || '',
+        textBottom: llmDerived.textBottom || '',
+        imageDescription: llmDerived.imageDescription || '',
+        finalPrompt: runConfig.finalPrompt || listingData?.imagePrompt || '',
+      };
+    } else {
+      // Standard format from other modes
+      trendData = runConfig?.trend || {
         topic: design.niche || 'Unknown',
         platform: design.targetMarket || 'General',
         volume: 'Medium',
@@ -82,7 +106,15 @@ export async function GET(
         description: '',
         visualStyle: '',
         customerPhrases: [],
-      },
+      };
+    }
+
+    return NextResponse.json({
+      id: design.id,
+      createdAt: design.createdAt.getTime(),
+      expiresAt: design.expiresAt?.getTime() || Date.now() + (365 * 24 * 60 * 60 * 1000),
+      tierAtCreation: runConfig?.tierAtCreation || 'free',
+      trend: trendData,
       listing: {
         title: listingData?.title || design.slogan || 'Untitled Design',
         brand: listingData?.brand || 'Custom Brand',
@@ -90,13 +122,22 @@ export async function GET(
         bullet2: listingData?.bullet2 || '',
         description: listingData?.description || '',
         keywords: listingData?.keywords || [],
-        imagePrompt: listingData?.imagePrompt || '',
+        imagePrompt: runConfig?.finalPrompt || listingData?.imagePrompt || '',
         designText: listingData?.designText || design.slogan || '',
         price: listingData?.price,
       },
       imageUrl: design.imageUrl || '',
       imageHistory: (design.imageHistory as any[]) || [],
       promptMode: design.promptMode || 'advanced',
+      // Include Simple Autopilot metadata if applicable
+      ...(runConfig?.mode === 'simple-autopilot' && {
+        simpleAutopilot: {
+          research: runConfig.research,
+          selectedStyles: runConfig.selectedStyles,
+          llmDerived: runConfig.llmDerived,
+          finalPrompt: runConfig.finalPrompt,
+        },
+      }),
     });
   } catch (error: any) {
     console.error('[GET Design] Error:', error);
