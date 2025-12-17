@@ -586,7 +586,7 @@ async function saveToLibrary(
         tierAtCreation: user.subscriptionTier,
         mode: 'simple-autopilot',
         imageModel,
-        slots,
+        slots: { ...slots },
         savedAt: now.toISOString(),
       },
       niche: slots.trendTopic,
