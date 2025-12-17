@@ -129,6 +129,8 @@ export async function GET(
       imageUrl: design.imageUrl || '',
       imageHistory: (design.imageHistory as any[]) || [],
       promptMode: design.promptMode || 'advanced',
+      // Image model used for generation
+      imageModel: runConfig?.imageModel || null,
       // Include Simple Autopilot metadata if applicable
       ...(runConfig?.mode === 'simple-autopilot' && {
         simpleAutopilot: {
@@ -136,6 +138,7 @@ export async function GET(
           selectedStyles: runConfig.selectedStyles,
           llmDerived: runConfig.llmDerived,
           finalPrompt: runConfig.finalPrompt,
+          imageModel: runConfig.imageModel,
         },
       }),
     });

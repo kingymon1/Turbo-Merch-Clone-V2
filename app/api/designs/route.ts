@@ -169,6 +169,8 @@ export async function GET(request: NextRequest) {
           imageUrl: design.imageUrl || '',
           imageHistory: (design as any).imageHistory || [],
           promptMode: (design as any).promptMode || 'advanced',
+          // Image model used for generation
+          imageModel: runConfig?.imageModel || null,
         };
       } catch (transformError: any) {
         console.error(`[GET /api/designs] Error transforming design ${design.id}:`, transformError);
