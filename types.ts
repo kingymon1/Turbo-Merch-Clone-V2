@@ -180,6 +180,8 @@ export interface MerchPackage {
   promptMode?: PromptMode;
   viralityLevel?: number;
   generatedAt?: number; // Unix timestamp for time tracking
+  // Image model used for generation (Simple Autopilot)
+  imageModel?: string | null;
 }
 
 export interface SavedListing extends MerchPackage {
