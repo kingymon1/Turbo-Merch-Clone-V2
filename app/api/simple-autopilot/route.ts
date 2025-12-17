@@ -646,6 +646,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('[SimpleAutopilot] Category:', category || '(any)');
     console.log('[SimpleAutopilot] Image model:', imageModel);
 
+    // Log which API keys are configured (for debugging - don't log actual values)
+    console.log('[SimpleAutopilot] API Keys configured:', {
+      PERPLEXITY_API_KEY: !!process.env.PERPLEXITY_API_KEY,
+      GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+      IDEOGRAM_API_KEY: !!process.env.IDEOGRAM_API_KEY,
+      OPENAI_API_KEY: !!process.env.OPENAI_API_KEY,
+    });
+
     // Step 1: Find trending topic via Perplexity
     console.log('[SimpleAutopilot] Step 1: Finding trending topic...');
     const trendData = await findTrendingTopic(category);
