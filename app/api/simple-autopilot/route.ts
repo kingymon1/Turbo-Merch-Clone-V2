@@ -17,6 +17,7 @@ import prisma from '@/lib/prisma';
 import { getTierConfig, parseRetentionDays } from '@/lib/pricing';
 import type { TierName } from '@/lib/pricing';
 import { uploadImage, uploadResearchData } from '@/lib/r2-storage';
+import { selectAllStyles, buildImagePrompt } from '@/lib/simple-style-selector';
 
 export const maxDuration = 300;
 
@@ -35,13 +36,18 @@ interface SimpleAutopilotRequest {
 }
 
 interface SlotValues {
-  style: string;
+  // Code-selected styles (from simple-style-selector.ts)
+  typography: string;
+  effect: string;
+  aesthetic: string;
+  // LLM-derived values
   textTop: string;
   textBottom: string;
-  aesthetic: string;
-  color: string;
+  imageDescription: string;
+  // Trend research data
   trendTopic: string;
   trendSummary: string;
+  trendSource: string;
 }
 
 interface GenerationResult {
@@ -198,33 +204,42 @@ Return your findings in this exact JSON format:
 }
 
 /**
- * Use Gemini to extract slot values for the design template
+ * Use Gemini to extract LLM-derived values for the design template
+ * Note: Typography, Effect, and Aesthetic are selected by code (70% Evergreen / 30% Emerging)
  */
-async function extractSlotValues(trendData: { topic: string; summary: string }): Promise<SlotValues> {
+async function extractSlotValues(
+  trendData: { topic: string; summary: string; source: string },
+  styles: { typography: string; effect: string; aesthetic: string }
+): Promise<SlotValues> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
 
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
+  // LLM only derives TEXT_TOP, TEXT_BOTTOM, and IMAGE_DESCRIPTION
   const prompt = `You are designing a t-shirt based on this trending topic.
 
 TREND TOPIC: ${trendData.topic}
 TREND SUMMARY: ${trendData.summary}
 
-Extract design values for this template. The final prompt will be:
-"[STYLE] style t-shirt design (no mockup) [STYLE] style typography with the words '[TEXT_TOP]' at the top and '[TEXT_BOTTOM]' at the bottom. Make it in a [AESTHETIC] style using big typography and [STYLE] effects. Add a relevant image in the middle of the design. 4500x5400px use all the canvas. Make it for a [COLOR] shirt."
+PRE-SELECTED STYLE (do not change these):
+- Typography: ${styles.typography}
+- Effect: ${styles.effect}
+- Aesthetic: ${styles.aesthetic}
+
+Your job is to derive ONLY three values that fit the trend contextually:
+
+1. TEXT_TOP: 2-4 words for the top of the shirt - the hook/attention grabber that relates to the trend
+2. TEXT_BOTTOM: 2-4 words for the bottom - the punchline/context that completes the message (NEVER use generic phrases like "Trending Now", "Hot Topic", etc.)
+3. IMAGE_DESCRIPTION: Brief description (5-15 words) of a visual element to place in the middle of the design. Use plain human language with uplift descriptors (e.g., "a majestic eagle soaring" not just "eagle")
 
 Respond ONLY with valid JSON, no other text:
 {
-  "style": "Choose ONE: bold, vintage, minimalist, grunge, elegant, playful, retro, modern, hand-drawn, neon",
-  "textTop": "2-3 words for the top of the shirt (the hook/attention grabber)",
-  "textBottom": "2-3 words for the bottom (the punchline/context)",
-  "aesthetic": "Describe the visual aesthetic in 2-3 words (e.g., 'urban street art', 'classic americana', 'pop culture mashup')",
-  "color": "Choose the best shirt color: black, white, navy, heather grey, red, royal blue, forest green"
-}
-
-Keep text SHORT - max 3 words each. The combined text should tell a story or deliver a message.`;
+  "textTop": "2-4 words, catchy and relevant to the trend",
+  "textBottom": "2-4 words, completes the message meaningfully",
+  "imageDescription": "Brief visual description with uplift descriptors"
+}`;
 
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: 'POST',
@@ -252,37 +267,50 @@ Keep text SHORT - max 3 words each. The combined text should tell a story or del
 
   console.log('[SimpleAutopilot] Gemini slot values:', content);
 
-  let slots: any;
+  let llmValues: any;
   try {
-    slots = JSON.parse(content);
+    llmValues = JSON.parse(content);
   } catch (parseError) {
     // Fallback if parsing fails
     console.warn('[SimpleAutopilot] Failed to parse Gemini JSON, using defaults');
-    slots = {
-      style: 'bold',
-      textTop: trendData.topic.slice(0, 15),
-      textBottom: 'Trending Now',
-      aesthetic: 'modern street',
-      color: 'black',
+    llmValues = {
+      textTop: trendData.topic.split(' ').slice(0, 3).join(' '),
+      textBottom: 'Life Style',
+      imageDescription: 'a bold graphic element representing the trend',
     };
   }
 
   return {
-    style: slots.style || 'bold',
-    textTop: slots.textTop || trendData.topic.slice(0, 15),
-    textBottom: slots.textBottom || 'Trending Now',
-    aesthetic: slots.aesthetic || 'modern street',
-    color: slots.color || 'black',
+    // Code-selected styles
+    typography: styles.typography,
+    effect: styles.effect,
+    aesthetic: styles.aesthetic,
+    // LLM-derived values
+    textTop: llmValues.textTop || trendData.topic.split(' ').slice(0, 3).join(' '),
+    textBottom: llmValues.textBottom || 'Life Style',
+    imageDescription: llmValues.imageDescription || 'a bold graphic element',
+    // Trend research data
     trendTopic: trendData.topic,
     trendSummary: trendData.summary,
+    trendSource: trendData.source,
   };
 }
 
 /**
- * Build the complete prompt from slot values
+ * Build the complete prompt from slot values using the new template
+ * Template: [TYPOGRAPHY] t-shirt design (no mockup) [EFFECT] style typography with the words '[TEXT_TOP]' at the top
+ * and '[TEXT_BOTTOM]' at the bottom. Make it in a [AESTHETIC] style using big typography and [EFFECT] effects.
+ * Add [IMAGE_DESCRIPTION] in the middle of the design. 4500x5400px use all the canvas. Make it for a black shirt.
  */
 function buildPrompt(slots: SlotValues): string {
-  return `${slots.style} style t-shirt design (no mockup) ${slots.style} style typography with the words '${slots.textTop}' at the top and '${slots.textBottom}' at the bottom. Make it in a ${slots.aesthetic} style using big typography and ${slots.style} effects. Add a relevant image in the middle of the design. 4500x5400px use all the canvas. Make it for a ${slots.color} shirt.`;
+  return buildImagePrompt({
+    typography: slots.typography,
+    effect: slots.effect,
+    aesthetic: slots.aesthetic,
+    textTop: slots.textTop,
+    textBottom: slots.textBottom,
+    imageDescription: slots.imageDescription,
+  });
 }
 
 /**
@@ -469,7 +497,9 @@ async function generateListing(slots: SlotValues): Promise<{ brand: string; titl
   const prompt = `Generate Amazon merch listing text for a t-shirt with this design:
 - Top text: "${slots.textTop}"
 - Bottom text: "${slots.textBottom}"
-- Style: ${slots.style}
+- Typography: ${slots.typography}
+- Visual effect: ${slots.effect}
+- Aesthetic: ${slots.aesthetic}
 - Trend: ${slots.trendTopic}
 - Summary: ${slots.trendSummary}
 
@@ -576,7 +606,7 @@ async function saveToLibrary(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (retentionDays * 24 * 60 * 60 * 1000));
 
-  // Create design record
+  // Create design record with full research data
   const design = await prisma.designHistory.create({
     data: {
       id: designId,
@@ -599,13 +629,32 @@ async function saveToLibrary(
         bullet1: listing.bullet1,
         bullet2: listing.bullet2,
         description: listing.description,
-        keywords: [slots.trendTopic, slots.style, slots.aesthetic],
+        keywords: [slots.trendTopic, slots.typography, slots.aesthetic, slots.effect],
         imagePrompt: prompt,
         designText: `${slots.textTop} ${slots.textBottom}`,
       },
       artPrompt: {
         prompt,
-        style: slots.style,
+        typography: slots.typography,
+        effect: slots.effect,
+        aesthetic: slots.aesthetic,
+      },
+      // Research data stored in researchData field
+      researchData: {
+        trendTopic: slots.trendTopic,
+        trendSummary: slots.trendSummary,
+        trendSource: slots.trendSource,
+        selectedStyles: {
+          typography: slots.typography,
+          effect: slots.effect,
+          aesthetic: slots.aesthetic,
+        },
+        llmDerived: {
+          textTop: slots.textTop,
+          textBottom: slots.textBottom,
+          imageDescription: slots.imageDescription,
+        },
+        finalPrompt: prompt,
       },
       imageUrl: r2ImageUrl,
       imageHistory: [],
@@ -651,27 +700,32 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const trendData = await findTrendingTopic(category);
     console.log('[SimpleAutopilot] Found trend:', trendData.topic);
 
-    // Step 2: Extract slot values via Gemini
-    console.log('[SimpleAutopilot] Step 2: Extracting slot values...');
-    const slotValues = await extractSlotValues(trendData);
+    // Step 2: Select styles via weighted random (70% Evergreen / 30% Emerging)
+    console.log('[SimpleAutopilot] Step 2: Selecting styles (code-based)...');
+    const selectedStyles = selectAllStyles();
+    console.log('[SimpleAutopilot] Selected styles:', selectedStyles);
+
+    // Step 3: Extract LLM-derived values via Gemini (TEXT_TOP, TEXT_BOTTOM, IMAGE_DESCRIPTION)
+    console.log('[SimpleAutopilot] Step 3: Extracting LLM-derived values...');
+    const slotValues = await extractSlotValues(trendData, selectedStyles);
     console.log('[SimpleAutopilot] Slot values:', slotValues);
 
-    // Step 3: Build prompt
+    // Step 4: Build prompt
     const prompt = buildPrompt(slotValues);
-    console.log('[SimpleAutopilot] Step 3: Built prompt:', prompt);
+    console.log('[SimpleAutopilot] Step 4: Built prompt:', prompt);
 
-    // Step 4: Generate image
-    console.log('[SimpleAutopilot] Step 4: Generating image...');
+    // Step 5: Generate image
+    console.log('[SimpleAutopilot] Step 5: Generating image...');
     const imageUrl = await generateImage(prompt, imageModel);
     console.log('[SimpleAutopilot] Image generated');
 
-    // Step 5: Generate listing
-    console.log('[SimpleAutopilot] Step 5: Generating listing...');
+    // Step 6: Generate listing
+    console.log('[SimpleAutopilot] Step 6: Generating listing...');
     const listing = await generateListing(slotValues);
     console.log('[SimpleAutopilot] Listing generated');
 
-    // Step 6: Save to library
-    console.log('[SimpleAutopilot] Step 6: Saving to library...');
+    // Step 7: Save to library
+    console.log('[SimpleAutopilot] Step 7: Saving to library...');
     const savedDesignId = await saveToLibrary(userId, slotValues, prompt, imageUrl, listing, imageModel);
     console.log('[SimpleAutopilot] Saved with ID:', savedDesignId);
 
