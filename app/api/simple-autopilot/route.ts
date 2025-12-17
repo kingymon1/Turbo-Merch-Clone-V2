@@ -606,7 +606,7 @@ async function saveToLibrary(
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (retentionDays * 24 * 60 * 60 * 1000));
 
-  // Create design record with full research data
+  // Create design record with full research data stored in runConfig
   const design = await prisma.designHistory.create({
     data: {
       id: designId,
@@ -618,6 +618,25 @@ async function saveToLibrary(
         imageModel,
         slots: { ...slots },
         savedAt: now.toISOString(),
+        // Research data
+        research: {
+          trendTopic: slots.trendTopic,
+          trendSummary: slots.trendSummary,
+          trendSource: slots.trendSource,
+        },
+        // Style selection data
+        selectedStyles: {
+          typography: slots.typography,
+          effect: slots.effect,
+          aesthetic: slots.aesthetic,
+        },
+        // LLM-derived content
+        llmDerived: {
+          textTop: slots.textTop,
+          textBottom: slots.textBottom,
+          imageDescription: slots.imageDescription,
+        },
+        finalPrompt: prompt,
       },
       niche: slots.trendTopic,
       slogan: `${slots.textTop} ${slots.textBottom}`,
@@ -638,23 +657,6 @@ async function saveToLibrary(
         typography: slots.typography,
         effect: slots.effect,
         aesthetic: slots.aesthetic,
-      },
-      // Research data stored in researchData field
-      researchData: {
-        trendTopic: slots.trendTopic,
-        trendSummary: slots.trendSummary,
-        trendSource: slots.trendSource,
-        selectedStyles: {
-          typography: slots.typography,
-          effect: slots.effect,
-          aesthetic: slots.aesthetic,
-        },
-        llmDerived: {
-          textTop: slots.textTop,
-          textBottom: slots.textBottom,
-          imageDescription: slots.imageDescription,
-        },
-        finalPrompt: prompt,
       },
       imageUrl: r2ImageUrl,
       imageHistory: [],
