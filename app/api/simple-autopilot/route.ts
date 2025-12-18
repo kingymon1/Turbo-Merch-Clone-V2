@@ -28,7 +28,7 @@ const PERPLEXITY_API_URL = 'https://api.perplexity.ai/chat/completions';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
 // Supported image models
-type ImageModel = 'ideogram' | 'imagen' | 'gpt-image-1' | 'dalle3';
+type ImageModel = 'ideogram' | 'imagen' | 'gpt-image-1' | 'gpt-image-1.5';
 
 interface SimpleAutopilotRequest {
   category?: string;
@@ -326,8 +326,8 @@ async function generateImage(prompt: string, model: ImageModel): Promise<string>
       return generateWithImagen(prompt);
     case 'gpt-image-1':
       return generateWithGptImage1(prompt);
-    case 'dalle3':
-      return generateWithDalle3(prompt);
+    case 'gpt-image-1.5':
+      return generateWithGptImage15(prompt);
     default:
       throw new Error(`Unknown image model: ${model}`);
   }
@@ -446,7 +446,7 @@ async function generateWithGptImage1(prompt: string): Promise<string> {
   throw new Error('No image data in GPT-Image-1 response');
 }
 
-async function generateWithDalle3(prompt: string): Promise<string> {
+async function generateWithGptImage15(prompt: string): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
@@ -460,28 +460,29 @@ async function generateWithDalle3(prompt: string): Promise<string> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'dall-e-3',
+      model: 'gpt-image-1.5',
       prompt,
       n: 1,
-      size: '1024x1792',
+      size: '1024x1536',
       quality: 'hd',
-      style: 'vivid',
-      response_format: 'url',
+      background: 'transparent',
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`DALL-E 3 API error: ${response.status} - ${errorText}`);
+    throw new Error(`GPT-Image-1.5 API error: ${response.status} - ${errorText}`);
   }
 
   const data = await response.json();
 
-  if (data.data?.[0]?.url) {
+  if (data.data?.[0]?.b64_json) {
+    return `data:image/png;base64,${data.data[0].b64_json}`;
+  } else if (data.data?.[0]?.url) {
     return data.data[0].url;
   }
 
-  throw new Error('No image URL in DALL-E 3 response');
+  throw new Error('No image data in GPT-Image-1.5 response');
 }
 
 /**
@@ -685,7 +686,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const { category, imageModel } = body;
 
     // Validate image model
-    const validModels: ImageModel[] = ['ideogram', 'imagen', 'gpt-image-1', 'dalle3'];
+    const validModels: ImageModel[] = ['ideogram', 'imagen', 'gpt-image-1', 'gpt-image-1.5'];
     if (!validModels.includes(imageModel)) {
       return NextResponse.json(
         { success: false, error: `Invalid image model. Must be one of: ${validModels.join(', ')}` },

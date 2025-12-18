@@ -530,7 +530,7 @@ A streamlined, one-click merch generation feature that discovers trending topics
 
 **UI Controls**:
 - **Category/Niche** (optional): Text input to focus trend search (e.g., "gaming", "fitness", "dogs")
-- **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, DALL-E 3
+- **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, GPT-Image-1.5
 
 **Generation Flow**:
 1. **Trend Discovery** - Perplexity API finds currently trending topic with built-in diversity
@@ -568,7 +568,7 @@ To avoid repetitive results, the Perplexity query uses random variations:
 POST /api/simple-autopilot
 Body: {
   "category": "optional niche string",
-  "imageModel": "ideogram" | "imagen" | "gpt-image-1" | "dalle3"
+  "imageModel": "ideogram" | "imagen" | "gpt-image-1" | "gpt-image-1.5"
 }
 
 Response: {
