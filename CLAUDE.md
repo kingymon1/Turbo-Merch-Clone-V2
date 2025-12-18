@@ -206,10 +206,10 @@ npx prisma studio
 
 ### Available Image Models
 The merch generator supports multiple image generation models:
-- **GPT-Image-1** (OpenAI) - Good text rendering, native transparent backgrounds, 75% cheaper than DALL-E 3
+- **GPT-Image-1** (OpenAI) - Good text rendering, native transparent backgrounds
+- **GPT-Image-1.5** (OpenAI) - 4x faster, superior text rendering, transparent backgrounds, 20% cheaper
 - **Ideogram** - Best-in-class typography, DESIGN style type, 62 style presets
 - **Imagen 4** (Google) - Strong text rendering, enterprise-grade
-- **DALL-E 3** (OpenAI) - Legacy option, vivid/natural styles
 
 ### Prompt Structure
 For t-shirt designs, prompts should follow this structure:

@@ -60,7 +60,7 @@ export interface AutopilotParams {
 }
 
 // Image generation models
-export type ImageModel = 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3';
+export type ImageModel = 'gemini' | 'gpt-image-1' | 'ideogram' | 'gpt-image-1.5';
 
 export interface GenerationRequest {
   mode: 'autopilot' | 'manual';
@@ -305,8 +305,8 @@ export interface DesignForm {
     imagen?: {
       // Future: Imagen-specific options
     };
-    dalle3?: {
-      style?: 'vivid' | 'natural';
+    gptImage15?: {
+      quality?: 'low' | 'medium' | 'high' | 'auto';
     };
   };
 }

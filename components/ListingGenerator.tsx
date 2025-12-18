@@ -1064,7 +1064,7 @@ const ListingGenerator: React.FC<ListingGeneratorProps> = ({ selectedTrend, auto
                     {(initialData as any).imageModel === 'gpt-image-1' ? 'GPT-Image' :
                      (initialData as any).imageModel === 'ideogram' ? 'Ideogram' :
                      (initialData as any).imageModel === 'imagen' ? 'Imagen 4' :
-                     (initialData as any).imageModel === 'dalle3' ? 'DALL-E 3' :
+                     (initialData as any).imageModel === 'gpt-image-1.5' ? 'GPT-Image-1.5' :
                      (initialData as any).imageModel}
                   </span>
                 )}

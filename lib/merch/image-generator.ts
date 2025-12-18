@@ -1,13 +1,13 @@
 /**
  * Image Generator for Merch Design Generator
  *
- * Generates t-shirt design images using Gemini Imagen and DALL-E 3.
+ * Generates t-shirt design images using multiple AI models.
  * This module wraps the existing services for use by the merch generator feature.
  *
  * ARCHITECTURE:
  * - generateMerchImage() - Legacy function using direct prompts
  * - generateMerchImageFromBrief() - New function using DesignBrief system with Claude enforcement
- * - generateMerchImageWithModelSelection() - Allows choosing between Gemini and DALL-E
+ * - generateMerchImageWithModelSelection() - Allows choosing between models (Gemini, GPT-Image-1, GPT-Image-1.5, Ideogram)
  */
 
 import { generateDesignImage } from '@/services/geminiService';
@@ -131,7 +131,7 @@ export function isValidImageUrl(url: string): boolean {
 // NEW: DESIGN BRIEF SYSTEM - Style-compliant image generation
 // ============================================================================
 
-export type ImageModel = 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3';
+export type ImageModel = 'gemini' | 'gpt-image-1' | 'ideogram' | 'gpt-image-1.5';
 
 export interface BriefBasedGenerationResult extends ImageGenerationResult {
   model: ImageModel;
@@ -171,8 +171,8 @@ export async function generateMerchImageFromBrief(
       case 'ideogram':
         imageUrl = await generateWithIdeogram(executionResult.prompt, brief);
         break;
-      case 'dalle3':
-        imageUrl = await generateWithDalle3(executionResult.prompt);
+      case 'gpt-image-1.5':
+        imageUrl = await generateWithGptImage15(executionResult.prompt, brief);
         break;
       case 'gemini':
       default:
@@ -231,21 +231,30 @@ poorly rendered text, childish scribbles, low-effort templates, blurry elements,
 pixelated graphics, MS Paint quality, default system fonts.`;
 
 /**
- * Generate image using DALL-E 3 (Legacy)
+ * Generate image using GPT-Image-1.5 (OpenAI's flagship model)
+ *
+ * Key features:
+ * - 4x faster than GPT-Image-1
+ * - 20% cheaper pricing
+ * - Superior text rendering
+ * - Native transparent background support
  */
-async function generateWithDalle3(prompt: string): Promise<string> {
+async function generateWithGptImage15(prompt: string, brief: DesignBrief): Promise<string> {
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    console.warn('[ImageGenerator] OPENAI_API_KEY not set, falling back to Gemini');
-    throw new Error('DALL-E 3 not configured');
+    console.warn('[ImageGenerator] OPENAI_API_KEY not set');
+    throw new Error('GPT-Image-1.5 not configured');
   }
 
   try {
-    console.log('[ImageGenerator] Generating with DALL-E 3...');
+    console.log('[ImageGenerator] Generating with GPT-Image-1.5...');
+
+    // Build text-first non-negotiable prompt structure
+    const textFirstPrompt = buildTextFirstPrompt(prompt, brief);
 
     // Add quality floor constraints
-    const enhancedPrompt = `${prompt}
+    const finalPrompt = `${textFirstPrompt}
 
 ${QUALITY_FLOOR_CONSTRAINTS}`;
 
@@ -256,32 +265,34 @@ ${QUALITY_FLOOR_CONSTRAINTS}`;
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: enhancedPrompt,
+        model: 'gpt-image-1.5',
+        prompt: finalPrompt,
         n: 1,
-        size: '1024x1792',  // Portrait
-        quality: 'hd',
-        style: 'vivid',
-        response_format: 'url'
+        size: '1024x1536',  // Portrait aspect ratio
+        quality: 'high',
+        background: 'transparent',  // Native transparent background support
       })
     });
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(`DALL-E 3 API error: ${response.status} - ${JSON.stringify(errorData)}`);
+      throw new Error(`GPT-Image-1.5 API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
 
     const data = await response.json();
 
-    if (data.data?.[0]?.url) {
-      console.log('[ImageGenerator] DALL-E 3 generation successful');
+    if (data.data?.[0]?.b64_json) {
+      console.log('[ImageGenerator] GPT-Image-1.5 generation successful (base64)');
+      return `data:image/png;base64,${data.data[0].b64_json}`;
+    } else if (data.data?.[0]?.url) {
+      console.log('[ImageGenerator] GPT-Image-1.5 generation successful (url)');
       return data.data[0].url;
     }
 
-    throw new Error('No image URL in DALL-E 3 response');
+    throw new Error('No image data in GPT-Image-1.5 response');
 
   } catch (error) {
-    console.error('[ImageGenerator] DALL-E 3 error:', error);
+    console.error('[ImageGenerator] GPT-Image-1.5 error:', error);
     throw error;
   }
 }
@@ -486,11 +497,11 @@ export async function generateMerchImageWithModelSelection(
 
   if (testBothModels) {
     // Generate with both models for comparison
-    console.log('[ImageGenerator] Testing both models (Gemini and DALL-E 3)');
+    console.log('[ImageGenerator] Testing both models (Gemini and GPT-Image-1.5)');
 
     const results = await Promise.allSettled([
       generateMerchImageFromBrief(brief, 'gemini', promptMode),
-      generateMerchImageFromBrief(brief, 'dalle3', promptMode)
+      generateMerchImageFromBrief(brief, 'gpt-image-1.5', promptMode)
     ]);
 
     const successfulResults: BriefBasedGenerationResult[] = [];
