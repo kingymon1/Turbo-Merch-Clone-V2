@@ -533,18 +533,39 @@ A streamlined, one-click merch generation feature that discovers trending topics
 - **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, GPT-Image-1.5
 
 **Generation Flow**:
-1. **Trend Discovery** - Perplexity API finds currently trending topic with built-in diversity
+1. **Trend Discovery** - Perplexity API (sonar model) finds trending topic and returns:
+   - `topic`: The trend name
+   - `phrase`: 2-5 word t-shirt phrase (used as TEXT_TOP)
+   - `audience`: Who would buy this shirt
+   - `mood`: Emotional tone (funny, inspirational, sarcastic, etc.)
+   - `summary`: Why it's trending
 2. **Style Selection (Code)** - Weighted random selection from proven style options:
    - 70% Evergreen (E) options, 30% Emerging (M) options
    - Selects one TYPOGRAPHY, one EFFECT, one AESTHETIC
-3. **LLM Text Derivation** - Gemini receives pre-selected styles + trend data and derives:
-   - TEXT_TOP (contextually relevant to trend)
-   - TEXT_BOTTOM (contextually relevant - never generic like "Trending Now")
-   - IMAGE_DESCRIPTION (brief, plain language with uplift descriptors)
+3. **LLM Complementation** - Gemini receives the phrase + mood + audience and derives:
+   - TEXT_BOTTOM (complements the phrase - never generic like "Life Style")
+   - IMAGE_DESCRIPTION (specific visual with uplift descriptors)
+   - Note: TEXT_TOP comes directly from Perplexity's `phrase` field
 4. **Prompt Display** - Shows completed prompt before image generation
 5. **Image Generation** - Selected model creates the design
 6. **Listing Generation** - Gemini creates brand, title, bullets, description
 7. **Auto-Save** - Design saved to My Library (DesignHistory table)
+
+**Data Flow**:
+```
+Perplexity Research
+    ↓
+Returns: topic, phrase, audience, mood, summary
+    ↓
+phrase → textTop (directly, max 6 words enforced)
+mood + audience → context for Gemini
+    ↓
+Gemini (with responseSchema for reliable JSON)
+    ↓
+Derives: textBottom, imageDescription (complementing the phrase)
+    ↓
+Code builds final prompt from all slot values
+```
 
 **Prompt Template** (from `docs/simple-style-selector.md`):
 ```
@@ -553,7 +574,8 @@ A streamlined, one-click merch generation feature that discovers trending topics
 
 **Style Selection Rules**:
 - TYPOGRAPHY, EFFECT, and AESTHETIC are selected by code using weighted random (70% E / 30% M)
-- LLM does NOT choose styles - it only derives text content from the trend
+- LLM does NOT choose styles - Gemini only derives textBottom and imageDescription
+- TEXT_TOP comes from Perplexity research (phrase field), not from Gemini
 - All style options are documented in `docs/simple-style-selector.md` with rationale
 - Designs optimized for black shirts (highest contrast, broadest appeal)
 
@@ -562,6 +584,14 @@ To avoid repetitive results, the Perplexity query uses random variations:
 - **Time windows**: "trending right now", "emerging this week", "going viral today", etc.
 - **Angles**: "viral on social media", "breakout trend", "growing interest", etc.
 - **Higher temperature** (0.8) for more variety in responses
+
+**Cost Per Generation** (~$0.09 with GPT-Image-1.5):
+| Step | API | Cost |
+|------|-----|------|
+| Trend Discovery | Perplexity (sonar) | ~$0.006 |
+| Slot Values | Gemini (2.5-flash) | ~$0.004 |
+| Image Generation | GPT-Image-1.5 | ~$0.08 |
+| Listing Generation | Gemini (2.5-flash) | ~$0.003 |
 
 **API Endpoint**:
 ```
@@ -574,7 +604,7 @@ Body: {
 Response: {
   "success": true,
   "data": {
-    "trendData": { "topic": "...", "summary": "...", "source": "..." },
+    "trendData": { "topic": "...", "phrase": "...", "audience": "...", "mood": "...", "summary": "...", "source": "..." },
     "slotValues": { "typography": "...", "effect": "...", "aesthetic": "...", "textTop": "...", "textBottom": "...", "imageDescription": "..." },
     "prompt": "The complete prompt sent to image model",
     "imageUrl": "Generated image URL or base64",
@@ -588,5 +618,8 @@ Response: {
 - No risk levels, batch modes, or compliance passes - minimal by design
 - Live data only - never uses cached or training data for trends
 - Style selection in code, not LLM - ensures consistency and evidence-backed choices
+- Research data (phrase, mood, audience) flows through to inform Gemini
+- Gemini uses `responseSchema` for guaranteed JSON output structure
+- 6-word maximum enforced on textTop for reliable text rendering
 - Immediate save to My Library after generation
 - Full transparency - displays exact prompt before image creation
