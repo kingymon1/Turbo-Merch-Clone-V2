@@ -312,6 +312,10 @@ Respond ONLY with valid JSON:
   }
 
   const data = await response.json();
+
+  // Debug: log full response structure to understand what Gemini is returning
+  console.log('[SimpleAutopilot] Gemini slot response structure:', JSON.stringify(data, null, 2));
+
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
   console.log('[SimpleAutopilot] Gemini slot values raw:', content);
@@ -649,6 +653,10 @@ Respond ONLY with valid JSON, no other text:
   }
 
   const data = await response.json();
+
+  // Debug: log full response structure
+  console.log('[SimpleAutopilot] Gemini listing response structure:', JSON.stringify(data, null, 2));
+
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
   console.log('[SimpleAutopilot] Generated listing raw:', content);
