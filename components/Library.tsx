@@ -669,7 +669,7 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
                         {item.imageModel === 'gpt-image-1' ? 'GPT-Image' :
                          item.imageModel === 'ideogram' ? 'Ideogram' :
                          item.imageModel === 'imagen' ? 'Imagen 4' :
-                         item.imageModel === 'dalle3' ? 'DALL-E 3' :
+                         item.imageModel === 'gpt-image-1.5' ? 'GPT-Image-1.5' :
                          item.imageModel}
                       </span>
                     )}

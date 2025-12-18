@@ -25,6 +25,9 @@ const getAI = (): GoogleGenAI => {
 const TEXT_MODEL = AI_CONFIG.models.text;
 const IMAGE_MODEL = AI_CONFIG.models.image;
 
+// Image model types for TrendScanner/TrendLab
+export type TrendScannerImageModel = 'imagen' | 'ideogram' | 'gpt-image-1.5';
+
 // Grok model for Agent Tools API (web_search, x_search)
 // grok-4-1-fast-reasoning is optimized for agentic tool calling
 const GROK_MODEL = process.env.GROK_MODEL || 'grok-4-1-fast-reasoning';
@@ -2738,6 +2741,107 @@ export const generateImagen4Image = async (prompt: string): Promise<string> => {
     }
 };
 
+/**
+ * Generate image using Ideogram 3.0
+ * Best-in-class typography and text rendering
+ */
+export const generateIdeogramImage = async (prompt: string): Promise<string> => {
+    const apiKey = process.env.IDEOGRAM_API_KEY;
+
+    if (!apiKey) {
+        throw new Error('IDEOGRAM_API_KEY not configured');
+    }
+
+    try {
+        console.log('🎨 Using Ideogram 3.0 for image generation...');
+
+        const formData = new FormData();
+        formData.append('prompt', prompt);
+        formData.append('aspect_ratio', '2x3');  // Portrait for t-shirt designs
+        formData.append('model', 'V_3');
+        formData.append('style_type', 'DESIGN');  // Optimized for graphic design
+        formData.append('magic_prompt', 'OFF');   // Preserve exact text
+        formData.append('negative_prompt', 'amateur graphics, clipart, basic flat design, generic stock imagery, poorly rendered text, childish, low-effort, blurry, pixelated');
+
+        const response = await fetch('https://api.ideogram.ai/v1/ideogram-v3/generate', {
+            method: 'POST',
+            headers: {
+                'Api-Key': apiKey,
+            },
+            body: formData
+        });
+
+        if (!response.ok) {
+            const errorData = await response.text();
+            throw new Error(`Ideogram API error: ${response.status} - ${errorData}`);
+        }
+
+        const data = await response.json();
+
+        if (data.data?.[0]?.url) {
+            console.log('✓ Ideogram 3.0 image generated successfully');
+            return data.data[0].url;
+        }
+
+        throw new Error('No image URL in Ideogram response');
+    } catch (error) {
+        console.error('Ideogram Error:', error);
+        throw error;
+    }
+};
+
+/**
+ * Generate image using GPT-Image-1.5
+ * 4x faster, superior text rendering, native transparent backgrounds
+ */
+export const generateGptImage15 = async (prompt: string): Promise<string> => {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+        throw new Error('OPENAI_API_KEY not configured');
+    }
+
+    try {
+        console.log('🎨 Using GPT-Image-1.5 for image generation...');
+
+        const response = await fetch('https://api.openai.com/v1/images/generations', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'gpt-image-1.5',
+                prompt,
+                n: 1,
+                size: '1024x1536',  // Portrait aspect ratio
+                quality: 'high',
+                background: 'transparent',
+            })
+        });
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`GPT-Image-1.5 API error: ${response.status} - ${errorText}`);
+        }
+
+        const data = await response.json();
+
+        if (data.data?.[0]?.b64_json) {
+            console.log('✓ GPT-Image-1.5 image generated successfully (base64)');
+            return `data:image/png;base64,${data.data[0].b64_json}`;
+        } else if (data.data?.[0]?.url) {
+            console.log('✓ GPT-Image-1.5 image generated successfully (url)');
+            return data.data[0].url;
+        }
+
+        throw new Error('No image data in GPT-Image-1.5 response');
+    } catch (error) {
+        console.error('GPT-Image-1.5 Error:', error);
+        throw error;
+    }
+};
+
 export const generateDesignImage = async (
     basicPrompt: string,
     style: string,
@@ -2805,12 +2909,15 @@ export const generateDesignImage = async (
  *
  * @param trend - The trend data to base the design on
  * @param useEnhancedResearch - Whether to use the full research pipeline (default: true)
+ * @param promptMode - Simple or advanced prompt mode
+ * @param imageModel - Image generation model: 'imagen', 'ideogram', or 'gpt-image-1.5'
  * @returns Base64 encoded image data URL and research brief
  */
 export const generateDesignImageEnhanced = async (
     trend: TrendData,
     useEnhancedResearch: boolean = true,
-    promptMode: PromptMode = 'advanced'
+    promptMode: PromptMode = 'advanced',
+    imageModel: TrendScannerImageModel = 'imagen'
 ): Promise<{ imageUrl: string; research: DesignResearch }> => {
     try {
         let research: DesignResearch;
@@ -2831,41 +2938,86 @@ export const generateDesignImageEnhanced = async (
             const designPrompt = await createEnhancedDesignPrompt(research, promptMode);
             console.log('✓ Design brief ready');
 
-            // Step 3: Generate image - try Imagen 4 first, fallback to Gemini
-            console.log('🖼️  Generating professional design...');
+            // Step 3: Generate image using selected model
+            console.log(`🖼️  Generating professional design with ${imageModel}...`);
 
-            const useImagen4 = IMAGE_MODEL === 'imagen-4.0-generate-001';
+            let imageUrl: string;
 
-            if (useImagen4) {
-                try {
-                    const imageUrl = await generateImagen4Image(designPrompt);
-                    console.log('✓ Professional design generated with Imagen 4');
-                    return { imageUrl, research };
-                } catch (error) {
-                    console.warn('Imagen 4 failed in enhanced pipeline, falling back:', error);
-                    // Fall through to Gemini
+            // Check if running on client side (browser)
+            const isClientSide = typeof window !== 'undefined';
+
+            // For Ideogram and GPT-Image-1.5, use API route when on client side
+            // (these APIs require server-side env vars)
+            if (isClientSide && (imageModel === 'ideogram' || imageModel === 'gpt-image-1.5')) {
+                console.log(`🌐 Using API route for ${imageModel} (client-side)...`);
+                const response = await fetch('/api/trend-scanner/generate-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: designPrompt,
+                        imageModel,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`Image generation failed: ${errorData.error || response.statusText}`);
+                }
+
+                const data = await response.json();
+                if (!data.success || !data.imageUrl) {
+                    throw new Error(data.error || 'No image URL in response');
+                }
+                imageUrl = data.imageUrl;
+                console.log(`✓ Professional design generated with ${imageModel} via API`);
+            } else {
+                // Direct generation (server-side or Imagen)
+                switch (imageModel) {
+                    case 'ideogram':
+                        imageUrl = await generateIdeogramImage(designPrompt);
+                        console.log('✓ Professional design generated with Ideogram 3.0');
+                        break;
+
+                    case 'gpt-image-1.5':
+                        imageUrl = await generateGptImage15(designPrompt);
+                        console.log('✓ Professional design generated with GPT-Image-1.5');
+                        break;
+
+                    case 'imagen':
+                    default:
+                        // Try Imagen 4 first, fallback to Gemini
+                        try {
+                            imageUrl = await generateImagen4Image(designPrompt);
+                            console.log('✓ Professional design generated with Imagen 4');
+                        } catch (error) {
+                            console.warn('Imagen 4 failed, falling back to Gemini:', error);
+                            // Fallback to Gemini image generation
+                            const ai = getAI();
+                            console.log('🎨 Using Gemini fallback...');
+                            const response = await ai.models.generateContent({
+                                model: 'gemini-3-pro-image-preview',
+                                contents: designPrompt,
+                            });
+
+                            const parts = response.candidates?.[0]?.content?.parts || [];
+                            let fallbackUrl: string | null = null;
+                            for (const part of parts) {
+                                if (part.inlineData && part.inlineData.data) {
+                                    fallbackUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                                    console.log('✓ Design generated with Gemini fallback');
+                                    break;
+                                }
+                            }
+                            if (!fallbackUrl) {
+                                throw new Error("No image generated in Gemini fallback");
+                            }
+                            imageUrl = fallbackUrl;
+                        }
+                        break;
                 }
             }
 
-            // Fallback to Gemini image generation
-            const ai = getAI();
-            console.log(`🎨 Using ${IMAGE_MODEL} via generateContent API...`);
-            const response = await ai.models.generateContent({
-                model: IMAGE_MODEL === 'imagen-4.0-generate-001' ? 'gemini-3-pro-image-preview' : IMAGE_MODEL,
-                contents: designPrompt,
-            });
-
-            // Extract image from response
-            const parts = response.candidates?.[0]?.content?.parts || [];
-            for (const part of parts) {
-                if (part.inlineData && part.inlineData.data) {
-                    const imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-                    console.log('✓ Professional design generated successfully');
-                    return { imageUrl, research };
-                }
-            }
-
-            throw new Error("No image generated in enhanced pipeline");
+            return { imageUrl, research };
         } else {
             // Fallback to basic generation
             console.log('Using basic design generation...');

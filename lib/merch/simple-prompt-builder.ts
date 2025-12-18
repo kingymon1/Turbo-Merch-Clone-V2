@@ -112,8 +112,8 @@ export function buildModelSpecificPrompt(
     case 'gpt-image-1':
       return buildGptImagePrompt(form, basePrompt);
 
-    case 'dalle3':
-      return buildDalle3Prompt(form, basePrompt);
+    case 'gpt-image-1.5':
+      return buildGptImage15Prompt(form, basePrompt);
 
     case 'gemini':
     default:
@@ -155,17 +155,18 @@ function buildGptImagePrompt(form: DesignForm, basePrompt: string): string {
 }
 
 /**
- * Build DALL-E 3 optimized prompt
- * DALL-E benefits from slightly more descriptive context
+ * Build GPT Image 1.5 optimized prompt
+ * GPT-Image-1.5 has superior text rendering and supports transparent backgrounds
  */
-function buildDalle3Prompt(form: DesignForm, basePrompt: string): string {
-  // DALL-E 3 works well with the base prompt
-  // Add style hint if using vivid style
-  if (form.modelOverrides?.dalle3?.style === 'vivid') {
-    return basePrompt + '. Vivid colors, high contrast';
+function buildGptImage15Prompt(form: DesignForm, basePrompt: string): string {
+  let prompt = basePrompt;
+
+  // Handle transparent background if specified
+  if (form.modelOverrides?.gptImage15?.quality === 'high') {
+    prompt += '. High detail, professional quality';
   }
 
-  return basePrompt;
+  return prompt;
 }
 
 /**
@@ -401,8 +402,8 @@ export function buildModelSpecificPromptWithStyleSpec(
     case 'gpt-image-1':
       return buildGptImagePromptWithStyleSpec(form, basePrompt, styleSpec);
 
-    case 'dalle3':
-      return buildDalle3PromptWithStyleSpec(form, basePrompt, styleSpec);
+    case 'gpt-image-1.5':
+      return buildGptImage15PromptWithStyleSpec(form, basePrompt, styleSpec);
 
     case 'gemini':
     default:
@@ -455,18 +456,18 @@ function buildGptImagePromptWithStyleSpec(
 }
 
 /**
- * Build DALL-E 3 optimized prompt with StyleSpec
+ * Build GPT Image 1.5 optimized prompt with StyleSpec
  */
-function buildDalle3PromptWithStyleSpec(
+function buildGptImage15PromptWithStyleSpec(
   form: DesignForm,
   basePrompt: string,
   styleSpec: StyleRecipe
 ): string {
   let prompt = basePrompt;
 
-  // Add style hint if using vivid style
-  if (form.modelOverrides?.dalle3?.style === 'vivid') {
-    prompt += '. Vivid colors, high contrast';
+  // Add quality hint based on style spec or override
+  if (form.modelOverrides?.gptImage15?.quality === 'high') {
+    prompt += '. High detail, professional quality';
   } else if (styleSpec.color.contrastLevel === 'high') {
     prompt += '. High contrast design';
   }

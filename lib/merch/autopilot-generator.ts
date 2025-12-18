@@ -873,7 +873,7 @@ export async function generateAutopilotConceptWithForm(
  */
 export function buildPromptForModel(
   form: DesignForm,
-  model: 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3'
+  model: 'gemini' | 'gpt-image-1' | 'ideogram' | 'gpt-image-1.5'
 ): string {
   return buildModelSpecificPrompt(form, model);
 }

@@ -32,7 +32,7 @@ const IMAGE_MODEL_OPTIONS = [
   { value: 'gemini', label: 'Imagen 4 (Google)' },
   { value: 'gpt-image-1', label: 'GPT-Image-1 (OpenAI)' },
   { value: 'ideogram', label: 'Ideogram 3.0' },
-  { value: 'dalle3', label: 'DALL-E 3 (Legacy)' },
+  { value: 'gpt-image-1.5', label: 'GPT-Image-1.5 (OpenAI)' },
 ];
 
 // Max 20 variations - higher counts may timeout
@@ -73,7 +73,7 @@ const MerchGenerator: React.FC = () => {
   const [targetNiche, setTargetNiche] = useState('');
   const [tone, setTone] = useState('Let AI decide');
   const [additionalInstructions, setAdditionalInstructions] = useState('');
-  const [imageModel, setImageModel] = useState<'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3'>('gemini');
+  const [imageModel, setImageModel] = useState<'gemini' | 'gpt-image-1' | 'ideogram' | 'gpt-image-1.5'>('gemini');
   const [useSimplePrompts, setUseSimplePrompts] = useState(false);
 
   // Editable result fields
@@ -344,7 +344,7 @@ const MerchGenerator: React.FC = () => {
                 {IMAGE_MODEL_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    onClick={() => setImageModel(opt.value as 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3')}
+                    onClick={() => setImageModel(opt.value as 'gemini' | 'gpt-image-1' | 'ideogram' | 'gpt-image-1.5')}
                     className={`px-4 py-3 rounded-lg font-medium text-sm transition-all ${
                       imageModel === opt.value
                         ? 'bg-brand-600 text-white shadow-lg'
@@ -496,7 +496,7 @@ const MerchGenerator: React.FC = () => {
                 {IMAGE_MODEL_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
-                    onClick={() => setImageModel(opt.value as 'gemini' | 'gpt-image-1' | 'ideogram' | 'dalle3')}
+                    onClick={() => setImageModel(opt.value as 'gemini' | 'gpt-image-1' | 'ideogram' | 'gpt-image-1.5')}
                     className={`px-4 py-3 rounded-lg font-medium text-sm transition-all ${
                       imageModel === opt.value
                         ? 'bg-brand-600 text-white shadow-lg'
