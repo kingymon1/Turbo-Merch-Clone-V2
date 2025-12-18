@@ -287,6 +287,20 @@ Respond ONLY with valid JSON:
         temperature: 0.7,
         maxOutputTokens: 300,
         responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            textBottom: {
+              type: 'string',
+              description: '2-4 words that complement the phrase for the bottom of the shirt',
+            },
+            imageDescription: {
+              type: 'string',
+              description: '5-15 words describing a specific visual element with uplift descriptors',
+            },
+          },
+          required: ['textBottom', 'imageDescription'],
+        },
       },
     }),
   });
@@ -598,6 +612,32 @@ Respond ONLY with valid JSON, no other text:
         temperature: 0.7,
         maxOutputTokens: 800,
         responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'object',
+          properties: {
+            brand: {
+              type: 'string',
+              description: 'A catchy brand name (2-3 words)',
+            },
+            title: {
+              type: 'string',
+              description: 'Amazon-optimized title with keywords (60-80 chars)',
+            },
+            bullet1: {
+              type: 'string',
+              description: 'First bullet point - who this is perfect for',
+            },
+            bullet2: {
+              type: 'string',
+              description: 'Second bullet point - quality/gift angle',
+            },
+            description: {
+              type: 'string',
+              description: 'Engaging product description (100-150 words)',
+            },
+          },
+          required: ['brand', 'title', 'bullet1', 'bullet2', 'description'],
+        },
       },
     }),
   });
