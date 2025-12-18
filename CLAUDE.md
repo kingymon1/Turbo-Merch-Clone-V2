@@ -82,6 +82,20 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Base URL**: `https://api.ideogram.ai`
 - **Env var**: `IDEOGRAM_API_KEY`
 
+### Google Imagen 4 API
+- **Location**: `docs/imagen4_api_reference.md`
+- **Use for**: High-quality image generation with strong text rendering, photorealism
+- **Key models**: `imagen-4.0-generate-001` (standard), `imagen-4.0-ultra-generate-001` (highest fidelity), `imagen-4.0-fast-generate-001` (speed-optimized)
+- **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`
+- **Env var**: `GEMINI_API_KEY`
+- **Key features**:
+  - Uses Gemini API `:generateContent` endpoint (NOT `:predict`)
+  - Request format: `contents`/`generationConfig` structure
+  - Response format: `candidates[0].content.parts[0].inlineData.data`
+  - No native negative prompt - append "Avoid X, Y, Z" to prompt text
+  - Supports aspectRatio: "1:1", "9:16", "16:9", "3:4", "4:3"
+  - Max prompt: 480 tokens, English only
+
 ## Feature Documentation
 
 ### Simple Autopilot
@@ -201,6 +215,26 @@ npx prisma studio
 6. Use negative prompts for quality floor: `"blurry, low quality, amateur, clipart"`
 7. Rendering speeds: TURBO ($0.03) for drafts, DEFAULT ($0.06) for production, QUALITY ($0.09) for final
 8. **Important**: Image URLs expire - always download immediately after generation
+
+### Adding Google Imagen 4 API Features
+1. Read `docs/imagen4_api_reference.md` for complete API documentation
+2. Use `:generateContent` endpoint (NOT `:predict`) with `contents`/`generationConfig` structure
+3. Request body format:
+   ```json
+   {
+     "contents": [{"parts": [{"text": "prompt here"}]}],
+     "generationConfig": {"response_mime_type": "image/png"}
+   }
+   ```
+4. Response parsing: `candidates[0].content.parts[0].inlineData.data` for base64 image
+5. No native `negativePrompt` parameter - append to prompt text instead:
+   ```
+   "Your prompt here. Avoid blurry, deformed, low-res, diagram, clipart."
+   ```
+6. Available aspectRatio values: "1:1", "9:16", "16:9", "3:4", "4:3"
+7. Model variants: `imagen-4.0-generate-001` (standard), `imagen-4.0-ultra-generate-001` (quality), `imagen-4.0-fast-generate-001` (speed)
+8. Max prompt length: 480 tokens, English only
+9. Pricing: ~$0.04/image (standard), $0.06 (ultra), $0.02 (fast)
 
 ## Merch Generator Image Pipeline
 
