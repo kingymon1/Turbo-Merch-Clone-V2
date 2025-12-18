@@ -464,8 +464,9 @@ async function findTrendingTopicTwoStage(category?: string): Promise<TrendResear
 /**
  * Use Gemini to derive complementary values for the design template
  * - textTop comes from Perplexity research (phrase field)
- * - Gemini derives textBottom and imageDescription to complement the phrase
+ * - Gemini derives imageDescription to complement the phrase
  * - Typography, Effect, and Aesthetic are selected by code (70% Evergreen / 30% Emerging)
+ * - textBottom removed: single phrase designs, model decides layout
  */
 async function extractSlotValues(
   trendData: TrendResearch,
@@ -477,36 +478,28 @@ async function extractSlotValues(
     throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
-  // textTop comes directly from research - Gemini only derives textBottom and imageDescription
-  const prompt = `You are a t-shirt copywriter. Research has already found a great phrase for the top of the shirt. Your job is to COMPLEMENT it.
+  // textTop comes directly from research - Gemini only derives imageDescription
+  const prompt = `You are a t-shirt designer. Create a visual element to accompany this phrase.
 
-PHRASE FOR TOP OF SHIRT: "${trendData.phrase}"
+PHRASE: "${trendData.phrase}"
 TARGET AUDIENCE: ${trendData.audience}
 MOOD/TONE: ${trendData.mood}
 TREND CONTEXT: ${trendData.summary}
 
-PRE-SELECTED STYLE:
+STYLE:
 - Typography: ${styles.typography}
 - Effect: ${styles.effect}
 - Aesthetic: ${styles.aesthetic}
 
-Your job is to create TWO things that COMPLEMENT the phrase above:
-
-1. textBottom: 2-4 words for the bottom of the shirt that:
-   - Completes the message OR adds a punchline OR provides contrast
-   - Matches the ${trendData.mood} tone
-   - Appeals to ${trendData.audience}
-   - Is NOT generic (never "Life Style", "Trending Now", "Best Ever", etc.)
-
-2. imageDescription: 5-15 words describing a visual for the middle of the design:
-   - Specific to this trend (not generic)
-   - Uses uplift descriptors (e.g., "a steaming coffee cup with cartoon eyes" not just "coffee cup")
-   - Fits the ${trendData.mood} mood
+Create an imageDescription (5-15 words) for a visual that:
+- Is specific to this trend and audience (not generic)
+- Uses vivid descriptors (e.g., "a steaming coffee cup with cartoon eyes" not just "coffee cup")
+- Fits the ${trendData.mood} mood
+- Complements the phrase without competing with it
 
 Respond ONLY with valid JSON:
 {
-  "textBottom": "2-4 words that complement the phrase",
-  "imageDescription": "specific visual description with uplift descriptors"
+  "imageDescription": "specific visual description with vivid descriptors"
 }`;
 
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
@@ -523,16 +516,12 @@ Respond ONLY with valid JSON:
         responseSchema: {
           type: 'object',
           properties: {
-            textBottom: {
-              type: 'string',
-              description: '2-4 words that complement the phrase for the bottom of the shirt',
-            },
             imageDescription: {
               type: 'string',
-              description: '5-15 words describing a specific visual element with uplift descriptors',
+              description: '5-15 words describing a specific visual element with vivid descriptors',
             },
           },
-          required: ['textBottom', 'imageDescription'],
+          required: ['imageDescription'],
         },
       },
     }),
@@ -579,7 +568,6 @@ Respond ONLY with valid JSON:
     if (!llmValues) {
       console.warn('[SimpleAutopilot] Using research-based fallback');
       llmValues = {
-        textBottom: trendData.mood === 'funny' ? 'Deal With It' : 'All Day',
         imageDescription: `a ${trendData.mood} illustration related to ${trendData.topic}`,
       };
     }
@@ -596,14 +584,6 @@ Respond ONLY with valid JSON:
     console.log(`[SimpleAutopilot] Truncated to: "${textTop}"`);
   }
 
-  // Validate textBottom is not a banned generic phrase
-  const bannedPhrases = ['life style', 'lifestyle', 'trending now', 'hot topic', 'viral trend', 'best ever'];
-  let textBottom = llmValues.textBottom || 'Every Day';
-  if (bannedPhrases.includes(textBottom.toLowerCase())) {
-    console.warn(`[SimpleAutopilot] Banned phrase detected: "${textBottom}", using fallback`);
-    textBottom = trendData.mood === 'funny' ? 'No Regrets' : 'Always';
-  }
-
   return {
     // Code-selected styles
     typography: styles.typography,
@@ -611,8 +591,8 @@ Respond ONLY with valid JSON:
     aesthetic: styles.aesthetic,
     // Research-derived textTop (from Perplexity phrase)
     textTop,
-    // Gemini-derived complementary values
-    textBottom,
+    // textBottom removed - single phrase designs, model decides layout
+    textBottom: '',
     imageDescription: llmValues.imageDescription || `a ${trendData.mood} graphic element`,
     // Trend research data
     trendTopic: trendData.topic,
