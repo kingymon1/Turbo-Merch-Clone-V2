@@ -473,17 +473,19 @@ async function generateWithImagen(prompt: string): Promise<string> {
   // Per docs: "Not native; append 'avoid blurry, deformed, low-res' to prompt"
   const enhancedPrompt = `${prompt}. Avoid blurry, deformed, low-res, diagram, flowchart, technical illustration, clipart, amateur graphics.`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:generateContent?key=${apiKey}`, {
+  // Imagen uses :predict endpoint (NOT :generateContent) with instances/parameters format
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: enhancedPrompt
-        }]
-      }],
+      instances: [{ prompt: enhancedPrompt }],
+      parameters: {
+        sampleCount: 1,
+        aspectRatio: '3:4',
+        personGeneration: 'DONT_ALLOW',
+      },
     }),
   });
 
@@ -494,12 +496,9 @@ async function generateWithImagen(prompt: string): Promise<string> {
 
   const data = await response.json();
 
-  // Response structure per docs: candidates[0].content.parts[0].inlineData.data
-  const imageData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  const mimeType = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || 'image/png';
-
-  if (imageData) {
-    return `data:${mimeType};base64,${imageData}`;
+  // Response structure for :predict endpoint
+  if (data.predictions?.[0]?.bytesBase64Encoded) {
+    return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
   }
 
   throw new Error('No image data in Imagen response');

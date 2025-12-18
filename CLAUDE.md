@@ -86,12 +86,12 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Location**: `docs/imagen4_api_reference.md`
 - **Use for**: High-quality image generation with strong text rendering, photorealism
 - **Key models**: `imagen-4.0-generate-001` (standard), `imagen-4.0-ultra-generate-001` (highest fidelity), `imagen-4.0-fast-generate-001` (speed-optimized)
-- **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`
+- **Endpoint**: `https://generativelanguage.googleapis.com/v1beta/models/{model}:predict`
 - **Env var**: `GEMINI_API_KEY`
 - **Key features**:
-  - Uses Gemini API `:generateContent` endpoint (NOT `:predict`)
-  - Request format: `contents`/`generationConfig` structure
-  - Response format: `candidates[0].content.parts[0].inlineData.data`
+  - Uses `:predict` endpoint with `instances`/`parameters` format (NOT `:generateContent`)
+  - Request format: `{ instances: [{ prompt }], parameters: { sampleCount, aspectRatio, personGeneration } }`
+  - Response format: `predictions[0].bytesBase64Encoded` for base64 image
   - No native negative prompt - append "Avoid X, Y, Z" to prompt text
   - Supports aspectRatio: "1:1", "9:16", "16:9", "3:4", "4:3"
   - Max prompt: 480 tokens, English only
@@ -218,15 +218,19 @@ npx prisma studio
 
 ### Adding Google Imagen 4 API Features
 1. Read `docs/imagen4_api_reference.md` for complete API documentation
-2. Use `:generateContent` endpoint (NOT `:predict`) with `contents`/`generationConfig` structure
+2. Use `:predict` endpoint with `instances`/`parameters` format (NOT `:generateContent`)
 3. Request body format:
    ```json
    {
-     "contents": [{"parts": [{"text": "prompt here"}]}],
-     "generationConfig": {"response_mime_type": "image/png"}
+     "instances": [{"prompt": "your prompt here"}],
+     "parameters": {
+       "sampleCount": 1,
+       "aspectRatio": "3:4",
+       "personGeneration": "DONT_ALLOW"
+     }
    }
    ```
-4. Response parsing: `candidates[0].content.parts[0].inlineData.data` for base64 image
+4. Response parsing: `predictions[0].bytesBase64Encoded` for base64 image
 5. No native `negativePrompt` parameter - append to prompt text instead:
    ```
    "Your prompt here. Avoid blurry, deformed, low-res, diagram, clipart."
