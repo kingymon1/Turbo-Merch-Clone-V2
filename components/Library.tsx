@@ -664,6 +664,15 @@ PRICE: $${fullDesign.listing.price || 'N/A'}
                     {item.listing.title}
                   </h5>
                   <div className="flex flex-wrap gap-1">
+                    {item.imageModel && (
+                      <span className="text-[10px] px-1.5 py-0.5 bg-brand-500/10 text-brand-600 dark:text-brand-400 rounded border border-brand-500/20 font-medium">
+                        {item.imageModel === 'gpt-image-1' ? 'GPT-Image' :
+                         item.imageModel === 'ideogram' ? 'Ideogram' :
+                         item.imageModel === 'imagen' ? 'Imagen 4' :
+                         item.imageModel === 'dalle3' ? 'DALL-E 3' :
+                         item.imageModel}
+                      </span>
+                    )}
                     {(item.trend.keywords || []).slice(0, 2).map((kw, i) => (
                       <span key={i} className="text-[10px] px-1.5 py-0.5 bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-gray-400 rounded border border-gray-200 dark:border-white/5">
                         #{kw}

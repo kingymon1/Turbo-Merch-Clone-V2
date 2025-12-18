@@ -6,6 +6,7 @@ export enum AppView {
   IMAGE_VECTORIZER = 'IMAGE_VECTORIZER',
   LISTING_GENERATOR = 'LISTING_GENERATOR',
   MERCH_GENERATOR = 'MERCH_GENERATOR',
+  SIMPLE_AUTOPILOT = 'SIMPLE_AUTOPILOT',
   LIBRARY = 'LIBRARY',
   IDEAS_VAULT = 'IDEAS_VAULT',
   SUBSCRIPTION = 'SUBSCRIPTION',
@@ -179,6 +180,8 @@ export interface MerchPackage {
   promptMode?: PromptMode;
   viralityLevel?: number;
   generatedAt?: number; // Unix timestamp for time tracking
+  // Image model used for generation (Simple Autopilot)
+  imageModel?: string | null;
 }
 
 export interface SavedListing extends MerchPackage {

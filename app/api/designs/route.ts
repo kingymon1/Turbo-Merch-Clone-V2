@@ -100,12 +100,42 @@ export async function GET(request: NextRequest) {
         const runConfig = design.runConfig as any;
         const tierAtCreation = runConfig?.tierAtCreation || 'free';
 
-        return {
-          id: design.id,
-          createdAt: design.createdAt.getTime(),
-          expiresAt: design.expiresAt?.getTime() || Date.now() + (365 * 24 * 60 * 60 * 1000),
-          tierAtCreation,
-          trend: {
+        // Build trend data - handle Simple Autopilot format differently
+        let trendData;
+        let listingData;
+
+        if (runConfig?.mode === 'simple-autopilot') {
+          // Simple Autopilot stores data in runConfig
+          const research = runConfig.research || {};
+          const selectedStyles = runConfig.selectedStyles || {};
+          const llmDerived = runConfig.llmDerived || {};
+          const slots = runConfig.slots || {};
+
+          trendData = {
+            topic: research.trendTopic || design.niche || 'Unknown',
+            platform: 'Trending',
+            volume: 'High',
+            sentiment: 'Positive',
+            keywords: [],
+            description: research.trendSummary || '',
+            visualStyle: `${selectedStyles.typography || ''} with ${selectedStyles.effect || ''} effects`,
+            customerPhrases: [],
+          };
+
+          listingData = {
+            title: design.slogan || 'Untitled Design',
+            brand: 'Simple Autopilot',
+            bullet1: '',
+            bullet2: '',
+            description: research.trendSummary || '',
+            keywords: [],
+            imagePrompt: runConfig.finalPrompt || '',
+            designText: design.slogan || '',
+            price: undefined,
+          };
+        } else {
+          // Standard format
+          trendData = {
             topic: design.niche || 'Unknown',
             platform: design.targetMarket || 'General',
             volume: 'Medium',
@@ -114,8 +144,9 @@ export async function GET(request: NextRequest) {
             description: '',
             visualStyle: '',
             customerPhrases: [],
-          },
-          listing: {
+          };
+
+          listingData = {
             title: design.slogan || 'Untitled Design',
             brand: 'Custom Brand',
             bullet1: '',
@@ -125,10 +156,21 @@ export async function GET(request: NextRequest) {
             imagePrompt: '',
             designText: design.slogan || '',
             price: undefined,
-          },
+          };
+        }
+
+        return {
+          id: design.id,
+          createdAt: design.createdAt.getTime(),
+          expiresAt: design.expiresAt?.getTime() || Date.now() + (365 * 24 * 60 * 60 * 1000),
+          tierAtCreation,
+          trend: trendData,
+          listing: listingData,
           imageUrl: design.imageUrl || '',
           imageHistory: (design as any).imageHistory || [],
           promptMode: (design as any).promptMode || 'advanced',
+          // Image model used for generation
+          imageModel: runConfig?.imageModel || null,
         };
       } catch (transformError: any) {
         console.error(`[GET /api/designs] Error transforming design ${design.id}:`, transformError);
