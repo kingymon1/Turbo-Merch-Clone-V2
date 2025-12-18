@@ -300,19 +300,38 @@ Respond ONLY with valid JSON:
   const data = await response.json();
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-  console.log('[SimpleAutopilot] Gemini slot values:', content);
+  console.log('[SimpleAutopilot] Gemini slot values raw:', content);
 
   let llmValues: any;
   try {
+    // First try direct parse
     llmValues = JSON.parse(content);
     console.log('[SimpleAutopilot] Gemini parsed successfully:', llmValues);
   } catch (parseError) {
-    // Fallback if parsing fails - derive from research context
-    console.warn('[SimpleAutopilot] Failed to parse Gemini JSON, using research-based fallback');
-    llmValues = {
-      textBottom: trendData.mood === 'funny' ? 'Deal With It' : 'All Day',
-      imageDescription: `a ${trendData.mood} illustration related to ${trendData.topic}`,
-    };
+    // Try to extract JSON from markdown code blocks or mixed content
+    console.log('[SimpleAutopilot] Direct parse failed, trying JSON extraction...');
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        llmValues = JSON.parse(jsonMatch[0]);
+        console.log('[SimpleAutopilot] Gemini extracted and parsed:', llmValues);
+      } catch (extractError) {
+        console.warn('[SimpleAutopilot] JSON extraction also failed');
+        llmValues = null;
+      }
+    } else {
+      console.warn('[SimpleAutopilot] No JSON found in Gemini response');
+      llmValues = null;
+    }
+
+    // Final fallback if all parsing failed
+    if (!llmValues) {
+      console.warn('[SimpleAutopilot] Using research-based fallback');
+      llmValues = {
+        textBottom: trendData.mood === 'funny' ? 'Deal With It' : 'All Day',
+        imageDescription: `a ${trendData.mood} illustration related to ${trendData.topic}`,
+      };
+    }
   }
 
   // textTop comes from research (phrase), not from Gemini
@@ -592,20 +611,41 @@ Respond ONLY with valid JSON, no other text:
   const data = await response.json();
   const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
-  console.log('[SimpleAutopilot] Generated listing:', content);
+  console.log('[SimpleAutopilot] Generated listing raw:', content);
 
   let listing: any;
   try {
+    // First try direct parse
     listing = JSON.parse(content);
+    console.log('[SimpleAutopilot] Listing parsed successfully');
   } catch (parseError) {
-    console.warn('[SimpleAutopilot] Failed to parse listing JSON, using defaults');
-    listing = {
-      brand: 'TrendWear Co',
-      title: `${slots.textTop} ${slots.textBottom} Funny Trending T-Shirt Gift`,
-      bullet1: 'Perfect gift for anyone who gets the trend',
-      bullet2: 'Premium quality fabric for maximum comfort',
-      description: `Show off your style with this trending ${slots.textTop} ${slots.textBottom} t-shirt. Great for casual wear or making a statement.`,
-    };
+    // Try to extract JSON from markdown code blocks or mixed content
+    console.log('[SimpleAutopilot] Direct listing parse failed, trying JSON extraction...');
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        listing = JSON.parse(jsonMatch[0]);
+        console.log('[SimpleAutopilot] Listing extracted and parsed');
+      } catch (extractError) {
+        console.warn('[SimpleAutopilot] Listing JSON extraction also failed');
+        listing = null;
+      }
+    } else {
+      console.warn('[SimpleAutopilot] No JSON found in listing response');
+      listing = null;
+    }
+
+    // Final fallback if all parsing failed
+    if (!listing) {
+      console.warn('[SimpleAutopilot] Using listing defaults');
+      listing = {
+        brand: 'TrendWear Co',
+        title: `${slots.textTop} ${slots.textBottom} Funny Trending T-Shirt Gift`,
+        bullet1: 'Perfect gift for anyone who gets the trend',
+        bullet2: 'Premium quality fabric for maximum comfort',
+        description: `Show off your style with this trending ${slots.textTop} ${slots.textBottom} t-shirt. Great for casual wear or making a statement.`,
+      };
+    }
   }
 
   return {
