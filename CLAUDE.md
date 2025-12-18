@@ -611,20 +611,26 @@ mood + audience → context for Gemini
     ↓
 Gemini (with responseSchema for reliable JSON)
     ↓
-Derives: textBottom, imageDescription (complementing the phrase)
+Derives: imageDescription only (textBottom removed)
     ↓
 Code builds final prompt from all slot values
 ```
 
-**Prompt Template** (from `docs/simple-style-selector.md`):
+**Prompt Template** (simplified):
 ```
-[TYPOGRAPHY] t-shirt design (no mockup) [EFFECT] style typography with the words '[TEXT_TOP]' at the top and '[TEXT_BOTTOM]' at the bottom. Make it in a [AESTHETIC] style using big typography and [EFFECT] effects. Add [IMAGE_DESCRIPTION] in the middle of the design. 4500x5400px use all the canvas. Make it for a black shirt.
+[TYPOGRAPHY] t-shirt design (no mockup) featuring '[TEXT_TOP]'. [AESTHETIC] style with bold [EFFECT] effects. Add [IMAGE_DESCRIPTION]. 4500x5400px, black shirt.
 ```
+
+**Key prompt changes**:
+- Single phrase only (textBottom removed) - model decides layout
+- No forced positioning ("at top and bottom" removed)
+- Effect mentioned once with "bold" prefix for stronger rendering
+- Cleaner, less prescriptive structure
 
 **Style Selection Rules**:
 - TYPOGRAPHY, EFFECT, and AESTHETIC are selected by code using weighted random (70% E / 30% M)
-- LLM does NOT choose styles - Gemini only derives textBottom and imageDescription
-- TEXT_TOP comes from Perplexity research (phrase field), not from Gemini
+- LLM does NOT choose styles - Gemini only derives imageDescription
+- Phrase comes from Perplexity research, model decides how to arrange it
 - All style options are documented in `docs/simple-style-selector.md` with rationale
 - Designs optimized for black shirts (highest contrast, broadest appeal)
 
@@ -673,8 +679,9 @@ Response: {
 - No risk levels, batch modes, or compliance passes - minimal by design
 - Live data only - never uses cached or training data for trends
 - Style selection in code, not LLM - ensures consistency and evidence-backed choices
+- Single phrase design - model has creative freedom for text layout
 - Research data (phrase, mood, audience) flows through to inform Gemini
 - Gemini uses `responseSchema` for guaranteed JSON output structure
-- 6-word maximum enforced on textTop for reliable text rendering
+- 6-word maximum enforced on phrase for reliable text rendering
 - Immediate save to My Library after generation
 - Full transparency - displays exact prompt before image creation

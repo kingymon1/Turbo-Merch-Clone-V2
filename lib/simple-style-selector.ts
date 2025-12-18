@@ -106,16 +106,17 @@ export function selectAllStyles(): {
 
 /**
  * Build the final image prompt from all components
+ * Simplified: single phrase, no forced positioning, bold effects
  */
 export function buildImagePrompt(params: {
   typography: string;
   effect: string;
   aesthetic: string;
   textTop: string;
-  textBottom: string;
+  textBottom?: string; // Now optional, not used in prompt
   imageDescription: string;
 }): string {
-  const { typography, effect, aesthetic, textTop, textBottom, imageDescription } = params;
+  const { typography, effect, aesthetic, textTop, imageDescription } = params;
 
-  return `${typography} t-shirt design (no mockup) ${effect} style typography with the words '${textTop}' at the top and '${textBottom}' at the bottom. Make it in a ${aesthetic} style using big typography and ${effect} effects. Add ${imageDescription} in the middle of the design. 4500x5400px use all the canvas. Make it for a black shirt.`;
+  return `${typography} t-shirt design (no mockup) featuring '${textTop}'. ${aesthetic} style with bold ${effect} effects. Add ${imageDescription}. 4500x5400px, black shirt.`;
 }
