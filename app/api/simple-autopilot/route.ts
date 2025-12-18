@@ -469,20 +469,23 @@ async function generateWithImagen(prompt: string): Promise<string> {
     throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
-  // Prepend style direction to steer away from diagrams/technical illustrations
-  const styledPrompt = `Artistic graphic design illustration, NOT a diagram or flowchart: ${prompt}`;
+  // Append negative prompt guidance (Imagen 4 doesn't have native negative prompt parameter)
+  // Per docs: "Not native; append 'avoid blurry, deformed, low-res' to prompt"
+  const enhancedPrompt = `${prompt}. Avoid blurry, deformed, low-res, diagram, flowchart, technical illustration, clipart, amateur graphics.`;
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:generateContent?key=${apiKey}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      instances: [{ prompt: styledPrompt }],
-      parameters: {
-        sampleCount: 1,
-        aspectRatio: '3:4',
-        personGeneration: 'DONT_ALLOW',
+      contents: [{
+        parts: [{
+          text: enhancedPrompt
+        }]
+      }],
+      generationConfig: {
+        response_mime_type: 'image/png',
       },
     }),
   });
@@ -494,8 +497,12 @@ async function generateWithImagen(prompt: string): Promise<string> {
 
   const data = await response.json();
 
-  if (data.predictions?.[0]?.bytesBase64Encoded) {
-    return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
+  // Response structure per docs: candidates[0].content.parts[0].inlineData.data
+  const imageData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  const mimeType = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.mimeType || 'image/png';
+
+  if (imageData) {
+    return `data:${mimeType};base64,${imageData}`;
   }
 
   throw new Error('No image data in Imagen response');
