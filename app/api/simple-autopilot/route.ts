@@ -481,7 +481,6 @@ async function generateWithImagen(prompt: string): Promise<string> {
         aspectRatio: '3:4',
         personGeneration: 'DONT_ALLOW',
         enhancePrompt: false,
-        negativePrompt: 'amateur graphics, clipart, basic flat design, poorly rendered text, blurry, pixelated',
       },
     }),
   });
