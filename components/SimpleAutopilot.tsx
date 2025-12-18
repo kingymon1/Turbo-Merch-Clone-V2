@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles } from 'lucide-react';
 
-type ImageModel = 'ideogram' | 'imagen' | 'gpt-image-1' | 'dalle3';
+type ImageModel = 'ideogram' | 'imagen' | 'gpt-image-1' | 'gpt-image-1.5';
 
 interface SlotValues {
   style: string;
@@ -40,7 +40,7 @@ const IMAGE_MODELS: { value: ImageModel; label: string; description: string }[] 
   { value: 'ideogram', label: 'Ideogram 3.0', description: 'Best typography/text rendering' },
   { value: 'imagen', label: 'Google Imagen 4', description: 'Strong text, enterprise-grade' },
   { value: 'gpt-image-1', label: 'GPT-Image-1', description: 'Good text, transparent backgrounds' },
-  { value: 'dalle3', label: 'DALL-E 3', description: 'Vivid artistic styles' },
+  { value: 'gpt-image-1.5', label: 'GPT-Image-1.5', description: '4x faster, superior text, transparent backgrounds' },
 ];
 
 const SimpleAutopilot: React.FC = () => {
