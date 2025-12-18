@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
 
 // Image model types
 type TrendScannerImageModel = 'imagen' | 'ideogram' | 'gpt-image-1.5';
@@ -143,8 +142,8 @@ async function generateWithGptImage15(prompt: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     // Check authentication
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
+    const { userId } = await auth();
+    if (!userId) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
         { status: 401 }
