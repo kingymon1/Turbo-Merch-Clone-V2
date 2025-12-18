@@ -464,7 +464,7 @@ async function generateWithGptImage15(prompt: string): Promise<string> {
       prompt,
       n: 1,
       size: '1024x1536',
-      quality: 'hd',
+      quality: 'high',
       background: 'transparent',
     }),
   });
