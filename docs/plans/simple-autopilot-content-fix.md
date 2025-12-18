@@ -109,12 +109,12 @@ Final prompt uses research-backed phrase
 
 ## Success Criteria
 
-- [ ] Perplexity's `phrase` field flows through as `textTop`
-- [ ] `mood` and `audience` are passed to Gemini
-- [ ] Gemini only derives `textBottom` and `imageDescription`
-- [ ] `textTop` is ≤6 words
-- [ ] No more "Life Style" defaults when research provided good data
-- [ ] Designs are more varied (different phrases from research)
+- [x] Perplexity's `phrase` field flows through as `textTop`
+- [x] `mood` and `audience` are passed to Gemini
+- [x] Gemini only derives `textBottom` and `imageDescription`
+- [x] `textTop` is ≤6 words
+- [x] No more "Life Style" defaults when research provided good data
+- [x] Designs are more varied (different phrases from research)
 
 ## Testing Plan
 
@@ -123,3 +123,23 @@ Final prompt uses research-backed phrase
 3. Verify phrase is used as textTop
 4. Verify textBottom varies and relates to the phrase
 5. Verify imageDescription is specific to each trend
+
+## Implementation Complete ✓
+
+**Date**: December 2024
+
+**Changes Made**:
+1. Added `TrendResearch` interface with `phrase`, `audience`, `mood` fields
+2. Updated `findTrendingTopic()` to return all Perplexity research fields
+3. Updated `extractSlotValues()` to use phrase as textTop and pass context to Gemini
+4. Added `responseSchema` to Gemini API calls for reliable JSON output
+5. Increased `maxOutputTokens` from 300/800 to 2048 (to accommodate Gemini 2.5 thinking tokens)
+6. Added 6-word maximum enforcement on textTop
+7. Added banned phrase validation for textBottom
+
+**Key Fix**: Gemini 2.5 uses "thinking tokens" that count against `maxOutputTokens`. Previous limits (300/800) were too low, causing `finishReason: "MAX_TOKENS"` before JSON output was complete.
+
+**Results**: After fix, prompts show diverse, trend-specific content:
+- textTop examples: "Human, Not Generated", "God Forbid I Have Hobbies"
+- textBottom examples: "Still loading.", "My simple joys."
+- imageDescription examples: "A vibrant, glitchy vintage CRT monitor..."
