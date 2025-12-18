@@ -2971,18 +2971,18 @@ export const generateDesignImageEnhanced = async (
                         });
 
                         const parts = response.candidates?.[0]?.content?.parts || [];
-                        let found = false;
+                        let fallbackUrl: string | null = null;
                         for (const part of parts) {
                             if (part.inlineData && part.inlineData.data) {
-                                imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                                fallbackUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
                                 console.log('✓ Design generated with Gemini fallback');
-                                found = true;
                                 break;
                             }
                         }
-                        if (!found) {
+                        if (!fallbackUrl) {
                             throw new Error("No image generated in Gemini fallback");
                         }
+                        imageUrl = fallbackUrl;
                     }
                     break;
             }
