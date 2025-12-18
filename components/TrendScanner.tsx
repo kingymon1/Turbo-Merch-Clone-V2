@@ -3,9 +3,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { TrendData, ProcessingStage, MerchPackage, PromptMode, SavedIdea } from '../types';
-import { searchTrends, analyzeNicheDeeply, generateListing, generateDesignImage, generateDesignImageEnhanced } from '../services/geminiService';
+import { searchTrends, analyzeNicheDeeply, generateListing, generateDesignImage, generateDesignImageEnhanced, TrendScannerImageModel } from '../services/geminiService';
 import { VIRALITY_LEVELS, TREND_CONFIG } from '../config';
-import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check } from 'lucide-react';
+import { Search, TrendingUp, Loader2, ArrowRight, Globe, Zap, Palette, Sparkles, Radar, Terminal, Settings2, ChevronDown, Layers, Wand2, HelpCircle, Users, MessageSquare, Newspaper, Lightbulb, Check, Image as ImageIcon } from 'lucide-react';
 import ConfirmationModal from './ConfirmationModal';
 import BatchGenerationPanel from './BatchGenerationPanel';
 import { TierName, PRICING_TIERS, parseRetentionDays } from '../lib/pricing';
@@ -67,6 +67,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
     const [niche, setNiche] = useState('');
     const [viralityPreset, setViralityPreset] = useState<ViralityPreset>('balanced');
     const [promptMode, setPromptMode] = useState<PromptMode>('advanced');
+    const [imageModel, setImageModel] = useState<TrendScannerImageModel>('imagen');
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [testMode, setTestMode] = useState(false); // TEST MODE: FULL POWER
 
@@ -295,8 +296,8 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
             setAutoPilotMessage(`Rendering for ${shirtColor} shirt (${modeLabel} mode)...`);
             setTargetProgress(80);
 
-            // Use Enhanced Pipeline
-            const { imageUrl, research } = await generateDesignImageEnhanced(bestTrend, true, promptMode);
+            // Use Enhanced Pipeline with selected image model
+            const { imageUrl, research } = await generateDesignImageEnhanced(bestTrend, true, promptMode, imageModel);
 
             setTargetProgress(95); // Phase 3 complete
 
@@ -563,7 +564,7 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
                         <span className="w-6 h-6 rounded-full bg-gray-200 dark:bg-gray-500/20 text-gray-500 dark:text-gray-400 text-xs font-bold flex items-center justify-center">2</span>
                         <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Configure settings</span>
                         <span className="text-xs text-gray-400 dark:text-gray-600">
-                            ({VIRALITY_PRESETS[viralityPreset].label} intensity, {promptMode === 'advanced' ? 'Detailed' : 'Simple'} images)
+                            ({VIRALITY_PRESETS[viralityPreset].label} intensity, {promptMode === 'advanced' ? 'Detailed' : 'Simple'} prompts, {imageModel === 'imagen' ? 'Imagen 4' : imageModel === 'ideogram' ? 'Ideogram 3' : 'GPT-Image-1.5'})
                         </span>
                     </div>
                     <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
@@ -719,6 +720,52 @@ const TrendScanner: React.FC<TrendScannerProps> = ({ onTrendSelect, initialAutoR
                                         Detailed
                                     </div>
                                     <div className="text-xs opacity-70 mt-1">More control, complex prompts</div>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Image Model */}
+                        <div>
+                            <label className="text-sm text-gray-500 dark:text-gray-400 mb-3 block">Image Generation Model</label>
+                            <div className="grid grid-cols-3 gap-3">
+                                <button
+                                    onClick={() => setImageModel('imagen')}
+                                    className={`p-3 rounded-lg border text-center transition-all ${imageModel === 'imagen'
+                                        ? 'text-purple-500 dark:text-purple-400 bg-purple-500/10 border-purple-500/30'
+                                        : 'text-gray-500 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                                        }`}
+                                >
+                                    <div className="flex items-center justify-center gap-2 font-bold text-sm">
+                                        <ImageIcon className="w-4 h-4" />
+                                        Imagen 4
+                                    </div>
+                                    <div className="text-xs opacity-70 mt-1">Google flagship</div>
+                                </button>
+                                <button
+                                    onClick={() => setImageModel('ideogram')}
+                                    className={`p-3 rounded-lg border text-center transition-all ${imageModel === 'ideogram'
+                                        ? 'text-pink-500 dark:text-pink-400 bg-pink-500/10 border-pink-500/30'
+                                        : 'text-gray-500 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                                        }`}
+                                >
+                                    <div className="flex items-center justify-center gap-2 font-bold text-sm">
+                                        <ImageIcon className="w-4 h-4" />
+                                        Ideogram 3
+                                    </div>
+                                    <div className="text-xs opacity-70 mt-1">Best typography</div>
+                                </button>
+                                <button
+                                    onClick={() => setImageModel('gpt-image-1.5')}
+                                    className={`p-3 rounded-lg border text-center transition-all ${imageModel === 'gpt-image-1.5'
+                                        ? 'text-cyan-500 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/30'
+                                        : 'text-gray-500 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                                        }`}
+                                >
+                                    <div className="flex items-center justify-center gap-2 font-bold text-sm">
+                                        <ImageIcon className="w-4 h-4" />
+                                        GPT-Image-1.5
+                                    </div>
+                                    <div className="text-xs opacity-70 mt-1">4x faster, transparent</div>
                                 </button>
                             </div>
                         </div>
