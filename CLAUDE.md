@@ -570,28 +570,39 @@ A streamlined, one-click merch generation feature that discovers trending topics
 - **Category/Niche** (optional): Text input to focus trend search (e.g., "gaming", "fitness", "dogs")
 - **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, GPT-Image-1.5
 
-**Generation Flow**:
-1. **Trend Discovery** - Perplexity API (sonar model) finds trending topic and returns:
-   - `topic`: The trend name
-   - `phrase`: 2-5 word t-shirt phrase (used as TEXT_TOP)
-   - `audience`: Who would buy this shirt
-   - `mood`: Emotional tone (funny, inspirational, sarcastic, etc.)
-   - `summary`: Why it's trending
-2. **Style Selection (Code)** - Weighted random selection from proven style options:
+**Generation Flow** (Two-Stage Discovery - Default):
+1. **Stage 1: Niche Discovery** - Perplexity discovers an interesting community/hobby:
+   - Explores beyond mainstream (fishing, knitting, crafts, not just AI/tech)
+   - Returns: `niche` (community name), `audience` (who they are), `description`
+   - Uses randomized exploration angles and avoidance instructions
+   - High temperature (0.9) for maximum variety
+2. **Stage 2: Trend Discovery** - Perplexity finds what's trending in that niche:
+   - Injected with current date for recency (avoids old/historical content)
+   - Returns: `topic`, `phrase` (2-5 words), `audience`, `mood`, `summary`
+   - If user provides category, Stage 1 is skipped and category used directly
+3. **Style Selection (Code)** - Weighted random selection from proven style options:
    - 70% Evergreen (E) options, 30% Emerging (M) options
    - Selects one TYPOGRAPHY, one EFFECT, one AESTHETIC
-3. **LLM Complementation** - Gemini receives the phrase + mood + audience and derives:
+4. **LLM Complementation** - Gemini receives the phrase + mood + audience and derives:
    - TEXT_BOTTOM (complements the phrase - never generic like "Life Style")
    - IMAGE_DESCRIPTION (specific visual with uplift descriptors)
    - Note: TEXT_TOP comes directly from Perplexity's `phrase` field
-4. **Prompt Display** - Shows completed prompt before image generation
-5. **Image Generation** - Selected model creates the design
-6. **Listing Generation** - Gemini creates brand, title, bullets, description
-7. **Auto-Save** - Design saved to My Library (DesignHistory table)
+5. **Prompt Display** - Shows completed prompt before image generation
+6. **Image Generation** - Selected model creates the design
+7. **Listing Generation** - Gemini creates brand, title, bullets, description
+8. **Auto-Save** - Design saved to My Library (DesignHistory table)
 
-**Data Flow**:
+**Research Mode Toggle**:
+- `SIMPLE_AUTOPILOT_RESEARCH_MODE=twostage` (default) - Two-stage niche discovery
+- `SIMPLE_AUTOPILOT_RESEARCH_MODE=classic` - Single query to Perplexity (legacy)
+
+**Data Flow** (Two-Stage):
 ```
-Perplexity Research
+Stage 1: Niche Discovery (Perplexity)
+    ↓
+Returns: niche, audience, description
+    ↓
+Stage 2: Trend in Niche (Perplexity, with current date injected)
     ↓
 Returns: topic, phrase, audience, mood, summary
     ↓
@@ -617,16 +628,22 @@ Code builds final prompt from all slot values
 - All style options are documented in `docs/simple-style-selector.md` with rationale
 - Designs optimized for black shirts (highest contrast, broadest appeal)
 
-**Diversity Mechanism**:
-To avoid repetitive results, the Perplexity query uses random variations:
-- **Time windows**: "trending right now", "emerging this week", "going viral today", etc.
-- **Angles**: "viral on social media", "breakout trend", "growing interest", etc.
-- **Higher temperature** (0.8) for more variety in responses
+**Diversity Mechanism** (Two-Stage):
+The two-stage approach explores the full landscape of human interests:
+- **Stage 1 Exploration Angles**: Rotates through hobby communities, professional fields, lifestyles, fandoms, sports, crafts, outdoor activities, collector groups
+- **Stage 1 Avoidance**: Explicitly avoids mainstream tech, AI, politics, viral memes
+- **Stage 1 Temperature**: 0.9 for maximum variety in niche discovery
+- **Stage 2 Date Injection**: Current date injected to ensure recent trends, not historical content
+- **Stage 2 Temperature**: 0.8 for variety while maintaining relevance
 
-**Cost Per Generation** (~$0.09 with GPT-Image-1.5):
+**Why Two-Stage**:
+Single-query approach gravitated toward mainstream social media trends (AI, memes, pop culture). Two-stage forces exploration of the long tail: fishing, knitting, hiking, cooking, etc.
+
+**Cost Per Generation** (~$0.10 with GPT-Image-1.5):
 | Step | API | Cost |
 |------|-----|------|
-| Trend Discovery | Perplexity (sonar) | ~$0.006 |
+| Stage 1: Niche Discovery | Perplexity (sonar) | ~$0.005 |
+| Stage 2: Trend Discovery | Perplexity (sonar) | ~$0.006 |
 | Slot Values | Gemini (2.5-flash) | ~$0.004 |
 | Image Generation | GPT-Image-1.5 | ~$0.08 |
 | Listing Generation | Gemini (2.5-flash) | ~$0.003 |

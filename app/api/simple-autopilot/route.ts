@@ -229,6 +229,239 @@ Return your findings in this exact JSON format:
 }
 
 /**
+ * Two-Stage Discovery: Stage 1 - Discover an interesting niche
+ * Asks Perplexity to find an interesting community/hobby/interest area
+ */
+async function discoverNiche(): Promise<{ niche: string; audience: string; description: string }> {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('PERPLEXITY_API_KEY not configured');
+  }
+
+  // Randomize the prompt to encourage variety
+  const explorationAngles = [
+    'a hobby community with passionate followers',
+    'a professional field with its own culture and inside jokes',
+    'a lifestyle or activity that brings people together',
+    'a fandom or enthusiast group',
+    'a sport, game, or competitive activity',
+    'a craft, art form, or creative pursuit',
+    'an outdoor activity or nature-related interest',
+    'a collector community or niche interest group',
+  ];
+
+  const avoidExamples = [
+    'Avoid mainstream tech topics like AI, cryptocurrency, or programming.',
+    'Look beyond what dominates Twitter and TikTok front pages.',
+    'Skip politics, mainstream celebrities, and viral memes.',
+    'Find something from the long tail of human interests.',
+  ];
+
+  const angle = explorationAngles[Math.floor(Math.random() * explorationAngles.length)];
+  const avoid = avoidExamples[Math.floor(Math.random() * avoidExamples.length)];
+
+  console.log('[SimpleAutopilot] Stage 1: Discovering niche...');
+  console.log('[SimpleAutopilot] Exploration angle:', angle);
+
+  const response = await fetch(PERPLEXITY_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        {
+          role: 'system',
+          content: `You are an explorer of human interests and communities. Your job is to discover interesting niches that most people don't know exist.
+
+Find ${angle}. ${avoid}
+
+Think about:
+- What do these people call themselves?
+- What shared language or inside jokes do they have?
+- What would they proudly wear on a t-shirt?
+
+Return your discovery in this exact JSON format:
+{
+  "niche": "The specific community or interest area (e.g., 'competitive yo-yoing', 'urban sketching', 'vintage synthesizer collectors')",
+  "audience": "Who these people are in 2-5 words (e.g., 'skill toy enthusiasts', 'traveling artists', 'analog music nerds')",
+  "description": "One sentence about what makes this community interesting"
+}`
+        },
+        {
+          role: 'user',
+          content: 'Discover an interesting niche community for me. Surprise me with something I might not have thought of.'
+        }
+      ],
+      temperature: 0.9, // High temperature for maximum variety
+      max_tokens: 300,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[SimpleAutopilot] Stage 1 Perplexity error:', errorText);
+    throw new Error(`Perplexity API error in niche discovery: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || '';
+
+  console.log('[SimpleAutopilot] Stage 1 response:', content);
+
+  // Parse the JSON response
+  let nicheData: any;
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      nicheData = JSON.parse(jsonMatch[0]);
+    } else {
+      throw new Error('No JSON found in response');
+    }
+  } catch (parseError) {
+    console.warn('[SimpleAutopilot] Stage 1 parse failed, using fallback');
+    // Fallback to a reasonable default
+    nicheData = {
+      niche: 'outdoor enthusiasts',
+      audience: 'nature lovers',
+      description: 'People who love spending time outdoors',
+    };
+  }
+
+  console.log('[SimpleAutopilot] Discovered niche:', nicheData.niche);
+
+  return {
+    niche: nicheData.niche || 'hobbyists',
+    audience: nicheData.audience || 'enthusiasts',
+    description: nicheData.description || '',
+  };
+}
+
+/**
+ * Two-Stage Discovery: Stage 2 - Find trending topic within a niche
+ * Asks Perplexity what's currently trending in the discovered niche
+ */
+async function findTrendingInNiche(niche: string, audience: string): Promise<TrendResearch> {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('PERPLEXITY_API_KEY not configured');
+  }
+
+  console.log('[SimpleAutopilot] Stage 2: Finding trend in niche:', niche);
+
+  // Get current date for recency context
+  const today = new Date().toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
+
+  const response = await fetch(PERPLEXITY_API_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'sonar',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a trend researcher specializing in the ${niche} community.
+
+Today's date is ${today}. Focus on what's trending RIGHT NOW in ${currentYear} - not historical events or old news.
+
+Your audience is ${audience}. You understand their culture, language, and what they find meaningful or funny.
+
+Find something currently relevant, trending, or beloved in this community that would work well on a t-shirt. This could be:
+- A current event or news in the community
+- A beloved phrase, saying, or inside joke
+- A meme or reference that insiders would recognize
+- A point of pride or identity for community members
+
+Return your finding in this exact JSON format:
+{
+  "topic": "The specific trend, phrase, or concept",
+  "summary": "1-2 sentences about why this resonates with ${audience}",
+  "phrase": "The exact 2-5 word phrase that would work on a t-shirt",
+  "audience": "${audience}",
+  "mood": "The emotional tone (funny, proud, sarcastic, wholesome, rebellious, etc.)"
+}`
+        },
+        {
+          role: 'user',
+          content: `What's something currently relevant or trending in the ${niche} community that ${audience} would want on a t-shirt? Find a phrase or concept that shows insider knowledge.`
+        }
+      ],
+      temperature: 0.8,
+      max_tokens: 500,
+      return_citations: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('[SimpleAutopilot] Stage 2 Perplexity error:', errorText);
+    throw new Error(`Perplexity API error in trend discovery: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content || '';
+
+  console.log('[SimpleAutopilot] Stage 2 response:', content);
+
+  // Parse the JSON response
+  let trendData: any;
+  try {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      trendData = JSON.parse(jsonMatch[0]);
+    } else {
+      throw new Error('No JSON found in response');
+    }
+  } catch (parseError) {
+    console.warn('[SimpleAutopilot] Stage 2 parse failed, using raw content');
+    trendData = {
+      topic: `${niche} trend`,
+      summary: content,
+      phrase: niche.slice(0, 30),
+      audience: audience,
+      mood: 'proud',
+    };
+  }
+
+  console.log('[SimpleAutopilot] Found trend:', trendData.topic);
+
+  return {
+    topic: trendData.topic || `${niche} trend`,
+    phrase: trendData.phrase || trendData.topic || niche,
+    audience: trendData.audience || audience,
+    mood: trendData.mood || 'proud',
+    summary: trendData.summary || content,
+    source: data.citations?.[0] || 'perplexity',
+  };
+}
+
+/**
+ * Two-Stage Discovery: Main function
+ * Combines niche discovery + trend finding for broader exploration
+ */
+async function findTrendingTopicTwoStage(category?: string): Promise<TrendResearch> {
+  // If category is provided, skip stage 1 and use it directly
+  if (category && category.trim()) {
+    console.log('[SimpleAutopilot] Category provided, skipping stage 1:', category);
+    return findTrendingInNiche(category.trim(), `${category} enthusiasts`);
+  }
+
+  // Stage 1: Discover a niche
+  const { niche, audience } = await discoverNiche();
+
+  // Stage 2: Find trend within that niche
+  return findTrendingInNiche(niche, audience);
+}
+
+/**
  * Use Gemini to derive complementary values for the design template
  * - textTop comes from Perplexity research (phrase field)
  * - Gemini derives textBottom and imageDescription to complement the phrase
@@ -848,8 +1081,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('[SimpleAutopilot] Image model:', imageModel);
 
     // Step 1: Find trending topic via Perplexity
+    // Toggle between classic (single query) and twostage (niche discovery + trend) modes
+    const researchMode = process.env.SIMPLE_AUTOPILOT_RESEARCH_MODE || 'twostage';
     console.log('[SimpleAutopilot] Step 1: Finding trending topic...');
-    const trendData = await findTrendingTopic(category);
+    console.log('[SimpleAutopilot] Research mode:', researchMode);
+
+    const trendData = researchMode === 'twostage'
+      ? await findTrendingTopicTwoStage(category)
+      : await findTrendingTopic(category);
     console.log('[SimpleAutopilot] Found trend:', trendData.topic);
 
     // Step 2: Select styles via weighted random (70% Evergreen / 30% Emerging)
