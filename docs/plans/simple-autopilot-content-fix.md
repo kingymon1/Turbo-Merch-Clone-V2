@@ -1,141 +1,125 @@
-# Simple Autopilot Content Generation Fix
+# Simple Autopilot Content Generation Fix (Revised)
 
 ## Problem Summary
 
-The LLM content generation in Simple Autopilot is failing, causing fallback defaults to be used 100% of the time:
-- `textBottom`: Always "Life Style"
-- `imageDescription`: Always "a bold graphic element representing the trend"
-- `textTop`: Truncated trend topic (not proper t-shirt copy)
+The LLM content generation in Simple Autopilot is producing poor results:
+- `textBottom`: Always "Life Style" (fallback)
+- `imageDescription`: Always generic (fallback)
+- `textTop`: Trend descriptions instead of wearable phrases
 
-## Root Cause Analysis
+## Root Cause
 
-1. **Gemini JSON parsing failure** - The `extractSlotValues()` function's catch block is triggering, using fallback values
-2. **Prompt clarity issue** - The LLM prompt asks for "hook/attention grabber" but gets trend descriptions
-3. **No validation** - Malformed/incomplete text passes through unchecked
-4. **6-word limit not enforced** - Per docs, autopilot should enforce max 6 words
+**We're throwing away good research data.**
 
-## Proposed Fix
-
-### Step 1: Add Logging to Diagnose JSON Failure
-
-**File**: `app/api/simple-autopilot/route.ts`
-
-Add detailed logging in `extractSlotValues()` to capture:
-- Raw Gemini response before parsing
-- Parse error details if JSON fails
-- Whether fallback is being used
-
-This will confirm if the issue is malformed JSON, empty response, or something else.
-
-### Step 2: Improve the LLM Prompt
-
-**File**: `app/api/simple-autopilot/route.ts` (lines 221-242)
-
-Current prompt issues:
-- Asks for "hook/attention grabber that relates to the trend" - too vague
-- No examples of good vs bad output
-- No explicit instruction to create wearable copy, not descriptions
-
-Improved prompt structure:
-```
-You are a t-shirt copywriter, NOT a trend analyst.
-
-TREND: [topic]
-CONTEXT: [summary]
-
-Create SHORT, PUNCHY text that someone would WEAR on a shirt.
-
-EXAMPLES OF GOOD OUTPUT:
-- textTop: "Touch Grass" (not "Digital Detox Trend")
-- textTop: "Chaos Coordinator" (not "Busy Parent Lifestyle")
-- textBottom: "Send Coffee" (not "Life Style")
-
-EXAMPLES OF BAD OUTPUT (DO NOT DO THIS):
-- Describing the trend: "Holiday Exhaustion Energy"
-- Generic filler: "Life Style", "Trending Now"
-- Incomplete phrases: "Nothing beats a"
-
-YOUR OUTPUT:
+Perplexity is asked to return:
+```json
 {
-  "textTop": "2-4 words, catchy phrase people would wear",
-  "textBottom": "2-4 words, completes the message or adds humor",
-  "imageDescription": "specific visual, e.g. 'a steaming coffee cup with cartoon eyes'"
+  "topic": "The specific trend or concept name",
+  "phrase": "The exact 2-5 word phrase that would work on a t-shirt",
+  "audience": "Who would buy this shirt",
+  "mood": "The emotional tone (funny, inspirational, sarcastic, etc.)",
+  "summary": "..."
 }
 ```
 
-### Step 3: Add Response Validation
+But `findTrendingTopic()` only returns `topic`, `summary`, `source` - discarding `phrase`, `audience`, and `mood`.
+
+Then Gemini is asked to re-derive the shirt text from scratch without this context.
+
+## Revised Fix
+
+### Step 1: Update `findTrendingTopic()` return value
 
 **File**: `app/api/simple-autopilot/route.ts`
 
-After parsing LLM response, validate:
-1. `textTop` is not empty and not > 6 words
-2. `textBottom` is not empty and not a banned generic phrase
-3. `imageDescription` is not empty and not the default fallback
-
-If validation fails, retry once with a more explicit prompt or use smarter fallback.
-
-### Step 4: Create Banned Phrase List for textBottom
-
-**File**: `lib/simple-style-selector.ts` (or new file)
+Update the return type and value to include all research fields:
 
 ```typescript
-const BANNED_BOTTOM_PHRASES = [
-  'life style', 'lifestyle', 'trending now', 'hot topic',
-  'viral trend', 'must have', 'limited edition'
-];
-```
-
-If LLM returns a banned phrase, reject and retry.
-
-### Step 5: Enforce 6-Word Maximum
-
-**File**: `app/api/simple-autopilot/route.ts`
-
-Per CLAUDE.md: "Autopilot mode: Maximum 6 words enforced for reliable rendering"
-
-Add word count check after LLM response:
-```typescript
-const wordCount = textTop.split(/\s+/).length;
-if (wordCount > 6) {
-  // Truncate intelligently or retry
+interface TrendResearch {
+  topic: string;
+  phrase: string;      // ADD - the t-shirt phrase
+  audience: string;    // ADD - who would buy this
+  mood: string;        // ADD - emotional tone
+  summary: string;
+  source: string;
 }
 ```
 
-### Step 6: Improve Fallback Logic
+Return all fields from Perplexity response instead of discarding them.
+
+### Step 2: Update `extractSlotValues()` to use research data
 
 **File**: `app/api/simple-autopilot/route.ts`
 
-Current fallback just truncates trend topic. Better approach:
-- Use Perplexity's `phrase` field if available (it asks for this)
-- Extract quoted phrases from trend summary
-- Use a set of proven fallback templates per niche
+- Use `phrase` from Perplexity as `textTop` (this is what research found)
+- Pass `mood` and `audience` to Gemini as context
+- Gemini's simplified job: derive `textBottom` and `imageDescription` that **complement** the phrase
+
+### Step 3: Simplify Gemini's prompt
+
+**Current role**: "Create all the shirt text from the trend topic"
+**Revised role**: "Given this phrase (from research) and mood, create a complementary bottom line and visual"
+
+New prompt structure:
+```
+RESEARCH FOUND THIS PHRASE: "${phrase}"
+TARGET AUDIENCE: ${audience}
+MOOD/TONE: ${mood}
+
+Your job is to COMPLEMENT this phrase with:
+1. textBottom: 2-4 words that complete or contrast the phrase
+2. imageDescription: A specific visual that fits the mood
+
+The phrase is already good - don't replace it, enhance it.
+```
+
+### Step 4: Add logging and validation
+
+- Log what Perplexity returns (to verify phrase quality)
+- Validate phrase exists and is usable
+- Validate phrase is ≤6 words per autopilot requirement
+- Only use fallback if Perplexity didn't return a valid phrase
+
+### Step 5: Enforce 6-word maximum
+
+If Perplexity's phrase is >6 words, truncate intelligently or request Gemini to shorten it while preserving meaning.
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `app/api/simple-autopilot/route.ts` | Steps 1-3, 5-6: Logging, prompt improvement, validation, word limit, fallback |
-| `lib/simple-style-selector.ts` | Step 4: Add banned phrase list and validation helper |
+| `app/api/simple-autopilot/route.ts` | Steps 1-5: Update return types, pass research data through, simplify Gemini prompt, add validation |
 
-## Testing Plan
+## Data Flow (After Fix)
 
-1. Run 10 generations and log raw Gemini responses
-2. Verify JSON parsing succeeds
-3. Check that textBottom is never "Life Style"
-4. Check that textTop is ≤6 words and sounds like wearable copy
-5. Verify imageDescription is specific to each trend
-
-## Rollback Plan
-
-If issues arise, revert to current behavior by:
-- Removing validation checks
-- Restoring original prompt
-- Current fallback logic remains as safety net
+```
+Perplexity Research
+    ↓
+Returns: topic, phrase, audience, mood, summary
+    ↓
+phrase → textTop (directly from research)
+mood + audience → context for Gemini
+    ↓
+Gemini (simplified role)
+    ↓
+Derives: textBottom, imageDescription (complementing the phrase)
+    ↓
+Final prompt uses research-backed phrase
+```
 
 ## Success Criteria
 
-- [ ] JSON parsing succeeds >95% of the time
-- [ ] textBottom is unique and contextual (never "Life Style")
-- [ ] textTop is ≤6 words and reads as wearable copy
-- [ ] imageDescription varies per trend
-- [ ] Generated prompts produce visually distinct designs
+- [ ] Perplexity's `phrase` field flows through as `textTop`
+- [ ] `mood` and `audience` are passed to Gemini
+- [ ] Gemini only derives `textBottom` and `imageDescription`
+- [ ] `textTop` is ≤6 words
+- [ ] No more "Life Style" defaults when research provided good data
+- [ ] Designs are more varied (different phrases from research)
+
+## Testing Plan
+
+1. Run 10 generations with logging enabled
+2. Verify Perplexity returns phrase/mood/audience
+3. Verify phrase is used as textTop
+4. Verify textBottom varies and relates to the phrase
+5. Verify imageDescription is specific to each trend
