@@ -2943,48 +2943,78 @@ export const generateDesignImageEnhanced = async (
 
             let imageUrl: string;
 
-            switch (imageModel) {
-                case 'ideogram':
-                    imageUrl = await generateIdeogramImage(designPrompt);
-                    console.log('✓ Professional design generated with Ideogram 3.0');
-                    break;
+            // Check if running on client side (browser)
+            const isClientSide = typeof window !== 'undefined';
 
-                case 'gpt-image-1.5':
-                    imageUrl = await generateGptImage15(designPrompt);
-                    console.log('✓ Professional design generated with GPT-Image-1.5');
-                    break;
+            // For Ideogram and GPT-Image-1.5, use API route when on client side
+            // (these APIs require server-side env vars)
+            if (isClientSide && (imageModel === 'ideogram' || imageModel === 'gpt-image-1.5')) {
+                console.log(`🌐 Using API route for ${imageModel} (client-side)...`);
+                const response = await fetch('/api/trend-scanner/generate-image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: designPrompt,
+                        imageModel,
+                    }),
+                });
 
-                case 'imagen':
-                default:
-                    // Try Imagen 4 first, fallback to Gemini
-                    try {
-                        imageUrl = await generateImagen4Image(designPrompt);
-                        console.log('✓ Professional design generated with Imagen 4');
-                    } catch (error) {
-                        console.warn('Imagen 4 failed, falling back to Gemini:', error);
-                        // Fallback to Gemini image generation
-                        const ai = getAI();
-                        console.log('🎨 Using Gemini fallback...');
-                        const response = await ai.models.generateContent({
-                            model: 'gemini-3-pro-image-preview',
-                            contents: designPrompt,
-                        });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(`Image generation failed: ${errorData.error || response.statusText}`);
+                }
 
-                        const parts = response.candidates?.[0]?.content?.parts || [];
-                        let fallbackUrl: string | null = null;
-                        for (const part of parts) {
-                            if (part.inlineData && part.inlineData.data) {
-                                fallbackUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-                                console.log('✓ Design generated with Gemini fallback');
-                                break;
+                const data = await response.json();
+                if (!data.success || !data.imageUrl) {
+                    throw new Error(data.error || 'No image URL in response');
+                }
+                imageUrl = data.imageUrl;
+                console.log(`✓ Professional design generated with ${imageModel} via API`);
+            } else {
+                // Direct generation (server-side or Imagen)
+                switch (imageModel) {
+                    case 'ideogram':
+                        imageUrl = await generateIdeogramImage(designPrompt);
+                        console.log('✓ Professional design generated with Ideogram 3.0');
+                        break;
+
+                    case 'gpt-image-1.5':
+                        imageUrl = await generateGptImage15(designPrompt);
+                        console.log('✓ Professional design generated with GPT-Image-1.5');
+                        break;
+
+                    case 'imagen':
+                    default:
+                        // Try Imagen 4 first, fallback to Gemini
+                        try {
+                            imageUrl = await generateImagen4Image(designPrompt);
+                            console.log('✓ Professional design generated with Imagen 4');
+                        } catch (error) {
+                            console.warn('Imagen 4 failed, falling back to Gemini:', error);
+                            // Fallback to Gemini image generation
+                            const ai = getAI();
+                            console.log('🎨 Using Gemini fallback...');
+                            const response = await ai.models.generateContent({
+                                model: 'gemini-3-pro-image-preview',
+                                contents: designPrompt,
+                            });
+
+                            const parts = response.candidates?.[0]?.content?.parts || [];
+                            let fallbackUrl: string | null = null;
+                            for (const part of parts) {
+                                if (part.inlineData && part.inlineData.data) {
+                                    fallbackUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+                                    console.log('✓ Design generated with Gemini fallback');
+                                    break;
+                                }
                             }
+                            if (!fallbackUrl) {
+                                throw new Error("No image generated in Gemini fallback");
+                            }
+                            imageUrl = fallbackUrl;
                         }
-                        if (!fallbackUrl) {
-                            throw new Error("No image generated in Gemini fallback");
-                        }
-                        imageUrl = fallbackUrl;
-                    }
-                    break;
+                        break;
+                }
             }
 
             return { imageUrl, research };
