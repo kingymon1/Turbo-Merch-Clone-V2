@@ -353,6 +353,10 @@ async function findTrendingInNiche(niche: string, audience: string): Promise<Tre
 
   console.log('[SimpleAutopilot] Stage 2: Finding trend in niche:', niche);
 
+  // Get current date for recency context
+  const today = new Date().toISOString().split('T')[0];
+  const currentYear = new Date().getFullYear();
+
   const response = await fetch(PERPLEXITY_API_URL, {
     method: 'POST',
     headers: {
@@ -365,6 +369,8 @@ async function findTrendingInNiche(niche: string, audience: string): Promise<Tre
         {
           role: 'system',
           content: `You are a trend researcher specializing in the ${niche} community.
+
+Today's date is ${today}. Focus on what's trending RIGHT NOW in ${currentYear} - not historical events or old news.
 
 Your audience is ${audience}. You understand their culture, language, and what they find meaningful or funny.
 
