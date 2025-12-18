@@ -8,8 +8,20 @@
  * Reference: /docs/simple-style-selector.md
  */
 
+// Mood Options (for user selection)
+export const MOOD_OPTIONS = [
+  'Funny',
+  'Inspirational',
+  'Sarcastic',
+  'Wholesome',
+  'Edgy',
+  'Proud',
+  'Nostalgic',
+  'Rebellious',
+] as const;
+
 // Typography Styles
-const TYPOGRAPHY_EVERGREEN = [
+export const TYPOGRAPHY_EVERGREEN = [
   'Bold condensed sans (all caps)',
   'Wide bold sans (headline style)',
   'Rounded sans (friendly/soft humor)',
@@ -20,13 +32,13 @@ const TYPOGRAPHY_EVERGREEN = [
   'Gothic/blackletter',
 ];
 
-const TYPOGRAPHY_EMERGING = [
+export const TYPOGRAPHY_EMERGING = [
   'Minimal narrow grotesk (small caps)',
   '3D/puff/extruded display type',
 ];
 
 // Visual Effects
-const EFFECT_EVERGREEN = [
+export const EFFECT_EVERGREEN = [
   'No-effect high contrast (pure white or light color)',
   'Mild distressed/grunge texture on type',
   'Vintage sunset/horizon shapes',
@@ -35,7 +47,7 @@ const EFFECT_EVERGREEN = [
   'Circular/shield badge framing',
 ];
 
-const EFFECT_EMERGING = [
+export const EFFECT_EMERGING = [
   'Neon glow/outer glow outlines',
   'Glitch/scanline/CRT texture',
   'High-contrast color blocking/stripes',
@@ -43,7 +55,7 @@ const EFFECT_EMERGING = [
 ];
 
 // Aesthetic Categories
-const AESTHETIC_EVERGREEN = [
+export const AESTHETIC_EVERGREEN = [
   'Retro/nostalgia (70s-Y2K)',
   'Funny/relatable text',
   'Minimalist/clean branding',
@@ -52,7 +64,7 @@ const AESTHETIC_EVERGREEN = [
   'Anime/manga/K-pop inspired',
 ];
 
-const AESTHETIC_EMERGING = [
+export const AESTHETIC_EMERGING = [
   'Cottagecore/nature romanticism',
   'Whimsigothic/occult-cute',
   'AI/cyber/tech aesthetics',
@@ -119,4 +131,32 @@ export function buildImagePrompt(params: {
   const { typography, effect, aesthetic, textTop, imageDescription } = params;
 
   return `${typography} t-shirt design (no mockup) featuring '${textTop}'. ${aesthetic} style with bold ${effect} effects. Add ${imageDescription}. 4500x5400px, black shirt.`;
+}
+
+/**
+ * Get all typography options (evergreen + emerging) for UI dropdowns
+ */
+export function getAllTypographyOptions(): string[] {
+  return [...TYPOGRAPHY_EVERGREEN, ...TYPOGRAPHY_EMERGING];
+}
+
+/**
+ * Get all effect options (evergreen + emerging) for UI dropdowns
+ */
+export function getAllEffectOptions(): string[] {
+  return [...EFFECT_EVERGREEN, ...EFFECT_EMERGING];
+}
+
+/**
+ * Get all aesthetic options (evergreen + emerging) for UI dropdowns
+ */
+export function getAllAestheticOptions(): string[] {
+  return [...AESTHETIC_EVERGREEN, ...AESTHETIC_EMERGING];
+}
+
+/**
+ * Get all mood options for UI dropdowns
+ */
+export function getAllMoodOptions(): readonly string[] {
+  return MOOD_OPTIONS;
 }

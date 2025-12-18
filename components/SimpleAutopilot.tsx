@@ -1,18 +1,27 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles } from 'lucide-react';
+import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles, Info } from 'lucide-react';
+import {
+  getAllTypographyOptions,
+  getAllEffectOptions,
+  getAllAestheticOptions,
+  getAllMoodOptions,
+} from '@/lib/simple-style-selector';
 
 type ImageModel = 'ideogram' | 'imagen' | 'gpt-image-1' | 'gpt-image-1.5';
 
+// Fixed SlotValues interface to match API response
 interface SlotValues {
-  style: string;
+  typography: string;
+  effect: string;
+  aesthetic: string;
   textTop: string;
   textBottom: string;
-  aesthetic: string;
-  color: string;
+  imageDescription: string;
   trendTopic: string;
   trendSummary: string;
+  trendSource: string;
 }
 
 interface Listing {
@@ -43,9 +52,126 @@ const IMAGE_MODELS: { value: ImageModel; label: string; description: string }[] 
   { value: 'gpt-image-1.5', label: 'GPT-Image-1.5', description: '4x faster, superior text, transparent backgrounds' },
 ];
 
+// Get style options from the style selector
+const TYPOGRAPHY_OPTIONS = getAllTypographyOptions();
+const EFFECT_OPTIONS = getAllEffectOptions();
+const AESTHETIC_OPTIONS = getAllAestheticOptions();
+const MOOD_OPTIONS = getAllMoodOptions();
+
+/**
+ * Dropdown component with "Other..." option for custom text input
+ */
+interface DropdownWithCustomProps {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: readonly string[];
+  placeholder?: string;
+  helpText?: string;
+  disabled?: boolean;
+}
+
+const DropdownWithCustom: React.FC<DropdownWithCustomProps> = ({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder = 'Auto',
+  helpText,
+  disabled = false,
+}) => {
+  const [isCustom, setIsCustom] = useState(false);
+  const [customValue, setCustomValue] = useState('');
+
+  // Check if current value is a custom one (not in options and not empty)
+  const isCurrentValueCustom = value && !options.includes(value) && value !== '';
+
+  // Handle dropdown change
+  const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = e.target.value;
+    if (newValue === '__other__') {
+      setIsCustom(true);
+      // Keep the custom value if we're switching to custom mode
+      if (customValue) {
+        onChange(customValue);
+      }
+    } else {
+      setIsCustom(false);
+      setCustomValue('');
+      onChange(newValue);
+    }
+  };
+
+  // Handle custom text input change
+  const handleCustomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setCustomValue(newValue);
+    onChange(newValue);
+  };
+
+  // Determine the dropdown display value
+  const dropdownValue = isCustom || isCurrentValueCustom ? '__other__' : value;
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        {label}
+      </label>
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <select
+            value={dropdownValue}
+            onChange={handleDropdownChange}
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 cursor-pointer"
+            disabled={disabled}
+          >
+            <option value="">{placeholder}</option>
+            {options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+            <option value="__other__">Other...</option>
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+        </div>
+        {(isCustom || isCurrentValueCustom) && (
+          <input
+            type="text"
+            value={isCurrentValueCustom && !isCustom ? value : customValue}
+            onChange={handleCustomChange}
+            placeholder="Enter custom value"
+            className="flex-1 px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+            disabled={disabled}
+          />
+        )}
+      </div>
+      {helpText && (
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{helpText}</p>
+      )}
+    </div>
+  );
+};
+
 const SimpleAutopilot: React.FC = () => {
+  // Basic inputs
   const [category, setCategory] = useState('');
   const [imageModel, setImageModel] = useState<ImageModel>('ideogram');
+
+  // Content inputs
+  const [phrase, setPhrase] = useState('');
+  const [mood, setMood] = useState('');
+  const [audience, setAudience] = useState('');
+
+  // Style inputs
+  const [typography, setTypography] = useState('');
+  const [effect, setEffect] = useState('');
+  const [aesthetic, setAesthetic] = useState('');
+
+  // Additional notes
+  const [additionalNotes, setAdditionalNotes] = useState('');
+
+  // UI state
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +192,13 @@ const SimpleAutopilot: React.FC = () => {
         body: JSON.stringify({
           category: category.trim() || undefined,
           imageModel,
+          phrase: phrase.trim() || undefined,
+          mood: mood || undefined,
+          audience: audience.trim() || undefined,
+          typography: typography || undefined,
+          effect: effect || undefined,
+          aesthetic: aesthetic || undefined,
+          additionalNotes: additionalNotes.trim() || undefined,
         }),
       });
 
@@ -100,7 +233,7 @@ const SimpleAutopilot: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${result.slotValues.textTop}-${result.slotValues.textBottom}.png`.replace(/\s+/g, '-');
+      a.download = `${result.slotValues.textTop}.png`.replace(/\s+/g, '-');
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -125,45 +258,172 @@ const SimpleAutopilot: React.FC = () => {
 
       {/* Controls */}
       <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Category Input */}
+        {/* Info Banner */}
+        <div className="flex items-start gap-3 p-4 mb-6 bg-purple-500/5 border border-purple-500/20 rounded-lg">
+          <Info className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            All fields are optional. Leave everything blank for fully automatic trend discovery and design generation.
+          </p>
+        </div>
+
+        {/* Basic Section */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+            Basic
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Category Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Category / Niche
+              </label>
+              <input
+                type="text"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="Leave blank for any trending topic"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                disabled={isGenerating}
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                e.g., "gaming", "dogs", "fitness", "coffee lovers"
+              </p>
+            </div>
+
+            {/* Image Model Dropdown */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Image Model
+              </label>
+              <div className="relative">
+                <select
+                  value={imageModel}
+                  onChange={(e) => setImageModel(e.target.value as ImageModel)}
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 cursor-pointer"
+                  disabled={isGenerating}
+                >
+                  {IMAGE_MODELS.map((model) => (
+                    <option key={model.value} value={model.value}>
+                      {model.label} - {model.description}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content Section */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+            Content
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Phrase Input */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Phrase
+              </label>
+              <input
+                type="text"
+                value={phrase}
+                onChange={(e) => setPhrase(e.target.value)}
+                placeholder="Leave blank to discover"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                disabled={isGenerating}
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                The main text on the shirt (2-6 words ideal)
+              </p>
+            </div>
+
+            {/* Mood Dropdown */}
+            <DropdownWithCustom
+              label="Mood"
+              value={mood}
+              onChange={setMood}
+              options={MOOD_OPTIONS}
+              placeholder="Auto"
+              helpText="The emotional tone of the design"
+              disabled={isGenerating}
+            />
+
+            {/* Audience Input */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Target Audience
+              </label>
+              <input
+                type="text"
+                value={audience}
+                onChange={(e) => setAudience(e.target.value)}
+                placeholder="Leave blank to discover"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                disabled={isGenerating}
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Who would buy this shirt? e.g., "fishing dads", "coffee addicts", "dog moms"
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Style Section */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+            Style
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <DropdownWithCustom
+              label="Typography"
+              value={typography}
+              onChange={setTypography}
+              options={TYPOGRAPHY_OPTIONS}
+              placeholder="Auto"
+              disabled={isGenerating}
+            />
+
+            <DropdownWithCustom
+              label="Effect"
+              value={effect}
+              onChange={setEffect}
+              options={EFFECT_OPTIONS}
+              placeholder="Auto"
+              disabled={isGenerating}
+            />
+
+            <DropdownWithCustom
+              label="Aesthetic"
+              value={aesthetic}
+              onChange={setAesthetic}
+              options={AESTHETIC_OPTIONS}
+              placeholder="Auto"
+              disabled={isGenerating}
+            />
+          </div>
+        </div>
+
+        {/* Additional Section */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+            Additional
+          </h3>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Category / Niche
+              Additional Notes
             </label>
-            <input
-              type="text"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              placeholder="Leave blank for any trending topic"
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+            <textarea
+              value={additionalNotes}
+              onChange={(e) => setAdditionalNotes(e.target.value)}
+              placeholder="Any other details to guide the design..."
+              rows={3}
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 resize-none"
               disabled={isGenerating}
             />
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              e.g., "gaming", "dogs", "fitness", "coffee lovers"
+              e.g., "Include a bass fish jumping out of water", "Use neon green accents"
             </p>
-          </div>
-
-          {/* Image Model Dropdown */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Image Model
-            </label>
-            <div className="relative">
-              <select
-                value={imageModel}
-                onChange={(e) => setImageModel(e.target.value as ImageModel)}
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 cursor-pointer"
-                disabled={isGenerating}
-              >
-                {IMAGE_MODELS.map((model) => (
-                  <option key={model.value} value={model.value}>
-                    {model.label} - {model.description}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
-            </div>
           </div>
         </div>
 
@@ -171,7 +431,7 @@ const SimpleAutopilot: React.FC = () => {
         <button
           onClick={handleStart}
           disabled={isGenerating}
-          className="mt-6 w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-purple-500/25 disabled:shadow-none flex items-center justify-center gap-2"
+          className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-purple-500/25 disabled:shadow-none flex items-center justify-center gap-2"
         >
           {isGenerating ? (
             <>
@@ -236,13 +496,13 @@ const SimpleAutopilot: React.FC = () => {
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <span className="px-2 py-1 text-xs bg-purple-500/10 text-purple-500 rounded">
-                Style: {result.slotValues.style}
+                Typography: {result.slotValues.typography}
               </span>
               <span className="px-2 py-1 text-xs bg-pink-500/10 text-pink-500 rounded">
-                Aesthetic: {result.slotValues.aesthetic}
+                Effect: {result.slotValues.effect}
               </span>
               <span className="px-2 py-1 text-xs bg-blue-500/10 text-blue-500 rounded">
-                Shirt: {result.slotValues.color}
+                Aesthetic: {result.slotValues.aesthetic}
               </span>
             </div>
           </div>

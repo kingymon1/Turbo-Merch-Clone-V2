@@ -33,6 +33,14 @@ type ImageModel = 'ideogram' | 'imagen' | 'gpt-image-1' | 'gpt-image-1.5';
 interface SimpleAutopilotRequest {
   category?: string;
   imageModel: ImageModel;
+  // Optional user inputs - when provided, these guide/override the auto behavior
+  phrase?: string;           // Exact phrase (skips discovery if set)
+  mood?: string;             // Tone hint for research
+  audience?: string;         // Target demographic
+  typography?: string;       // Override random selection
+  effect?: string;           // Override random selection
+  aesthetic?: string;        // Override random selection
+  additionalNotes?: string;  // Free-form guidance for image description
 }
 
 interface SlotValues {
@@ -343,8 +351,15 @@ Return your discovery in this exact JSON format:
 /**
  * Two-Stage Discovery: Stage 2 - Find trending topic within a niche
  * Asks Perplexity what's currently trending in the discovered niche
+ * @param niche - The niche/category to search in
+ * @param audience - The target audience
+ * @param userHints - Optional hints from user input (mood, audience override)
  */
-async function findTrendingInNiche(niche: string, audience: string): Promise<TrendResearch> {
+async function findTrendingInNiche(
+  niche: string,
+  audience: string,
+  userHints?: { mood?: string; audience?: string }
+): Promise<TrendResearch> {
   const apiKey = process.env.PERPLEXITY_API_KEY;
 
   if (!apiKey) {
@@ -352,10 +367,21 @@ async function findTrendingInNiche(niche: string, audience: string): Promise<Tre
   }
 
   console.log('[SimpleAutopilot] Stage 2: Finding trend in niche:', niche);
+  if (userHints) {
+    console.log('[SimpleAutopilot] User hints:', userHints);
+  }
+
+  // Use user-provided audience if available, otherwise use discovered audience
+  const effectiveAudience = userHints?.audience || audience;
 
   // Get current date for recency context
   const today = new Date().toISOString().split('T')[0];
   const currentYear = new Date().getFullYear();
+
+  // Build mood constraint if user specified one
+  const moodConstraint = userHints?.mood
+    ? `\n\nIMPORTANT: The user specifically wants a "${userHints.mood}" tone. Focus on finding trends that match this mood.`
+    : '';
 
   const response = await fetch(PERPLEXITY_API_URL, {
     method: 'POST',
@@ -372,7 +398,7 @@ async function findTrendingInNiche(niche: string, audience: string): Promise<Tre
 
 Today's date is ${today}. Focus on what's trending RIGHT NOW in ${currentYear} - not historical events or old news.
 
-Your audience is ${audience}. You understand their culture, language, and what they find meaningful or funny.
+Your audience is ${effectiveAudience}. You understand their culture, language, and what they find meaningful or funny.${moodConstraint}
 
 Find something currently relevant, trending, or beloved in this community that would work well on a t-shirt. This could be:
 - A current event or news in the community
@@ -383,15 +409,15 @@ Find something currently relevant, trending, or beloved in this community that w
 Return your finding in this exact JSON format:
 {
   "topic": "The specific trend, phrase, or concept",
-  "summary": "1-2 sentences about why this resonates with ${audience}",
+  "summary": "1-2 sentences about why this resonates with ${effectiveAudience}",
   "phrase": "The exact 2-5 word phrase that would work on a t-shirt",
-  "audience": "${audience}",
+  "audience": "${effectiveAudience}",
   "mood": "The emotional tone (funny, proud, sarcastic, wholesome, rebellious, etc.)"
 }`
         },
         {
           role: 'user',
-          content: `What's something currently relevant or trending in the ${niche} community that ${audience} would want on a t-shirt? Find a phrase or concept that shows insider knowledge.`
+          content: `What's something currently relevant or trending in the ${niche} community that ${effectiveAudience} would want on a t-shirt? Find a phrase or concept that shows insider knowledge.`
         }
       ],
       temperature: 0.8,
@@ -446,31 +472,42 @@ Return your finding in this exact JSON format:
 /**
  * Two-Stage Discovery: Main function
  * Combines niche discovery + trend finding for broader exploration
+ * @param category - Optional category/niche to focus on
+ * @param userHints - Optional hints from user input (mood, audience)
  */
-async function findTrendingTopicTwoStage(category?: string): Promise<TrendResearch> {
+async function findTrendingTopicTwoStage(
+  category?: string,
+  userHints?: { mood?: string; audience?: string }
+): Promise<TrendResearch> {
   // If category is provided, skip stage 1 and use it directly
   if (category && category.trim()) {
     console.log('[SimpleAutopilot] Category provided, skipping stage 1:', category);
-    return findTrendingInNiche(category.trim(), `${category} enthusiasts`);
+    return findTrendingInNiche(category.trim(), `${category} enthusiasts`, userHints);
   }
 
   // Stage 1: Discover a niche
   const { niche, audience } = await discoverNiche();
 
-  // Stage 2: Find trend within that niche
-  return findTrendingInNiche(niche, audience);
+  // Stage 2: Find trend within that niche (passing user hints)
+  return findTrendingInNiche(niche, audience, userHints);
 }
 
 /**
  * Use Gemini to derive complementary values for the design template
- * - textTop comes from Perplexity research (phrase field)
+ * - textTop comes from Perplexity research (phrase field) OR user-provided phrase
  * - Gemini derives imageDescription to complement the phrase
- * - Typography, Effect, and Aesthetic are selected by code (70% Evergreen / 30% Emerging)
+ * - Typography, Effect, and Aesthetic are selected by code (70% Evergreen / 30% Emerging) OR user overrides
  * - textBottom removed: single phrase designs, model decides layout
+ * @param trendData - Research data from Perplexity
+ * @param styles - Selected or user-provided styles
+ * @param userPhrase - Optional user-provided phrase (overrides research)
+ * @param additionalNotes - Optional user notes to guide image description
  */
 async function extractSlotValues(
   trendData: TrendResearch,
-  styles: { typography: string; effect: string; aesthetic: string }
+  styles: { typography: string; effect: string; aesthetic: string },
+  userPhrase?: string,
+  additionalNotes?: string
 ): Promise<SlotValues> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_API_KEY;
 
@@ -478,10 +515,18 @@ async function extractSlotValues(
     throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
-  // textTop comes directly from research - Gemini only derives imageDescription
+  // Determine the phrase to use (user-provided or from research)
+  const effectivePhrase = userPhrase || trendData.phrase;
+
+  // Build additional notes section if provided
+  const notesSection = additionalNotes
+    ? `\n\nUSER NOTES (incorporate these into the visual):\n${additionalNotes}`
+    : '';
+
+  // textTop comes from user or research - Gemini only derives imageDescription
   const prompt = `You are a t-shirt designer. Create a visual element to accompany this phrase.
 
-PHRASE: "${trendData.phrase}"
+PHRASE: "${effectivePhrase}"
 TARGET AUDIENCE: ${trendData.audience}
 MOOD/TONE: ${trendData.mood}
 TREND CONTEXT: ${trendData.summary}
@@ -489,13 +534,14 @@ TREND CONTEXT: ${trendData.summary}
 STYLE:
 - Typography: ${styles.typography}
 - Effect: ${styles.effect}
-- Aesthetic: ${styles.aesthetic}
+- Aesthetic: ${styles.aesthetic}${notesSection}
 
 Create an imageDescription (5-15 words) for a visual that:
 - Is specific to this trend and audience (not generic)
 - Uses vivid descriptors (e.g., "a steaming coffee cup with cartoon eyes" not just "coffee cup")
 - Fits the ${trendData.mood} mood
 - Complements the phrase without competing with it
+${additionalNotes ? '- Incorporates the user\'s specific notes above' : ''}
 
 Respond ONLY with valid JSON:
 {
@@ -573,9 +619,9 @@ Respond ONLY with valid JSON:
     }
   }
 
-  // textTop comes from research (phrase), not from Gemini
+  // textTop comes from user phrase or research (phrase), not from Gemini
   // Enforce 6-word maximum per autopilot requirement
-  let textTop = trendData.phrase;
+  let textTop = effectivePhrase;
   const wordCount = textTop.split(/\s+/).length;
   if (wordCount > 6) {
     console.warn(`[SimpleAutopilot] Phrase exceeds 6 words (${wordCount}): "${textTop}"`);
@@ -1045,7 +1091,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const body: SimpleAutopilotRequest = await request.json();
-    const { category, imageModel } = body;
+    const {
+      category,
+      imageModel,
+      phrase,
+      mood,
+      audience,
+      typography,
+      effect,
+      aesthetic,
+      additionalNotes,
+    } = body;
 
     // Validate image model
     const validModels: ImageModel[] = ['ideogram', 'imagen', 'gpt-image-1', 'gpt-image-1.5'];
@@ -1059,26 +1115,50 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     console.log('[SimpleAutopilot] Starting generation...');
     console.log('[SimpleAutopilot] Category:', category || '(any)');
     console.log('[SimpleAutopilot] Image model:', imageModel);
+    console.log('[SimpleAutopilot] User inputs:', {
+      phrase: phrase || '(auto)',
+      mood: mood || '(auto)',
+      audience: audience || '(auto)',
+      typography: typography || '(auto)',
+      effect: effect || '(auto)',
+      aesthetic: aesthetic || '(auto)',
+      additionalNotes: additionalNotes ? '(provided)' : '(none)',
+    });
 
-    // Step 1: Find trending topic via Perplexity
+    // Step 1: Find trending topic via Perplexity (unless user provided phrase)
     // Toggle between classic (single query) and twostage (niche discovery + trend) modes
     const researchMode = process.env.SIMPLE_AUTOPILOT_RESEARCH_MODE || 'twostage';
     console.log('[SimpleAutopilot] Step 1: Finding trending topic...');
     console.log('[SimpleAutopilot] Research mode:', researchMode);
 
+    // Build user hints for research
+    const userHints = (mood || audience) ? { mood, audience } : undefined;
+
     const trendData = researchMode === 'twostage'
-      ? await findTrendingTopicTwoStage(category)
+      ? await findTrendingTopicTwoStage(category, userHints)
       : await findTrendingTopic(category);
     console.log('[SimpleAutopilot] Found trend:', trendData.topic);
 
     // Step 2: Select styles via weighted random (70% Evergreen / 30% Emerging)
-    console.log('[SimpleAutopilot] Step 2: Selecting styles (code-based)...');
-    const selectedStyles = selectAllStyles();
+    // OR use user-provided overrides
+    console.log('[SimpleAutopilot] Step 2: Selecting styles...');
+    const autoStyles = selectAllStyles();
+    const selectedStyles = {
+      typography: typography || autoStyles.typography,
+      effect: effect || autoStyles.effect,
+      aesthetic: aesthetic || autoStyles.aesthetic,
+    };
     console.log('[SimpleAutopilot] Selected styles:', selectedStyles);
+    console.log('[SimpleAutopilot] Style sources:', {
+      typography: typography ? 'user' : 'auto',
+      effect: effect ? 'user' : 'auto',
+      aesthetic: aesthetic ? 'user' : 'auto',
+    });
 
-    // Step 3: Extract LLM-derived values via Gemini (TEXT_TOP, TEXT_BOTTOM, IMAGE_DESCRIPTION)
+    // Step 3: Extract LLM-derived values via Gemini (IMAGE_DESCRIPTION)
+    // Pass user phrase and additional notes if provided
     console.log('[SimpleAutopilot] Step 3: Extracting LLM-derived values...');
-    const slotValues = await extractSlotValues(trendData, selectedStyles);
+    const slotValues = await extractSlotValues(trendData, selectedStyles, phrase, additionalNotes);
     console.log('[SimpleAutopilot] Slot values:', slotValues);
 
     // Step 4: Build prompt
