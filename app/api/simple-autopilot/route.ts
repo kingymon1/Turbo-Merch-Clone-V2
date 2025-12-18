@@ -469,15 +469,15 @@ async function generateWithImagen(prompt: string): Promise<string> {
     throw new Error('GEMINI_API_KEY or NEXT_PUBLIC_API_KEY not configured');
   }
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:generateImages?key=${apiKey}`, {
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      prompt,
-      config: {
-        numberOfImages: 1,
+      instances: [{ prompt }],
+      parameters: {
+        sampleCount: 1,
         aspectRatio: '3:4',
         personGeneration: 'DONT_ALLOW',
         enhancePrompt: false,
@@ -492,11 +492,9 @@ async function generateWithImagen(prompt: string): Promise<string> {
   }
 
   const data = await response.json();
-  const generatedImage = data.generatedImages?.[0];
 
-  if (generatedImage?.image?.imageBytes) {
-    const mimeType = generatedImage.image.mimeType || 'image/png';
-    return `data:${mimeType};base64,${generatedImage.image.imageBytes}`;
+  if (data.predictions?.[0]?.bytesBase64Encoded) {
+    return `data:image/png;base64,${data.predictions[0].bytesBase64Encoded}`;
   }
 
   throw new Error('No image data in Imagen response');
