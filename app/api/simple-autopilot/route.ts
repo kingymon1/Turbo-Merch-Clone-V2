@@ -484,9 +484,6 @@ async function generateWithImagen(prompt: string): Promise<string> {
           text: enhancedPrompt
         }]
       }],
-      generationConfig: {
-        response_mime_type: 'image/png',
-      },
     }),
   });
 
