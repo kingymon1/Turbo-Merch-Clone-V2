@@ -183,7 +183,7 @@ const StartButton: React.FC<StartButtonProps> = ({ onClick, isGenerating, curren
 const SimpleAutopilot: React.FC = () => {
   // Basic inputs
   const [category, setCategory] = useState('');
-  const [imageModel, setImageModel] = useState<ImageModel>('ideogram');
+  const [imageModel, setImageModel] = useState<ImageModel>('gpt-image-1.5');
 
   // Content inputs (renamed: additionalNotes -> description, phrase -> shirtText)
   const [description, setDescription] = useState('');
@@ -313,6 +313,39 @@ const SimpleAutopilot: React.FC = () => {
           <StartButton onClick={handleStart} isGenerating={isGenerating} currentStep={currentStep} />
         </div>
 
+        {/* Image Model Selector - Required */}
+        <div className="mb-8">
+          <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-3 text-center">
+            Select Image Model
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            {IMAGE_MODELS.map((model) => (
+              <button
+                key={model.value}
+                type="button"
+                onClick={() => setImageModel(model.value)}
+                disabled={isGenerating}
+                className={`p-8 rounded-xl border-2 transition-all text-center ${
+                  imageModel === model.value
+                    ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20 shadow-lg shadow-brand-500/20'
+                    : 'border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-dark-700 hover:border-gray-300 dark:hover:border-white/20'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <p className={`text-xl font-bold mb-2 ${
+                  imageModel === model.value
+                    ? 'text-brand-600 dark:text-brand-400'
+                    : 'text-gray-900 dark:text-white'
+                }`}>
+                  {model.label}
+                </p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {model.description}
+                </p>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Optional Fields Header */}
         <div className="flex items-center gap-2 mb-6">
           <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
@@ -378,57 +411,22 @@ const SimpleAutopilot: React.FC = () => {
           <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
             Basic
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Category Input */}
-            <div>
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                Category / Niche
-              </label>
-              <input
-                type="text"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                placeholder="Leave blank for any trending topic"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
-                disabled={isGenerating}
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                e.g., "gaming", "dogs", "fitness", "coffee lovers"
-              </p>
-            </div>
-
-            {/* Image Model Selector */}
-            <div>
-              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
-                Image Model
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {IMAGE_MODELS.map((model) => (
-                  <button
-                    key={model.value}
-                    type="button"
-                    onClick={() => setImageModel(model.value)}
-                    disabled={isGenerating}
-                    className={`p-4 rounded-lg border-2 transition-all text-left ${
-                      imageModel === model.value
-                        ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20'
-                        : 'border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-dark-700 hover:border-gray-300 dark:hover:border-white/20'
-                    } disabled:opacity-50 disabled:cursor-not-allowed`}
-                  >
-                    <p className={`font-bold ${
-                      imageModel === model.value
-                        ? 'text-brand-600 dark:text-brand-400'
-                        : 'text-gray-900 dark:text-white'
-                    }`}>
-                      {model.label}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {model.description}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            </div>
+          {/* Category Input */}
+          <div>
+            <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+              Category / Niche
+            </label>
+            <input
+              type="text"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Leave blank for any trending topic"
+              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+              disabled={isGenerating}
+            />
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              e.g., "gaming", "dogs", "fitness", "coffee lovers"
+            </p>
           </div>
         </div>
 
