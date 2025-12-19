@@ -33,6 +33,14 @@ interface UserData {
 const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isAnonymous, isOpen = true, onClose, refreshKey }) => {
   const { user } = isAnonymous ? { user: null } : useUser();
   const [userData, setUserData] = useState<UserData | null>(null);
+  const [isDevMode, setIsDevMode] = useState(false);
+
+  // Check for dev mode (localhost or ?dev=true)
+  useEffect(() => {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const hasDevParam = new URLSearchParams(window.location.search).get('dev') === 'true';
+    setIsDevMode(isLocalhost || hasDevParam);
+  }, []);
 
   useEffect(() => {
     if (!isAnonymous) {
@@ -52,17 +60,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isAnonymous,
     }
   };
 
-  const menuItems = [
+  const allMenuItems = [
     { id: AppView.DASHBOARD, label: 'Nexus Dashboard', icon: LayoutDashboard },
-    { id: AppView.TREND_RESEARCH, label: 'Trend Scanner', icon: Search },
-    { id: AppView.TREND_LAB, label: 'Trend Lab', icon: Beaker, badge: 'LAB' },
-    { id: AppView.SIMPLE_AUTOPILOT, label: 'Simple Autopilot', icon: Zap, badge: 'NEW' },
-    { id: AppView.MERCH_GENERATOR, label: 'Merch Generator', icon: Sparkles },
+    { id: AppView.TREND_RESEARCH, label: 'Trend Scanner', icon: Search, devOnly: true },
+    { id: AppView.TREND_LAB, label: 'Trend Lab', icon: Beaker, badge: 'LAB', devOnly: true },
+    { id: AppView.SIMPLE_AUTOPILOT, label: 'Autopilot', icon: Zap, badge: 'NEW' },
+    { id: AppView.MERCH_GENERATOR, label: 'Merch Generator', icon: Sparkles, devOnly: true },
     { id: AppView.IMAGE_VECTORIZER, label: 'Image Vectorizer', icon: Wand2 },
-    { id: AppView.IDEAS_VAULT, label: 'Ideas Vault', icon: Lightbulb },
+    { id: AppView.IDEAS_VAULT, label: 'Ideas Vault', icon: Lightbulb, devOnly: true },
     { id: AppView.LIBRARY, label: 'My Library', icon: FolderHeart },
     { id: AppView.SUBSCRIPTION, label: 'Subscription', icon: CreditCard },
   ];
+
+  // Filter menu items based on dev mode
+  const menuItems = allMenuItems.filter(item => !item.devOnly || isDevMode);
 
   const handleNavigation = (view: AppView) => {
     onNavigate(view);
