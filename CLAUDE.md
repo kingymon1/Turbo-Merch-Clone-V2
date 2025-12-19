@@ -98,10 +98,11 @@ When implementing or modifying API integrations, refer to these documentation fi
 
 ## Feature Documentation
 
-### Simple Autopilot
+### Autopilot (formerly Simple Autopilot)
 - **API Route**: `app/api/simple-autopilot/route.ts`
 - **UI Component**: `components/SimpleAutopilot.tsx`
-- **Purpose**: One-click merch generation from trending topics
+- **Sidebar Label**: "Autopilot" (renamed from "Simple Autopilot")
+- **Purpose**: One-click merch generation from trending topics with optional user guidance
 
 ### Merch Generator
 - **Architecture**: `docs/merch-generator/ARCHITECTURE.md`
@@ -558,17 +559,37 @@ These agents IMPLEMENT the selected styleSpec. They do NOT re-decide style when 
 - Behavior unchanged from pre-StyleIntel implementation
 - styleIntelMeta shows `fallbackReason` for debugging
 
-### Simple Autopilot
+### Autopilot (formerly Simple Autopilot)
 
 **Implementation** (`app/api/simple-autopilot/route.ts`, `components/SimpleAutopilot.tsx`):
 
-A streamlined, one-click merch generation feature that discovers trending topics and creates complete designs.
+A streamlined merch generation feature that discovers trending topics and creates complete designs. Users can press Start for fully automatic generation, or guide it using optional fields.
 
 **Design System Reference**: `docs/simple-style-selector.md`
 
-**UI Controls**:
-- **Category/Niche** (optional): Text input to focus trend search (e.g., "gaming", "fitness", "dogs")
-- **Image Model**: Dropdown to select between Ideogram 3.0, Google Imagen 4, GPT-Image-1, GPT-Image-1.5
+**UI Layout** (top to bottom):
+1. **Quick Start Section**: Prominent box with "Just press Start" messaging and Start button
+2. **Image Model Selector**: Two large buttons (Model 1 / Model 2) - required selection
+3. **Optional Fields**: All fields below are optional and guide (not override) the generation
+
+**Image Models** (user-facing names hide actual model):
+- **Model 1** (Ideogram 3.0): "Text heavy designs with minimal images"
+- **Model 2** (GPT-Image-1.5): "Advanced images with effects and accurate text" - **DEFAULT**
+- Note: Google Imagen 4 and GPT-Image-1 have been retired from Simple Autopilot
+
+**Optional User Inputs**:
+- **Description**: Free text describing the design (e.g., "A bull rider with USA flag, distressed style")
+- **Text on the shirt**: The main text/phrase for the design (warning shown if >6 words)
+- **Category/Niche**: Focus trend search (e.g., "gaming", "dogs", "fitness")
+- **Mood**: Dropdown with options (Funny, Inspirational, Sarcastic, etc.) + custom "Other..."
+- **Target Audience**: Free text (e.g., "fishing dads", "coffee addicts")
+- **Typography/Effect/Aesthetic**: Dropdowns populated from `lib/simple-style-selector.ts` + custom "Other..."
+
+**User Input Priority**:
+- When user provides inputs, they **guide** the research and are **NOT overridden**
+- User phrase → used directly as `textTop`
+- User description → informs listing generation context
+- User style selections → override random selection
 
 **Generation Flow** (Two-Stage Discovery - Default):
 1. **Stage 1: Niche Discovery** - Perplexity discovers an interesting community/hobby:
@@ -659,7 +680,14 @@ Single-query approach gravitated toward mainstream social media trends (AI, meme
 POST /api/simple-autopilot
 Body: {
   "category": "optional niche string",
-  "imageModel": "ideogram" | "imagen" | "gpt-image-1" | "gpt-image-1.5"
+  "imageModel": "ideogram" | "gpt-image-1.5",
+  "phrase": "optional - text for the shirt",
+  "mood": "optional - e.g., Funny, Inspirational",
+  "audience": "optional - e.g., fishing dads",
+  "typography": "optional - style override",
+  "effect": "optional - effect override",
+  "aesthetic": "optional - aesthetic override",
+  "additionalNotes": "optional - design description"
 }
 
 Response: {
@@ -682,6 +710,28 @@ Response: {
 - Single phrase design - model has creative freedom for text layout
 - Research data (phrase, mood, audience) flows through to inform Gemini
 - Gemini uses `responseSchema` for guaranteed JSON output structure
-- 6-word maximum enforced on phrase for reliable text rendering
+- 6-word warning (not enforced) for reliable text rendering in manual mode
 - Immediate save to My Library after generation
-- Full transparency - displays exact prompt before image creation
+- Auto-scroll to generated design image on completion
+- Dual Start buttons (top and bottom of form) for convenience
+
+**Dev Mode Features**:
+Dev mode is enabled on localhost or with `?dev=true` URL parameter.
+
+- **Generated Prompt Display**: Only visible in dev mode (hidden from normal users)
+- **Typography/Effect/Aesthetic badges**: Only shown in dev mode
+
+**UI Results Display** (for normal users):
+1. Discovered Trend (topic + summary)
+2. Generated Design (image with download button)
+3. Listing Text (brand, title, bullets, description - all copyable)
+4. "Design saved to My Library" confirmation
+
+**Sidebar Navigation**:
+The following tabs are **hidden from normal users** (visible in dev mode only):
+- Trend Scanner
+- Trend Lab
+- Merch Generator
+- Ideas Vault
+
+Normal users see: Dashboard, **Autopilot**, Image Vectorizer, My Library, Subscription
