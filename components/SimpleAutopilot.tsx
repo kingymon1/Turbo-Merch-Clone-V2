@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles, Info } from 'lucide-react';
+import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles, Info, AlertTriangle } from 'lucide-react';
 import {
   getAllTypographyOptions,
   getAllEffectOptions,
@@ -114,7 +114,7 @@ const DropdownWithCustom: React.FC<DropdownWithCustomProps> = ({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+      <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
         {label}
       </label>
       <div className="flex gap-2">
@@ -122,7 +122,7 @@ const DropdownWithCustom: React.FC<DropdownWithCustomProps> = ({
           <select
             value={dropdownValue}
             onChange={handleDropdownChange}
-            className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 cursor-pointer"
+            className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all cursor-pointer"
             disabled={disabled}
           >
             <option value="">{placeholder}</option>
@@ -141,7 +141,7 @@ const DropdownWithCustom: React.FC<DropdownWithCustomProps> = ({
             value={isCurrentValueCustom && !isCustom ? value : customValue}
             onChange={handleCustomChange}
             placeholder="Enter custom value"
-            className="flex-1 px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+            className="flex-1 px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
             disabled={disabled}
           />
         )}
@@ -158,8 +158,9 @@ const SimpleAutopilot: React.FC = () => {
   const [category, setCategory] = useState('');
   const [imageModel, setImageModel] = useState<ImageModel>('ideogram');
 
-  // Content inputs
-  const [phrase, setPhrase] = useState('');
+  // Content inputs (renamed: additionalNotes -> description, phrase -> shirtText)
+  const [description, setDescription] = useState('');
+  const [shirtText, setShirtText] = useState('');
   const [mood, setMood] = useState('');
   const [audience, setAudience] = useState('');
 
@@ -168,15 +169,16 @@ const SimpleAutopilot: React.FC = () => {
   const [effect, setEffect] = useState('');
   const [aesthetic, setAesthetic] = useState('');
 
-  // Additional notes
-  const [additionalNotes, setAdditionalNotes] = useState('');
-
   // UI state
   const [isGenerating, setIsGenerating] = useState(false);
   const [result, setResult] = useState<GenerationResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<string>('');
+
+  // Check if shirt text is long (for warning)
+  const shirtTextWordCount = shirtText.trim().split(/\s+/).filter(Boolean).length;
+  const showTextWarning = shirtTextWordCount > 6;
 
   const handleStart = async () => {
     setIsGenerating(true);
@@ -192,13 +194,13 @@ const SimpleAutopilot: React.FC = () => {
         body: JSON.stringify({
           category: category.trim() || undefined,
           imageModel,
-          phrase: phrase.trim() || undefined,
+          phrase: shirtText.trim() || undefined,
           mood: mood || undefined,
           audience: audience.trim() || undefined,
           typography: typography || undefined,
           effect: effect || undefined,
           aesthetic: aesthetic || undefined,
-          additionalNotes: additionalNotes.trim() || undefined,
+          additionalNotes: description.trim() || undefined,
         }),
       });
 
@@ -247,8 +249,8 @@ const SimpleAutopilot: React.FC = () => {
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="p-3 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl border border-purple-500/20">
-          <Zap className="w-6 h-6 text-purple-400" />
+        <div className="p-3 bg-gradient-to-br from-brand-500/20 to-cyan-500/20 rounded-xl border border-brand-500/20">
+          <Zap className="w-6 h-6 text-brand-400" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Simple Autopilot</h1>
@@ -257,13 +259,66 @@ const SimpleAutopilot: React.FC = () => {
       </div>
 
       {/* Controls */}
-      <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6 shadow-sm">
+      <div className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 p-6 shadow-xl">
         {/* Info Banner */}
-        <div className="flex items-start gap-3 p-4 mb-6 bg-purple-500/5 border border-purple-500/20 rounded-lg">
-          <Info className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 p-4 mb-6 bg-brand-500/5 border border-brand-500/20 rounded-lg">
+          <Info className="w-5 h-5 text-brand-400 flex-shrink-0 mt-0.5" />
           <p className="text-sm text-gray-600 dark:text-gray-400">
             All fields are optional. Leave everything blank for fully automatic trend discovery and design generation.
           </p>
+        </div>
+
+        {/* Design Section - Description and Text first */}
+        <div className="mb-6">
+          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+            Design
+          </h3>
+          <div className="space-y-5">
+            {/* Description (formerly Additional Notes) - now first */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe the design you want..."
+                rows={3}
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all resize-none"
+                disabled={isGenerating}
+              />
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                e.g., "A bull rider on a bucking bull with USA flag in background, heavy distressed style"
+              </p>
+            </div>
+
+            {/* Text on the shirt (formerly Phrase) - second */}
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
+                Text on the shirt
+              </label>
+              <input
+                type="text"
+                value={shirtText}
+                onChange={(e) => setShirtText(e.target.value)}
+                placeholder="Leave blank to discover"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+                disabled={isGenerating}
+              />
+              {showTextWarning ? (
+                <div className="flex items-center gap-2 mt-2 text-amber-500">
+                  <AlertTriangle className="w-4 h-4" />
+                  <p className="text-xs">
+                    {shirtTextWordCount} words - less is better for text rendering quality
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  The main text on the shirt - less is better
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Basic Section */}
@@ -274,7 +329,7 @@ const SimpleAutopilot: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Category Input */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Category / Niche
               </label>
               <input
@@ -282,7 +337,7 @@ const SimpleAutopilot: React.FC = () => {
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="Leave blank for any trending topic"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                 disabled={isGenerating}
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -292,14 +347,14 @@ const SimpleAutopilot: React.FC = () => {
 
             {/* Image Model Dropdown */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Image Model
               </label>
               <div className="relative">
                 <select
                   value={imageModel}
                   onChange={(e) => setImageModel(e.target.value as ImageModel)}
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 cursor-pointer"
+                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all cursor-pointer"
                   disabled={isGenerating}
                 >
                   {IMAGE_MODELS.map((model) => (
@@ -314,30 +369,12 @@ const SimpleAutopilot: React.FC = () => {
           </div>
         </div>
 
-        {/* Content Section */}
+        {/* Content Section - Mood and Audience */}
         <div className="mb-6">
           <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
             Content
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Phrase Input */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                Phrase
-              </label>
-              <input
-                type="text"
-                value={phrase}
-                onChange={(e) => setPhrase(e.target.value)}
-                placeholder="Leave blank to discover"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
-                disabled={isGenerating}
-              />
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                The main text on the shirt (2-6 words ideal)
-              </p>
-            </div>
-
             {/* Mood Dropdown */}
             <DropdownWithCustom
               label="Mood"
@@ -350,8 +387,8 @@ const SimpleAutopilot: React.FC = () => {
             />
 
             {/* Audience Input */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            <div>
+              <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Target Audience
               </label>
               <input
@@ -359,11 +396,11 @@ const SimpleAutopilot: React.FC = () => {
                 value={audience}
                 onChange={(e) => setAudience(e.target.value)}
                 placeholder="Leave blank to discover"
-                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500"
+                className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
                 disabled={isGenerating}
               />
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Who would buy this shirt? e.g., "fishing dads", "coffee addicts", "dog moms"
+                e.g., "fishing dads", "coffee addicts", "dog moms"
               </p>
             </div>
           </div>
@@ -404,34 +441,11 @@ const SimpleAutopilot: React.FC = () => {
           </div>
         </div>
 
-        {/* Additional Section */}
-        <div className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
-            Additional
-          </h3>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Additional Notes
-            </label>
-            <textarea
-              value={additionalNotes}
-              onChange={(e) => setAdditionalNotes(e.target.value)}
-              placeholder="Any other details to guide the design..."
-              rows={3}
-              className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-900 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 resize-none"
-              disabled={isGenerating}
-            />
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              e.g., "Include a bass fish jumping out of water", "Use neon green accents"
-            </p>
-          </div>
-        </div>
-
         {/* Start Button */}
         <button
           onClick={handleStart}
           disabled={isGenerating}
-          className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-400 disabled:to-gray-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-purple-500/25 disabled:shadow-none flex items-center justify-center gap-2"
+          className="w-full py-4 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-brand-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isGenerating ? (
             <>
@@ -459,11 +473,11 @@ const SimpleAutopilot: React.FC = () => {
       {result && (
         <div className="space-y-6">
           {/* Trend Info */}
-          <div className="bg-gradient-to-br from-purple-500/5 to-pink-500/5 rounded-xl border border-purple-500/20 p-6">
+          <div className="bg-gradient-to-br from-brand-500/5 to-cyan-500/5 rounded-xl border border-brand-500/20 p-6">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
               Discovered Trend
             </h3>
-            <p className="text-xl text-purple-500 dark:text-purple-400 font-medium mb-2">
+            <p className="text-xl text-brand-500 dark:text-brand-400 font-medium mb-2">
               {result.trendData.topic}
             </p>
             <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -495,10 +509,10 @@ const SimpleAutopilot: React.FC = () => {
               </p>
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <span className="px-2 py-1 text-xs bg-purple-500/10 text-purple-500 rounded">
+              <span className="px-2 py-1 text-xs bg-brand-500/10 text-brand-500 rounded">
                 Typography: {result.slotValues.typography}
               </span>
-              <span className="px-2 py-1 text-xs bg-pink-500/10 text-pink-500 rounded">
+              <span className="px-2 py-1 text-xs bg-cyan-500/10 text-cyan-500 rounded">
                 Effect: {result.slotValues.effect}
               </span>
               <span className="px-2 py-1 text-xs bg-blue-500/10 text-blue-500 rounded">
@@ -511,7 +525,7 @@ const SimpleAutopilot: React.FC = () => {
           <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                <ImageIcon className="w-5 h-5 text-purple-500" />
+                <ImageIcon className="w-5 h-5 text-brand-500" />
                 Generated Design
               </h3>
               <button
