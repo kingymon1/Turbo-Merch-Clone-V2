@@ -202,9 +202,17 @@ const SimpleAutopilot: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<string>('');
+  const [isDevMode, setIsDevMode] = useState(false);
 
   // Ref for scrolling to image
   const imageResultRef = useRef<HTMLDivElement>(null);
+
+  // Check for dev mode (localhost or ?dev=true)
+  useEffect(() => {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const hasDevParam = new URLSearchParams(window.location.search).get('dev') === 'true';
+    setIsDevMode(isLocalhost || hasDevParam);
+  }, []);
 
   // Check if shirt text is long (for warning)
   const shirtTextWordCount = shirtText.trim().split(/\s+/).filter(Boolean).length;
@@ -530,41 +538,44 @@ const SimpleAutopilot: React.FC = () => {
             </p>
           </div>
 
-          {/* Prompt Display */}
-          <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                Generated Prompt
-              </h3>
-              <button
-                onClick={() => copyToClipboard(result.prompt, 'prompt')}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                title="Copy prompt"
-              >
-                {copiedField === 'prompt' ? (
-                  <Check className="w-4 h-4 text-green-500" />
-                ) : (
-                  <Copy className="w-4 h-4 text-gray-400" />
-                )}
-              </button>
+          {/* Prompt Display - Dev/Admin only */}
+          {isDevMode && (
+            <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Generated Prompt
+                  <span className="ml-2 text-xs font-normal text-gray-400">(Dev Mode)</span>
+                </h3>
+                <button
+                  onClick={() => copyToClipboard(result.prompt, 'prompt')}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                  title="Copy prompt"
+                >
+                  {copiedField === 'prompt' ? (
+                    <Check className="w-4 h-4 text-green-500" />
+                  ) : (
+                    <Copy className="w-4 h-4 text-gray-400" />
+                  )}
+                </button>
+              </div>
+              <div className="p-4 bg-gray-50 dark:bg-dark-900 rounded-lg border border-gray-200 dark:border-white/10">
+                <p className="text-sm text-gray-700 dark:text-gray-300 font-mono leading-relaxed">
+                  {result.prompt}
+                </p>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="px-2 py-1 text-xs bg-brand-500/10 text-brand-500 rounded">
+                  Typography: {result.slotValues.typography}
+                </span>
+                <span className="px-2 py-1 text-xs bg-cyan-500/10 text-cyan-500 rounded">
+                  Effect: {result.slotValues.effect}
+                </span>
+                <span className="px-2 py-1 text-xs bg-blue-500/10 text-blue-500 rounded">
+                  Aesthetic: {result.slotValues.aesthetic}
+                </span>
+              </div>
             </div>
-            <div className="p-4 bg-gray-50 dark:bg-dark-900 rounded-lg border border-gray-200 dark:border-white/10">
-              <p className="text-sm text-gray-700 dark:text-gray-300 font-mono leading-relaxed">
-                {result.prompt}
-              </p>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span className="px-2 py-1 text-xs bg-brand-500/10 text-brand-500 rounded">
-                Typography: {result.slotValues.typography}
-              </span>
-              <span className="px-2 py-1 text-xs bg-cyan-500/10 text-cyan-500 rounded">
-                Effect: {result.slotValues.effect}
-              </span>
-              <span className="px-2 py-1 text-xs bg-blue-500/10 text-blue-500 rounded">
-                Aesthetic: {result.slotValues.aesthetic}
-              </span>
-            </div>
-          </div>
+          )}
 
           {/* Image Result - with ref for auto-scroll */}
           <div ref={imageResultRef} className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6">
