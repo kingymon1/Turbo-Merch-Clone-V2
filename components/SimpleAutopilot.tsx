@@ -46,10 +46,8 @@ interface GenerationResult {
 }
 
 const IMAGE_MODELS: { value: ImageModel; label: string; description: string }[] = [
-  { value: 'ideogram', label: 'Ideogram 3.0', description: 'Best typography/text rendering' },
-  { value: 'imagen', label: 'Google Imagen 4', description: 'Strong text, enterprise-grade' },
-  { value: 'gpt-image-1', label: 'GPT-Image-1', description: 'Good text, transparent backgrounds' },
-  { value: 'gpt-image-1.5', label: 'GPT-Image-1.5', description: '4x faster, superior text, transparent backgrounds' },
+  { value: 'ideogram', label: 'Model 1', description: 'Text heavy designs with minimal images' },
+  { value: 'gpt-image-1.5', label: 'Model 2', description: 'Advanced images with effects and accurate text' },
 ];
 
 // Get style options from the style selector
@@ -399,25 +397,36 @@ const SimpleAutopilot: React.FC = () => {
               </p>
             </div>
 
-            {/* Image Model Dropdown */}
+            {/* Image Model Selector */}
             <div>
               <label className="block text-sm font-bold text-gray-700 dark:text-gray-300 mb-2">
                 Image Model
               </label>
-              <div className="relative">
-                <select
-                  value={imageModel}
-                  onChange={(e) => setImageModel(e.target.value as ImageModel)}
-                  className="w-full px-4 py-3 bg-gray-50 dark:bg-dark-700 border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white appearance-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all cursor-pointer"
-                  disabled={isGenerating}
-                >
-                  {IMAGE_MODELS.map((model) => (
-                    <option key={model.value} value={model.value}>
-                      {model.label} - {model.description}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+              <div className="grid grid-cols-2 gap-3">
+                {IMAGE_MODELS.map((model) => (
+                  <button
+                    key={model.value}
+                    type="button"
+                    onClick={() => setImageModel(model.value)}
+                    disabled={isGenerating}
+                    className={`p-4 rounded-lg border-2 transition-all text-left ${
+                      imageModel === model.value
+                        ? 'border-brand-500 bg-brand-500/10 dark:bg-brand-500/20'
+                        : 'border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-dark-700 hover:border-gray-300 dark:hover:border-white/20'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    <p className={`font-bold ${
+                      imageModel === model.value
+                        ? 'text-brand-600 dark:text-brand-400'
+                        : 'text-gray-900 dark:text-white'
+                    }`}>
+                      {model.label}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {model.description}
+                    </p>
+                  </button>
+                ))}
               </div>
             </div>
           </div>
