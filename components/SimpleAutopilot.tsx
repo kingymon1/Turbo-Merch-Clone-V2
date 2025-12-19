@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles, Info, AlertTriangle } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Zap, Loader2, Image as ImageIcon, Copy, Check, Download, ChevronDown, Sparkles, AlertTriangle } from 'lucide-react';
 import {
   getAllTypographyOptions,
   getAllEffectOptions,
@@ -153,6 +153,35 @@ const DropdownWithCustom: React.FC<DropdownWithCustomProps> = ({
   );
 };
 
+/**
+ * Start Button Component - reusable for top and bottom
+ */
+interface StartButtonProps {
+  onClick: () => void;
+  isGenerating: boolean;
+  currentStep: string;
+}
+
+const StartButton: React.FC<StartButtonProps> = ({ onClick, isGenerating, currentStep }) => (
+  <button
+    onClick={onClick}
+    disabled={isGenerating}
+    className="w-full py-4 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-brand-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+  >
+    {isGenerating ? (
+      <>
+        <Loader2 className="w-5 h-5 animate-spin" />
+        <span>{currentStep || 'Generating...'}</span>
+      </>
+    ) : (
+      <>
+        <Sparkles className="w-5 h-5" />
+        <span>Start</span>
+      </>
+    )}
+  </button>
+);
+
 const SimpleAutopilot: React.FC = () => {
   // Basic inputs
   const [category, setCategory] = useState('');
@@ -176,9 +205,25 @@ const SimpleAutopilot: React.FC = () => {
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState<string>('');
 
+  // Ref for scrolling to image
+  const imageResultRef = useRef<HTMLDivElement>(null);
+
   // Check if shirt text is long (for warning)
   const shirtTextWordCount = shirtText.trim().split(/\s+/).filter(Boolean).length;
   const showTextWarning = shirtTextWordCount > 6;
+
+  // Scroll to image when result is available
+  useEffect(() => {
+    if (result && imageResultRef.current) {
+      // Small delay to ensure DOM is updated
+      setTimeout(() => {
+        imageResultRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      }, 100);
+    }
+  }, [result]);
 
   const handleStart = async () => {
     setIsGenerating(true);
@@ -260,12 +305,21 @@ const SimpleAutopilot: React.FC = () => {
 
       {/* Controls */}
       <div className="bg-white dark:bg-dark-800 rounded-2xl border border-gray-200 dark:border-white/10 p-6 shadow-xl">
-        {/* Info Banner */}
-        <div className="flex items-start gap-3 p-4 mb-6 bg-brand-500/5 border border-brand-500/20 rounded-lg">
-          <Info className="w-5 h-5 text-brand-400 flex-shrink-0 mt-0.5" />
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            All fields are optional. Leave everything blank for fully automatic trend discovery and design generation.
+        {/* Prominent Quick Start Section */}
+        <div className="mb-8 p-6 bg-gradient-to-br from-brand-500/10 to-cyan-500/10 border border-brand-500/30 rounded-xl">
+          <p className="text-center text-lg text-gray-700 dark:text-gray-200 mb-4">
+            Just press <span className="font-bold text-brand-500">Start</span> and Turbo Merch will generate an original listing for you.
+            <br />
+            <span className="text-sm text-gray-500 dark:text-gray-400">Or guide it using the optional fields below.</span>
           </p>
+          <StartButton onClick={handleStart} isGenerating={isGenerating} currentStep={currentStep} />
+        </div>
+
+        {/* Optional Fields Header */}
+        <div className="flex items-center gap-2 mb-6">
+          <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
+          <span className="text-sm font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">Optional Fields</span>
+          <div className="h-px flex-1 bg-gray-200 dark:bg-white/10" />
         </div>
 
         {/* Design Section - Description and Text first */}
@@ -441,24 +495,8 @@ const SimpleAutopilot: React.FC = () => {
           </div>
         </div>
 
-        {/* Start Button */}
-        <button
-          onClick={handleStart}
-          disabled={isGenerating}
-          className="w-full py-4 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-bold rounded-xl transition-all duration-200 shadow-lg shadow-brand-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          {isGenerating ? (
-            <>
-              <Loader2 className="w-5 h-5 animate-spin" />
-              <span>{currentStep || 'Generating...'}</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-5 h-5" />
-              <span>Start</span>
-            </>
-          )}
-        </button>
+        {/* Bottom Start Button */}
+        <StartButton onClick={handleStart} isGenerating={isGenerating} currentStep={currentStep} />
       </div>
 
       {/* Error Display */}
@@ -521,8 +559,8 @@ const SimpleAutopilot: React.FC = () => {
             </div>
           </div>
 
-          {/* Image Result */}
-          <div className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6">
+          {/* Image Result - with ref for auto-scroll */}
+          <div ref={imageResultRef} className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
                 <ImageIcon className="w-5 h-5 text-brand-500" />
