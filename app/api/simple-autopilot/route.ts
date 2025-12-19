@@ -630,6 +630,26 @@ Respond ONLY with valid JSON:
     console.log(`[SimpleAutopilot] Truncated to: "${textTop}"`);
   }
 
+  // When user provides their own phrase/notes, use that as context for listing generation
+  // Otherwise use the researched trend data
+  const hasUserContext = userPhrase || additionalNotes;
+
+  let effectiveTrendTopic: string;
+  let effectiveTrendSummary: string;
+
+  if (hasUserContext) {
+    // User provided their own context - use it for listing generation
+    effectiveTrendTopic = userPhrase || trendData.topic;
+    effectiveTrendSummary = additionalNotes
+      ? `User-specified design: ${additionalNotes}`
+      : `Custom design featuring "${userPhrase}"`;
+    console.log('[SimpleAutopilot] Using user context for listing:', { effectiveTrendTopic, effectiveTrendSummary });
+  } else {
+    // No user context - use research data
+    effectiveTrendTopic = trendData.topic;
+    effectiveTrendSummary = trendData.summary;
+  }
+
   return {
     // Code-selected styles
     typography: styles.typography,
@@ -640,10 +660,10 @@ Respond ONLY with valid JSON:
     // textBottom removed - single phrase designs, model decides layout
     textBottom: '',
     imageDescription: llmValues.imageDescription || `a ${trendData.mood} graphic element`,
-    // Trend research data
-    trendTopic: trendData.topic,
-    trendSummary: trendData.summary,
-    trendSource: trendData.source,
+    // Trend/user context data - prioritizes user input when available
+    trendTopic: effectiveTrendTopic,
+    trendSummary: effectiveTrendSummary,
+    trendSource: hasUserContext ? 'user-provided' : trendData.source,
   };
 }
 
