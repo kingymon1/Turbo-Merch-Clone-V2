@@ -1508,3 +1508,186 @@ model EmergingTrendsConfig {
 
   @@index([isDefault])
 }
+
+// ============================================================================
+// PROVEN NICHES PIPELINE
+// Find what's selling on Amazon, identify low-competition gaps
+// ============================================================================
+
+// Scraped Amazon product data
+model AmazonProduct {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Product identification
+  asin            String   @unique // Amazon Standard Identification Number
+  url             String
+
+  // Product details
+  title           String
+  brand           String?
+  price           Float?
+  currency        String   @default("USD")
+  imageUrl        String?
+
+  // Rankings & metrics
+  bsr             Int?     // Best Seller Rank (lower = selling better)
+  bsrCategory     String?  // Category for BSR (e.g., "Clothing > T-Shirts")
+  reviewCount     Int      @default(0)
+  rating          Float?   // Average star rating (1-5)
+
+  // Keywords & categorization
+  keywords        String[] // Extracted keywords from title
+  category        String?  // Primary category
+  subCategory     String?
+
+  // Scrape metadata
+  lastScrapedAt   DateTime @default(now())
+  scrapeCount     Int      @default(1)
+
+  // Relations
+  nicheId         String?
+  niche           TrackedNiche? @relation(fields: [nicheId], references: [id])
+  priceHistory    PriceHistory[]
+
+  @@index([asin])
+  @@index([bsr])
+  @@index([nicheId])
+  @@index([category])
+  @@index([lastScrapedAt])
+}
+
+// Price history for tracking trends
+model PriceHistory {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  productId       String
+  product         AmazonProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  price           Float
+  bsr             Int?
+  reviewCount     Int?
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+// Niches we're tracking
+model TrackedNiche {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Niche identification
+  name            String   @unique // e.g., "fishing dad", "nurse life"
+  displayName     String?
+  searchKeywords  String[] // Keywords used to find products
+
+  // Category
+  category        String?  // hobby, profession, family, etc.
+  subCategory     String?
+
+  // Metrics (calculated from products)
+  productCount    Int      @default(0)
+  avgBsr          Float?   // Average BSR of products
+  medianBsr       Float?
+  minBsr          Int?     // Best selling product BSR
+  maxBsr          Int?
+  avgPrice        Float?
+  avgReviews      Float?
+
+  // Competition analysis
+  competitionScore Float?  // 0-1, higher = more competition
+  competitionLevel String? // 'low' | 'medium' | 'high' | 'saturated'
+  opportunityScore Float?  // 0-1, higher = better opportunity
+
+  // Scraping
+  lastScrapedAt   DateTime?
+  scrapeFrequency String   @default("daily") // 'hourly' | 'daily' | 'weekly'
+  isActive        Boolean  @default(true)
+
+  // Relations
+  products        AmazonProduct[]
+  opportunities   NicheOpportunity[]
+
+  @@index([name])
+  @@index([category])
+  @@index([opportunityScore])
+  @@index([isActive])
+}
+
+// Identified opportunities (gaps in the market)
+model NicheOpportunity {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Link to niche
+  nicheId         String
+  niche           TrackedNiche @relation(fields: [nicheId], references: [id], onDelete: Cascade)
+
+  // Opportunity details
+  title           String   // Brief title for the opportunity
+  description     String   @db.Text // Detailed description
+  keywords        String[] // Recommended keywords
+
+  // Scores
+  opportunityScore Float   // 0-1, overall opportunity rating
+  demandScore      Float   // 0-1, based on search volume & BSR
+  competitionScore Float   // 0-1, based on number of competitors
+  profitScore      Float?  // 0-1, based on price points
+
+  // Reasoning
+  reasoning        String  @db.Text // Why this is an opportunity
+  suggestedApproach String? @db.Text // How to approach this opportunity
+
+  // Design suggestions
+  suggestedPhrases String[] // Phrases that would work on merch
+  suggestedStyles  String[]
+  targetAudience   String?
+
+  // Status
+  status           String  @default("active") // 'active' | 'used' | 'expired' | 'dismissed'
+  usedAt           DateTime?
+  expiresAt        DateTime?
+
+  @@index([nicheId])
+  @@index([opportunityScore])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Keyword research data
+model NicheKeyword {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Keyword data
+  keyword         String   @unique
+  searchVolume    Int?     // Estimated monthly searches
+  competition     Float?   // 0-1 competition level
+  cpc             Float?   // Cost per click (indicates commercial intent)
+
+  // Categorization
+  category        String?
+  intent          String?  // 'informational' | 'commercial' | 'transactional'
+
+  // Related data
+  relatedKeywords String[]
+  parentKeyword   String?  // If this is a long-tail variation
+
+  // Amazon specific
+  amazonResults   Int?     // Number of results on Amazon
+  topBsr          Int?     // BSR of top result
+
+  // Tracking
+  lastUpdatedAt   DateTime @default(now())
+
+  @@index([keyword])
+  @@index([searchVolume])
+  @@index([competition])
+  @@index([category])
+}
