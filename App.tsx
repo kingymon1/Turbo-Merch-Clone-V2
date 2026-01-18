@@ -25,6 +25,7 @@ const LegalDocs = lazy(() => import('./components/LegalDocs'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const MerchGenerator = lazy(() => import('./components/MerchGenerator'));
 const SimpleAutopilot = lazy(() => import('./components/SimpleAutopilot'));
+const EmergingTrends = lazy(() => import('./components/EmergingTrends'));
 
 // Loading component for Suspense fallback
 const LoadingSpinner: React.FC = () => (
@@ -789,6 +790,8 @@ const MainAppLayout: React.FC<MainAppLayoutProps> = ({ isAnonymous }) => {
         );
       case AppView.MERCH_GENERATOR:
         return <MerchGenerator />;
+      case AppView.EMERGING_TRENDS:
+        return <EmergingTrends />;
       case AppView.SIMPLE_AUTOPILOT:
         return <SimpleAutopilot />;
       case AppView.LIBRARY:

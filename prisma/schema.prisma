@@ -1308,3 +1308,203 @@ model StripeWebhookEvent {
   @@index([createdAt])
   @@index([stripeCustomerId])
 }
+
+// ============================================================================
+// EMERGING TRENDS PIPELINE (Social Signal Discovery)
+// ============================================================================
+// Models for discovering emerging trends from social platforms (Reddit, TikTok)
+// before they become mainstream. Completely separate from existing pipelines.
+
+// Raw signals scraped from social platforms
+model SocialSignal {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Source identification
+  platform        String   // 'reddit' | 'tiktok'
+  externalId      String   // Post/video ID from platform
+  url             String
+  community       String   // r/subreddit name or TikTok hashtag
+  communitySize   Int?     // Subscriber/follower count at time of scrape
+
+  // Content
+  title           String?
+  content         String?  @db.Text
+  author          String?
+  hashtags        String[]
+  postedAt        DateTime? // When originally posted on platform
+
+  // Engagement metrics (raw)
+  upvotes         Int      @default(0)
+  downvotes       Int?
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+  views           Int?
+  saves           Int?
+
+  // Calculated velocity scores
+  velocityScore   Float?   // Relative engagement vs community average
+  recencyBonus    Float?   // Time decay factor (newer = higher)
+  combinedScore   Float?   // Final ranking score
+  velocityTier    String?  // 'exploding' | 'rising' | 'steady' | 'normal'
+
+  // Processing status
+  evaluated       Boolean  @default(false)
+  evaluatedAt     DateTime?
+  skipReason      String?  // Why it was skipped (if applicable)
+
+  // Relation to validated trend
+  emergingTrend   EmergingTrend?
+
+  @@unique([platform, externalId])
+  @@index([platform, createdAt])
+  @@index([combinedScore])
+  @@index([community])
+  @@index([velocityTier])
+  @@index([evaluated])
+}
+
+// Validated merch opportunities from social signals
+model EmergingTrend {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Source signal link
+  signalId        String   @unique
+  signal          SocialSignal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  // Trend identification
+  topic           String   // Main topic/theme
+  phrases         String[] // Potential t-shirt text options
+  keywords        String[] // SEO/search keywords
+
+  // Audience
+  audience        String   // Brief description (e.g., "fishing enthusiasts")
+  audienceProfile String?  @db.Text // Detailed profile from Claude
+  audienceSize    String?  // 'micro' | 'niche' | 'medium' | 'large' | 'massive'
+
+  // Velocity metrics
+  velocityScore   Float
+  velocityTrend   String   // 'exploding' | 'rising' | 'steady'
+  peakVelocity    Float?   // Highest velocity observed
+  peakAt          DateTime? // When peak occurred
+
+  // Merch viability assessment (from Claude)
+  merchViability  Float    // 0-1 score
+  viabilityReason String?  @db.Text // Why Claude gave this score
+  amazonSafe      Boolean  // No trademark/copyright issues
+  amazonSafeNotes String?  // Notes on potential issues
+
+  // Visual/design hints (from Claude)
+  suggestedStyles String[] // e.g., ['vintage', 'bold typography']
+  colorHints      String[] // e.g., ['earth tones', 'navy blue']
+  moodKeywords    String[] // e.g., ['rugged', 'authentic', 'passionate']
+  designNotes     String?  @db.Text // Additional design guidance
+
+  // Usage tracking
+  usedInDesign    Boolean  @default(false)
+  usedAt          DateTime?
+  designId        String?  // Link to generated design
+  generationCount Int      @default(0) // How many designs used this trend
+
+  // Lifecycle
+  isActive        Boolean  @default(true)
+  expiresAt       DateTime? // When trend is considered stale
+  deactivatedAt   DateTime?
+  deactivateReason String?
+
+  @@index([velocityScore])
+  @@index([merchViability])
+  @@index([usedInDesign])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([topic])
+}
+
+// Dynamically discovered communities to monitor
+model DiscoveredCommunity {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Community identification
+  platform        String   // 'reddit' | 'tiktok'
+  name            String   // r/subreddit or hashtag
+  displayName     String?  // Human-readable name
+  description     String?  @db.Text
+  url             String?
+
+  // Size metrics
+  size            Int?     // Subscribers/followers
+  sizeUpdatedAt   DateTime?
+
+  // Baseline engagement metrics (for velocity calculation)
+  avgUpvotes      Float?   // Average upvotes per post
+  avgComments     Float?   // Average comments per post
+  avgShares       Float?   // Average shares per post
+  avgViews        Float?   // Average views per post
+  baselineUpdatedAt DateTime?
+  baselineSampleSize Int?  // How many posts used to calculate baseline
+
+  // Classification
+  category        String?  // 'hobby' | 'profession' | 'lifestyle' | 'fandom' | 'sports' | 'pets' | etc
+  subCategory     String?  // More specific category
+  merchPotential  Float?   // 0-1 score for merch opportunity
+  merchNotes      String?  // Why this score
+
+  // Scraping configuration
+  lastScrapedAt   DateTime?
+  scrapeFrequency String   @default("daily") // 'hourly' | 'daily' | 'weekly'
+  scrapeCount     Int      @default(0)
+  lastSignalCount Int?     // Signals found in last scrape
+
+  // Discovery metadata
+  discoveredBy    String?  // 'seed' | 'expansion' | 'ai-suggestion' | 'user'
+  discoveredFrom  String?  // Parent community that led to discovery
+
+  // Status
+  isActive        Boolean  @default(true)
+  isPriority      Boolean  @default(false) // High-priority communities
+  deactivatedAt   DateTime?
+  deactivateReason String?
+
+  @@unique([platform, name])
+  @@index([platform])
+  @@index([category])
+  @@index([merchPotential])
+  @@index([isActive])
+  @@index([lastScrapedAt])
+  @@index([isPriority])
+}
+
+// Configuration for velocity thresholds
+model EmergingTrendsConfig {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Config identification
+  name            String   @unique // 'default' | 'conservative' | 'moderate' | 'aggressive'
+  isDefault       Boolean  @default(false)
+
+  // Velocity thresholds
+  explodingThreshold Float  // e.g., 10.0 (10x average)
+  risingThreshold    Float  // e.g., 5.0 (5x average)
+  steadyThreshold    Float  // e.g., 2.0 (2x average)
+
+  // Recency settings
+  recencyHoursMax    Int    // Max hours old to consider (e.g., 72)
+  recencyDecayRate   Float  // Exponential decay rate
+
+  // Filtering
+  minUpvotes         Int    @default(10)
+  minComments        Int    @default(5)
+  minCommunitySize   Int    @default(1000)
+
+  // Description
+  description        String?
+
+  @@index([isDefault])
+}
