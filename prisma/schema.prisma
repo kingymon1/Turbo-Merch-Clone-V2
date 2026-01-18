@@ -1273,3 +1273,38 @@ model StylePrinciple {
 
   @@index([createdAt])
 }
+
+// ============================================================================
+// STRIPE WEBHOOK EVENTS (Debugging & Idempotency)
+// ============================================================================
+// Logs all Stripe webhook events for debugging and prevents duplicate processing.
+
+model StripeWebhookEvent {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+
+  // Stripe event identifiers
+  stripeEventId String   @unique // Stripe's event ID for idempotency
+  eventType     String   // 'checkout.session.completed', 'customer.subscription.updated', etc.
+
+  // Processing status
+  status        String   @default("received") // 'received' | 'processed' | 'failed' | 'ignored'
+  errorMessage  String?  @db.Text
+
+  // Event data (for debugging)
+  payload       Json?    // Full event payload (optional, for debugging)
+
+  // User association (if applicable)
+  stripeCustomerId String?
+  userId           String?
+
+  // Processing metadata
+  processedAt   DateTime?
+  processingMs  Int?     // How long processing took
+
+  @@index([stripeEventId])
+  @@index([eventType])
+  @@index([status])
+  @@index([createdAt])
+  @@index([stripeCustomerId])
+}
