@@ -113,6 +113,14 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Quick Reference**: `docs/merch-generator/QUICK_REFERENCE.md`
 - **Validation**: `docs/merch-generator/MERCH_VALIDATION.md`
 
+### Emerging Trends Pipeline
+- **Module**: `lib/emerging-trends/`
+- **UI Component**: `components/EmergingTrends.tsx`
+- **API Routes**: `app/api/emerging-trends/discover/`, `app/api/emerging-trends/signals/`
+- **Cron Job**: `app/api/cron/collect-social-signals/` (runs daily at 5 AM)
+- **Purpose**: Discover emerging trends from social platforms (Reddit, TikTok) using relative velocity scoring
+- **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`, `CRON_SECRET` (optional)
+
 ## Environment Variables
 
 Required environment variables for full functionality:
@@ -129,6 +137,12 @@ Required environment variables for full functionality:
 
 Optional feature flags:
 - `STYLE_INTEL_MERCH_ENABLED` - Enable StyleIntel integration in merch pipeline (default: false)
+- `EMERGING_TRENDS_ENABLED` - Enable emerging trends cron job (default: true)
+
+Emerging Trends Pipeline (optional):
+- `DECODO_USERNAME` - Decodo API username for web scraping
+- `DECODO_PASSWORD` - Decodo API password
+- `CRON_SECRET` - Optional secret for securing cron endpoints
 
 ## Common Commands
 
@@ -734,4 +748,117 @@ The following tabs are **hidden from normal users** (visible in dev mode only):
 - Merch Generator
 - Ideas Vault
 
-Normal users see: Dashboard, **Autopilot**, Image Vectorizer, My Library, Subscription
+Normal users see: Dashboard, **Emerging Trends**, **Autopilot**, Image Vectorizer, My Library, Subscription
+
+### Emerging Trends Pipeline
+
+**Implementation** (`lib/emerging-trends/`):
+
+A completely separate module for discovering emerging trends from social platforms (Reddit, TikTok) before they become mainstream. The key insight is that **relative velocity within a community matters more than absolute numbers** - a post with 500 upvotes in a 30k subreddit is a bigger signal than 5,000 in a 5M subreddit.
+
+**Architecture**:
+```
+lib/emerging-trends/
+├── types.ts              # TypeScript interfaces, velocity presets
+├── config.ts             # Seed communities, discovery settings
+├── index.ts              # Main orchestration (discoverEmergingTrends)
+├── client/
+│   └── decodo-client.ts  # Decodo API wrapper with retry logic
+├── scrapers/
+│   ├── reddit-scraper.ts # Reddit-specific scraping
+│   ├── tiktok-scraper.ts # TikTok-specific scraping
+│   └── discovery-scraper.ts # Community discovery
+├── analyzers/
+│   └── velocity-calculator.ts # Core velocity scoring algorithm
+├── evaluators/
+│   └── merch-evaluator.ts # Claude-based merch opportunity evaluation
+└── storage/
+    └── trend-store.ts    # Prisma operations for all models
+```
+
+**Database Models** (in `prisma/schema.prisma`):
+- `SocialSignal` - Raw signals from Reddit/TikTok with velocity metrics
+- `EmergingTrend` - Evaluated trends with merch potential, phrases, audience
+- `DiscoveredCommunity` - Tracked communities with baseline engagement data
+- `EmergingTrendsConfig` - Velocity threshold presets (stored in DB)
+
+**Velocity Presets**:
+| Preset | Exploding | Rising | Steady | Use Case |
+|--------|-----------|--------|--------|----------|
+| Conservative | 10x avg | 7x avg | 4x avg | Low noise, high confidence |
+| Moderate | 7x avg | 4x avg | 2x avg | Balanced (default) |
+| Aggressive | 4x avg | 2.5x avg | 1.5x avg | Early discovery, more noise |
+
+**Velocity Calculation Algorithm** (`lib/emerging-trends/analyzers/velocity-calculator.ts`):
+```typescript
+// Relative engagement (NOT absolute numbers)
+const relativeUpvotes = signal.upvotes / baseline.avgUpvotes;
+const relativeComments = signal.comments / baseline.avgComments;
+
+// Community size factor (smaller = bigger signal)
+const sizeFactor = Math.log10(1_000_000 / communitySize);
+
+// Recency bonus (exponential decay)
+const recencyBonus = Math.exp(-decayRate * hoursOld);
+
+// Combined score
+const combinedScore = (relativeUpvotes * 0.6 + relativeComments * 0.4)
+                    * sizeFactor * recencyBonus;
+```
+
+**API Endpoints**:
+
+```
+GET /api/emerging-trends/discover
+# Health check - returns system status
+
+POST /api/emerging-trends/discover
+Body: { "velocityPreset": "moderate", "platforms": ["reddit"] }
+# Triggers manual discovery run
+
+GET /api/emerging-trends/signals?limit=50&amazonSafeOnly=true
+# Fetch trends for UI display
+
+POST /api/emerging-trends/signals
+Body: { "trendId": "...", "action": "markUsed" }
+# Mark trend as used (for tracking)
+```
+
+**Cron Job** (`/api/cron/collect-social-signals`):
+- Schedule: Daily at 5 AM (`0 5 * * *` in vercel.json)
+- Scrapes seed communities for new signals
+- Calculates velocity scores against community baselines
+- Evaluates high-velocity signals with Claude for merch potential
+- Creates EmergingTrend records for viable opportunities
+
+**Seed Communities** (40+ subreddits):
+Organized by category: hobby, profession, pets, family, crafts, outdoors, fitness, food, gaming, music, art, sports
+
+**Claude Evaluation** (`lib/emerging-trends/evaluators/merch-evaluator.ts`):
+For high-velocity signals, Claude analyzes:
+- Is this a merch opportunity?
+- Extract phrases that would work on a shirt
+- Identify target audience and their profile
+- Check Amazon safety (trademark, controversial content)
+- Suggest styles, colors, mood keywords
+
+**UI Component** (`components/EmergingTrends.tsx`):
+- Velocity preset selector (conservative/moderate/aggressive)
+- "Discover Now" button for manual runs
+- Trends grouped by tier (Exploding/Rising/Steady)
+- Trend cards with phrases, audience, viability score
+- Detail modal with full information
+- "Generate Design" button to create merch from trend
+
+**Setup Requirements**:
+1. Subscribe to Decodo Advanced Plan (~$69/mo for 82K requests)
+2. Set `DECODO_USERNAME` and `DECODO_PASSWORD` in environment
+3. Run `npx prisma db push` to create database tables
+4. Optionally set `CRON_SECRET` for securing the cron endpoint
+
+**Key Design Decisions**:
+- **Relative velocity**: 500 upvotes in 30k sub > 5,000 in 5M sub
+- **Community baselines**: Track average engagement per community
+- **Separate module**: No dependencies on existing pipelines
+- **Graceful failure**: Works without Decodo (returns empty results)
+- **Batch evaluation**: Evaluates top N signals per run to control Claude costs
