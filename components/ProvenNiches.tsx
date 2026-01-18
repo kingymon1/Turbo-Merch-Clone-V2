@@ -92,11 +92,11 @@ interface HealthData {
 
 function CompetitionBadge({ level }: { level?: string }) {
   const colors: Record<string, string> = {
-    very_low: 'bg-green-500/20 text-green-400 border-green-500/30',
-    low: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
-    medium: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    high: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-    saturated: 'bg-red-500/20 text-red-400 border-red-500/30',
+    very_low: 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400 border-green-300 dark:border-green-500/30',
+    low: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/30',
+    medium: 'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-500/30',
+    high: 'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-300 dark:border-orange-500/30',
+    saturated: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400 border-red-300 dark:border-red-500/30',
   };
 
   const labels: Record<string, string> = {
@@ -316,7 +316,7 @@ export default function ProvenNiches() {
             <button
               onClick={triggerScan}
               disabled={scanning || !health?.configured}
-              className="flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 disabled:bg-gray-400 text-white rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 disabled:from-gray-400 disabled:to-gray-400 text-white rounded-lg transition-all shadow-lg shadow-brand-500/20 disabled:shadow-none"
             >
               <RefreshCw className={`w-4 h-4 ${scanning ? 'animate-spin' : ''}`} />
               {scanning ? 'Scanning...' : 'Scan Marketplace'}
