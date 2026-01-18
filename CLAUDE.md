@@ -113,6 +113,22 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Quick Reference**: `docs/merch-generator/QUICK_REFERENCE.md`
 - **Validation**: `docs/merch-generator/MERCH_VALIDATION.md`
 
+### Emerging Trends Pipeline
+- **Module**: `lib/emerging-trends/`
+- **UI Component**: `components/EmergingTrends.tsx`
+- **API Routes**: `app/api/emerging-trends/discover/`, `app/api/emerging-trends/signals/`
+- **Cron Job**: `app/api/cron/collect-social-signals/` (runs daily at 3 AM)
+- **Purpose**: Discover emerging trends from social platforms (Reddit, TikTok) using relative velocity scoring
+- **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`, `CRON_SECRET` (optional)
+
+### Proven Niches Pipeline
+- **Module**: `lib/proven-niches/`
+- **UI Component**: `components/ProvenNiches.tsx`
+- **API Routes**: `app/api/proven-niches/`, `app/api/proven-niches/scan/`, `app/api/proven-niches/opportunities/`, `app/api/proven-niches/products/`
+- **Cron Job**: `app/api/cron/scan-marketplace/` (runs daily at 6 AM)
+- **Purpose**: Discover what's selling on Amazon, analyze competition, identify low-competition opportunities
+- **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`, `CRON_SECRET` (optional)
+
 ## Environment Variables
 
 Required environment variables for full functionality:
@@ -129,6 +145,13 @@ Required environment variables for full functionality:
 
 Optional feature flags:
 - `STYLE_INTEL_MERCH_ENABLED` - Enable StyleIntel integration in merch pipeline (default: false)
+- `EMERGING_TRENDS_ENABLED` - Enable emerging trends cron job (default: true)
+- `PROVEN_NICHES_ENABLED` - Enable proven niches cron job (default: true)
+
+Emerging Trends & Proven Niches Pipelines (optional):
+- `DECODO_USERNAME` - Decodo API username for web scraping
+- `DECODO_PASSWORD` - Decodo API password
+- `CRON_SECRET` - Optional secret for securing cron endpoints
 
 ## Common Commands
 
@@ -734,4 +757,225 @@ The following tabs are **hidden from normal users** (visible in dev mode only):
 - Merch Generator
 - Ideas Vault
 
-Normal users see: Dashboard, **Autopilot**, Image Vectorizer, My Library, Subscription
+Normal users see: Dashboard, **Emerging Trends**, **Proven Niches**, **Autopilot**, Image Vectorizer, My Library, Subscription
+
+### Emerging Trends Pipeline
+
+**Implementation** (`lib/emerging-trends/`):
+
+A completely separate module for discovering emerging trends from social platforms (Reddit, TikTok) before they become mainstream. The key insight is that **relative velocity within a community matters more than absolute numbers** - a post with 500 upvotes in a 30k subreddit is a bigger signal than 5,000 in a 5M subreddit.
+
+**Architecture**:
+```
+lib/emerging-trends/
+├── types.ts              # TypeScript interfaces, velocity presets
+├── config.ts             # Seed communities, discovery settings
+├── index.ts              # Main orchestration (discoverEmergingTrends)
+├── client/
+│   └── decodo-client.ts  # Decodo API wrapper with retry logic
+├── scrapers/
+│   ├── reddit-scraper.ts # Reddit-specific scraping
+│   ├── tiktok-scraper.ts # TikTok-specific scraping
+│   └── discovery-scraper.ts # Community discovery
+├── analyzers/
+│   └── velocity-calculator.ts # Core velocity scoring algorithm
+├── evaluators/
+│   └── merch-evaluator.ts # Claude-based merch opportunity evaluation
+└── storage/
+    └── trend-store.ts    # Prisma operations for all models
+```
+
+**Database Models** (in `prisma/schema.prisma`):
+- `SocialSignal` - Raw signals from Reddit/TikTok with velocity metrics
+- `EmergingTrend` - Evaluated trends with merch potential, phrases, audience
+- `DiscoveredCommunity` - Tracked communities with baseline engagement data
+- `EmergingTrendsConfig` - Velocity threshold presets (stored in DB)
+
+**Velocity Presets**:
+| Preset | Exploding | Rising | Steady | Use Case |
+|--------|-----------|--------|--------|----------|
+| Conservative | 10x avg | 7x avg | 4x avg | Low noise, high confidence |
+| Moderate | 7x avg | 4x avg | 2x avg | Balanced (default) |
+| Aggressive | 4x avg | 2.5x avg | 1.5x avg | Early discovery, more noise |
+
+**Velocity Calculation Algorithm** (`lib/emerging-trends/analyzers/velocity-calculator.ts`):
+```typescript
+// Relative engagement (NOT absolute numbers)
+const relativeUpvotes = signal.upvotes / baseline.avgUpvotes;
+const relativeComments = signal.comments / baseline.avgComments;
+
+// Community size factor (smaller = bigger signal)
+const sizeFactor = Math.log10(1_000_000 / communitySize);
+
+// Recency bonus (exponential decay)
+const recencyBonus = Math.exp(-decayRate * hoursOld);
+
+// Combined score
+const combinedScore = (relativeUpvotes * 0.6 + relativeComments * 0.4)
+                    * sizeFactor * recencyBonus;
+```
+
+**API Endpoints**:
+
+```
+GET /api/emerging-trends/discover
+# Health check - returns system status
+
+POST /api/emerging-trends/discover
+Body: { "velocityPreset": "moderate", "platforms": ["reddit"] }
+# Triggers manual discovery run
+
+GET /api/emerging-trends/signals?limit=50&amazonSafeOnly=true
+# Fetch trends for UI display
+
+POST /api/emerging-trends/signals
+Body: { "trendId": "...", "action": "markUsed" }
+# Mark trend as used (for tracking)
+```
+
+**Cron Job** (`/api/cron/collect-social-signals`):
+- Schedule: Daily at 5 AM (`0 5 * * *` in vercel.json)
+- Scrapes seed communities for new signals
+- Calculates velocity scores against community baselines
+- Evaluates high-velocity signals with Claude for merch potential
+- Creates EmergingTrend records for viable opportunities
+
+**Seed Communities** (40+ subreddits):
+Organized by category: hobby, profession, pets, family, crafts, outdoors, fitness, food, gaming, music, art, sports
+
+**Claude Evaluation** (`lib/emerging-trends/evaluators/merch-evaluator.ts`):
+For high-velocity signals, Claude analyzes:
+- Is this a merch opportunity?
+- Extract phrases that would work on a shirt
+- Identify target audience and their profile
+- Check Amazon safety (trademark, controversial content)
+- Suggest styles, colors, mood keywords
+
+**UI Component** (`components/EmergingTrends.tsx`):
+- Velocity preset selector (conservative/moderate/aggressive)
+- "Discover Now" button for manual runs
+- Trends grouped by tier (Exploding/Rising/Steady)
+- Trend cards with phrases, audience, viability score
+- Detail modal with full information
+- "Generate Design" button to create merch from trend
+
+**Setup Requirements**:
+1. Subscribe to Decodo Advanced Plan (~$69/mo for 82K requests)
+2. Set `DECODO_USERNAME` and `DECODO_PASSWORD` in environment
+3. Run `npx prisma db push` to create database tables
+4. Optionally set `CRON_SECRET` for securing the cron endpoint
+
+**Key Design Decisions**:
+- **Relative velocity**: 500 upvotes in 30k sub > 5,000 in 5M sub
+- **Community baselines**: Track average engagement per community
+- **Separate module**: No dependencies on existing pipelines
+- **Graceful failure**: Works without Decodo (returns empty results)
+- **Batch evaluation**: Evaluates top N signals per run to control Claude costs
+
+### Proven Niches Pipeline
+
+**Implementation** (`lib/proven-niches/`):
+
+A completely separate module for discovering what's actually selling on Amazon Merch. While Emerging Trends finds early signals, Proven Niches validates demand by analyzing real marketplace data. The key insight is that **low competition + high demand = opportunity**.
+
+**Architecture**:
+```
+lib/proven-niches/
+├── types.ts              # TypeScript interfaces (TrackedNicheData, NicheOpportunityData, etc.)
+├── config.ts             # Seed niches (25+), scrape settings, analysis thresholds
+├── index.ts              # Main orchestration (runFullScan, checkProvenNichesHealth)
+├── client/
+│   └── amazon-client.ts  # Amazon scraping via Decodo API
+├── scrapers/
+│   ├── product-scraper.ts    # Product discovery and storage
+│   └── keyword-scraper.ts    # Keyword analysis and related terms
+├── analyzers/
+│   ├── competition-analyzer.ts   # Competition scoring (review counts, brand dominance, BSR)
+│   └── opportunity-analyzer.ts   # Opportunity identification (keyword gaps, price points)
+└── storage/
+    └── niche-store.ts    # Prisma operations for all models
+```
+
+**Database Models** (in `prisma/schema.prisma`):
+- `TrackedNiche` - Niches being monitored with metadata and scan timestamps
+- `NicheProduct` - Products discovered in each niche with BSR, price, reviews
+- `NicheOpportunity` - Identified opportunities with scores and recommendations
+- `NicheKeyword` - Related keywords with search volume and competition data
+- `ProductPriceHistory` - Historical price tracking for trend analysis
+
+**Competition Levels**:
+| Level | Review Threshold | Characteristics |
+|-------|-----------------|-----------------|
+| Low | Avg < 50 reviews | Easy entry, less validation |
+| Medium | 50-200 reviews | Balanced, proven demand |
+| High | 200-500 reviews | Harder entry, strong demand |
+| Very High | 500+ reviews | Saturated, avoid |
+
+**Opportunity Scoring Algorithm** (`lib/proven-niches/analyzers/opportunity-analyzer.ts`):
+```typescript
+// Demand score (0-100) - based on BSR and review velocity
+const demandScore = calculateDemandScore(avgBSR, reviewGrowthRate);
+
+// Competition score (0-100) - inverse of competition level
+const competitionScore = 100 - (avgReviews / maxReviews) * 100;
+
+// Final opportunity score (higher = better)
+const opportunityScore = (demandScore * 0.4 + competitionScore * 0.6);
+```
+
+**API Endpoints**:
+
+```
+GET /api/proven-niches
+# List all tracked niches with metrics
+
+POST /api/proven-niches
+Body: { "niche": "fishing dad", "category": "family" }
+# Add new niche to track
+
+POST /api/proven-niches/scan
+Body: { "niches": ["fishing", "hiking"] }
+# Trigger manual scan for specific niches
+
+GET /api/proven-niches/opportunities?status=active&minScore=60
+# Fetch opportunities for UI display
+
+GET /api/proven-niches/products?niche=fishing&limit=50&sort=bsr
+# Get products for a specific niche
+
+GET /api/proven-niches/health
+# System health check
+```
+
+**Cron Job** (`/api/cron/scan-marketplace`):
+- Schedule: Daily at 6 AM UTC (`0 6 * * *` in vercel.json)
+- Scans all tracked niches via Amazon search
+- Extracts product data (BSR, price, reviews, ratings)
+- Calculates competition levels per niche
+- Identifies new opportunities based on scoring
+- Updates niche metrics and scan timestamps
+
+**Seed Niches** (25+ categories):
+Organized by type: profession (nurse, teacher), family (dog mom, fishing dad), hobby (hiking, camping), pets (cat lady, dog lover), sports (golf, pickleball), crafts (knitting, sewing), lifestyle (coffee, beer)
+
+**UI Component** (`components/ProvenNiches.tsx`):
+- **Niches Tab**: Grid of tracked niches with competition badges (Low/Medium/High/Very High)
+- **Opportunities Tab**: Scored opportunities with demand/competition breakdown
+- **Products Panel**: Slide-out panel showing products for selected niche
+- **Scan Button**: Manual trigger for marketplace scan
+- **Add Niche**: Form to add custom niches to track
+- **Health Status**: Indicator showing Decodo API configuration
+
+**Setup Requirements**:
+1. Subscribe to Decodo Advanced Plan (~$69/mo for Amazon scraping)
+2. Set `DECODO_USERNAME` and `DECODO_PASSWORD` in environment
+3. Run `npx prisma db push` to create database tables
+4. Optionally set `CRON_SECRET` for securing the cron endpoint
+
+**Key Design Decisions**:
+- **Real marketplace data**: Validates demand with actual sales metrics (BSR)
+- **Competition analysis**: Uses review counts as proxy for market saturation
+- **Separate from Emerging Trends**: Different data source, different purpose
+- **Daily scanning**: Markets change; stale data leads to bad decisions
+- **Seed niches**: Pre-configured with proven merch categories
+- **Graceful failure**: Works without Decodo (returns empty results)

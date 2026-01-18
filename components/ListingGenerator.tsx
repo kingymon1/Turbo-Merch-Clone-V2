@@ -32,6 +32,8 @@ const VIEW_LABELS: Record<AppView, string> = {
   [AppView.DASHBOARD]: 'Dashboard',
   [AppView.TREND_RESEARCH]: 'Trends',
   [AppView.TREND_LAB]: 'Trend Lab',
+  [AppView.EMERGING_TRENDS]: 'Emerging Trends',
+  [AppView.PROVEN_NICHES]: 'Proven Niches',
   [AppView.IMAGE_VECTORIZER]: 'Vectorizer',
   [AppView.LISTING_GENERATOR]: 'Trends',
   [AppView.MERCH_GENERATOR]: 'Merch Generator',

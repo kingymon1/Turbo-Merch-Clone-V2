@@ -39,41 +39,117 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
 
 /**
  * Map Stripe price IDs to subscription tiers
- * Price IDs are loaded from environment variables for security and flexibility
- * Fallback values provided for backward compatibility during migration
+ * IMPORTANT: All price IDs must be set in environment variables.
+ * If a price ID is not found, tier detection will FAIL (not default to 'pro').
  */
-const PRICE_ID_TO_TIER: Record<string, string> = {
-  // Load from env vars, with fallback to legacy hardcoded values
-  [process.env.STRIPE_PRICE_STARTER || 'price_1STqHMEKIZQ9UmMylIFu9Ge5']: 'starter',
-  [process.env.STRIPE_PRICE_PRO || 'price_1STqJ1EKIZQ9UmMyD1lQmhos']: 'pro',
-  [process.env.STRIPE_PRICE_BUSINESS || 'price_1STqK1EKIZQ9UmMyFl7dkknM']: 'business',
-  [process.env.STRIPE_PRICE_ENTERPRISE || 'price_1STqL9EKIZQ9UmMyr8oWtfgt']: 'enterprise',
-};
+const PRICE_ID_TO_TIER: Record<string, string> = {};
 
-function getTierFromSubscription(subscription: Stripe.Subscription): string {
+// Only add mappings for price IDs that are actually configured
+if (process.env.STRIPE_PRICE_STARTER) {
+  PRICE_ID_TO_TIER[process.env.STRIPE_PRICE_STARTER] = 'starter';
+}
+if (process.env.STRIPE_PRICE_PRO) {
+  PRICE_ID_TO_TIER[process.env.STRIPE_PRICE_PRO] = 'pro';
+}
+if (process.env.STRIPE_PRICE_BUSINESS) {
+  PRICE_ID_TO_TIER[process.env.STRIPE_PRICE_BUSINESS] = 'business';
+}
+if (process.env.STRIPE_PRICE_ENTERPRISE) {
+  PRICE_ID_TO_TIER[process.env.STRIPE_PRICE_ENTERPRISE] = 'enterprise';
+}
+
+// Log configured price IDs on startup (without exposing full IDs)
+console.log('[Webhook] Configured price ID mappings:', Object.keys(PRICE_ID_TO_TIER).map(id => `${id.slice(0, 10)}...`));
+
+/**
+ * Get tier from subscription - FAILS LOUDLY if tier cannot be determined
+ * Returns { tier, error } - if error is set, tier detection failed
+ */
+function getTierFromSubscription(subscription: Stripe.Subscription): { tier: string | null; error: string | null } {
   // Priority 1: Check subscription metadata (set during checkout)
   if (subscription.metadata?.tier) {
-    console.log(`Tier from subscription metadata: ${subscription.metadata.tier}`);
-    return subscription.metadata.tier;
+    const tier = subscription.metadata.tier;
+    const validTiers = ['starter', 'pro', 'business', 'enterprise'];
+    if (validTiers.includes(tier)) {
+      console.log(`[Webhook] Tier from subscription metadata: ${tier}`);
+      return { tier, error: null };
+    } else {
+      console.warn(`[Webhook] Invalid tier in metadata: ${tier}`);
+    }
   }
 
   // Priority 2: Look up by price ID
   const priceId = subscription.items.data[0]?.price.id;
-  if (priceId && PRICE_ID_TO_TIER[priceId]) {
-    console.log(`Tier from price ID ${priceId}: ${PRICE_ID_TO_TIER[priceId]}`);
-    return PRICE_ID_TO_TIER[priceId];
+  if (priceId) {
+    const tier = PRICE_ID_TO_TIER[priceId];
+    if (tier) {
+      console.log(`[Webhook] Tier from price ID ${priceId.slice(0, 10)}...: ${tier}`);
+      return { tier, error: null };
+    }
   }
 
-  // Fallback: Default to 'pro' but log a warning
-  console.warn(`⚠️  Could not determine tier for subscription ${subscription.id}, defaulting to 'pro'`, {
-    priceId,
-    metadata: subscription.metadata,
-    items: subscription.items.data.length,
+  // FAIL LOUDLY - do not default to 'pro'
+  const errorMsg = `Could not determine tier for subscription ${subscription.id}. ` +
+    `Price ID: ${priceId || 'none'}, Metadata: ${JSON.stringify(subscription.metadata)}. ` +
+    `Check STRIPE_PRICE_* environment variables.`;
+  console.error(`[Webhook] ❌ TIER DETECTION FAILED: ${errorMsg}`);
+
+  return { tier: null, error: errorMsg };
+}
+
+/**
+ * Check if an event has already been processed (idempotency)
+ */
+async function isEventProcessed(stripeEventId: string): Promise<boolean> {
+  const existing = await prisma.stripeWebhookEvent.findUnique({
+    where: { stripeEventId },
   });
-  return 'pro';
+  return existing?.status === 'processed';
+}
+
+/**
+ * Log webhook event to database
+ */
+async function logWebhookEvent(
+  stripeEventId: string,
+  eventType: string,
+  status: 'received' | 'processed' | 'failed' | 'ignored',
+  options: {
+    stripeCustomerId?: string;
+    userId?: string;
+    errorMessage?: string;
+    payload?: object;
+    processingMs?: number;
+  } = {}
+) {
+  try {
+    await prisma.stripeWebhookEvent.upsert({
+      where: { stripeEventId },
+      create: {
+        stripeEventId,
+        eventType,
+        status,
+        stripeCustomerId: options.stripeCustomerId,
+        userId: options.userId,
+        errorMessage: options.errorMessage,
+        payload: options.payload,
+        processedAt: status === 'processed' ? new Date() : null,
+        processingMs: options.processingMs,
+      },
+      update: {
+        status,
+        errorMessage: options.errorMessage,
+        processedAt: status === 'processed' ? new Date() : undefined,
+        processingMs: options.processingMs,
+      },
+    });
+  } catch (error) {
+    console.error('[Webhook] Failed to log event:', error);
+  }
 }
 
 export async function POST(req: NextRequest) {
+  const startTime = Date.now();
   const body = await req.text();
   const headersList = await headers();
   const signature = headersList.get('stripe-signature');
@@ -89,19 +165,29 @@ export async function POST(req: NextRequest) {
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
-  } catch (err: any) {
-    console.error(`Webhook signature verification failed: ${err.message}`);
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+    console.error(`[Webhook] Signature verification failed: ${errorMessage}`);
     return NextResponse.json(
-      { error: `Webhook Error: ${err.message}` },
+      { error: `Webhook Error: ${errorMessage}` },
       { status: 400 }
     );
   }
+
+  // Check for idempotency - don't process the same event twice
+  if (await isEventProcessed(event.id)) {
+    console.log(`[Webhook] Event ${event.id} already processed, skipping`);
+    return NextResponse.json({ received: true, status: 'already_processed' });
+  }
+
+  // Log that we received the event
+  await logWebhookEvent(event.id, event.type, 'received');
 
   try {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session;
-        console.log('Checkout session completed:', session.id);
+        console.log('[Webhook] Checkout session completed:', session.id);
 
         const clerkUserId = session.client_reference_id || session.metadata?.userId;
         const tier = session.metadata?.tier || 'starter';
@@ -129,7 +215,19 @@ export async function POST(req: NextRequest) {
           // Update usage meters to reflect new tier allowance
           await updateUsageAllowance(upsertedUser.id, tier);
 
-          console.log(`User ${clerkUserId} subscribed to ${tier} tier`);
+          console.log(`[Webhook] User ${clerkUserId} subscribed to ${tier} tier`);
+
+          await logWebhookEvent(event.id, event.type, 'processed', {
+            stripeCustomerId: session.customer as string,
+            userId: upsertedUser.id,
+            processingMs: Date.now() - startTime,
+          });
+        } else {
+          console.warn('[Webhook] No clerkUserId in checkout session');
+          await logWebhookEvent(event.id, event.type, 'failed', {
+            errorMessage: 'No clerkUserId in checkout session metadata',
+            stripeCustomerId: session.customer as string,
+          });
         }
         break;
       }
@@ -137,23 +235,27 @@ export async function POST(req: NextRequest) {
       case 'customer.subscription.created':
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log(`Subscription ${event.type}:`, subscription.id);
-        console.log('Subscription data:', JSON.stringify({
-          id: subscription.id,
-          status: subscription.status,
-          customer: subscription.customer,
-          current_period_end: subscription.current_period_end,
-          created: subscription.created,
-          items: subscription.items?.data?.length || 0,
-        }));
+        console.log(`[Webhook] Subscription ${event.type}:`, subscription.id);
 
-        const tier = getTierFromSubscription(subscription);
+        const { tier, error: tierError } = getTierFromSubscription(subscription);
         const customer = subscription.customer as string;
+
+        // If tier detection failed, log error but don't crash
+        if (tierError || !tier) {
+          await logWebhookEvent(event.id, event.type, 'failed', {
+            errorMessage: tierError || 'Tier detection returned null',
+            stripeCustomerId: customer,
+          });
+          // Still return 200 to Stripe (so they don't retry forever)
+          // but the user's tier won't be updated
+          console.error(`[Webhook] ❌ Skipping subscription update due to tier detection failure`);
+          break;
+        }
 
         // Safe date conversion - handle missing timestamps in test webhooks
         const periodEndDate = subscription.current_period_end
           ? new Date(subscription.current_period_end * 1000)
-          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default to 30 days from now
+          : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
         const createdDate = subscription.created
           ? new Date(subscription.created * 1000)
           : new Date();
@@ -170,25 +272,27 @@ export async function POST(req: NextRequest) {
           const newTierIndex = tierHierarchy.indexOf(tier);
 
           // If we're downgrading and the subscription is active, log a warning
-          // This might indicate a race condition or metadata issue
           if (newTierIndex < currentTierIndex && subscription.status === 'active') {
-            console.warn(`⚠️  UNEXPECTED DOWNGRADE DETECTED for user ${user.id}:`, {
+            console.warn(`[Webhook] ⚠️ UNEXPECTED DOWNGRADE DETECTED for user ${user.id}:`, {
               from: user.subscriptionTier,
               to: tier,
               subscriptionId: subscription.id,
-              priceId: subscription.items.data[0]?.price.id,
-              metadata: subscription.metadata,
             });
 
             // Don't downgrade if the tier detection seems wrong
-            // Keep the existing tier and only update status/dates
-            console.log(`Preserving existing tier '${user.subscriptionTier}' to prevent accidental downgrade`);
+            console.log(`[Webhook] Preserving existing tier '${user.subscriptionTier}' to prevent accidental downgrade`);
             await prisma.user.update({
               where: { stripeCustomerId: customer },
               data: {
                 subscriptionStatus: subscription.status,
                 subscriptionEndsAt: periodEndDate,
               },
+            });
+
+            await logWebhookEvent(event.id, event.type, 'processed', {
+              stripeCustomerId: customer,
+              userId: user.id,
+              processingMs: Date.now() - startTime,
             });
             break;
           }
@@ -207,15 +311,24 @@ export async function POST(req: NextRequest) {
           // Update usage meters to reflect new tier allowance
           await updateUsageAllowance(user.id, tier);
 
-          console.log(`Updated user ${user.id}: ${tier} tier, status ${subscription.status}`);
+          console.log(`[Webhook] Updated user ${user.id}: ${tier} tier, status ${subscription.status}`);
+
+          await logWebhookEvent(event.id, event.type, 'processed', {
+            stripeCustomerId: customer,
+            userId: user.id,
+            processingMs: Date.now() - startTime,
+          });
         } else {
           // Try to find user by email if stripeCustomerId not set
           try {
             const stripeCustomer = await stripe.customers.retrieve(customer);
 
-            // Check if customer is deleted (Stripe.DeletedCustomer doesn't have email)
             if (stripeCustomer.deleted) {
-              console.log(`Customer ${customer} has been deleted, skipping email lookup`);
+              console.log(`[Webhook] Customer ${customer} has been deleted, skipping`);
+              await logWebhookEvent(event.id, event.type, 'ignored', {
+                stripeCustomerId: customer,
+                errorMessage: 'Customer deleted in Stripe',
+              });
               break;
             }
 
@@ -226,20 +339,13 @@ export async function POST(req: NextRequest) {
               });
 
               if (userByEmail) {
-                // Same safety check for email-based lookup
+                // Safety check for email-based lookup
                 const tierHierarchy = ['free', 'starter', 'pro', 'business', 'enterprise'];
                 const currentTierIndex = tierHierarchy.indexOf(userByEmail.subscriptionTier);
                 const newTierIndex = tierHierarchy.indexOf(tier);
 
                 if (newTierIndex < currentTierIndex && subscription.status === 'active') {
-                  console.warn(`⚠️  UNEXPECTED DOWNGRADE DETECTED (email lookup) for user ${userByEmail.id}:`, {
-                    from: userByEmail.subscriptionTier,
-                    to: tier,
-                    subscriptionId: subscription.id,
-                    priceId: subscription.items.data[0]?.price.id,
-                    metadata: subscription.metadata,
-                  });
-
+                  console.warn(`[Webhook] ⚠️ UNEXPECTED DOWNGRADE DETECTED (email lookup) for user ${userByEmail.id}`);
                   await prisma.user.update({
                     where: { email: customerEmail },
                     data: {
@@ -248,7 +354,13 @@ export async function POST(req: NextRequest) {
                       subscriptionEndsAt: periodEndDate,
                     },
                   });
-                  console.log(`Linked customer ID but preserved tier '${userByEmail.subscriptionTier}'`);
+                  console.log(`[Webhook] Linked customer ID but preserved tier '${userByEmail.subscriptionTier}'`);
+
+                  await logWebhookEvent(event.id, event.type, 'processed', {
+                    stripeCustomerId: customer,
+                    userId: userByEmail.id,
+                    processingMs: Date.now() - startTime,
+                  });
                   break;
                 }
 
@@ -263,20 +375,36 @@ export async function POST(req: NextRequest) {
                   },
                 });
 
-                // Update usage meters to reflect new tier allowance
                 await updateUsageAllowance(userByEmail.id, tier);
 
-                console.log(`Linked and updated user ${userByEmail.id} via email: ${tier} tier`);
+                console.log(`[Webhook] Linked and updated user ${userByEmail.id} via email: ${tier} tier`);
+
+                await logWebhookEvent(event.id, event.type, 'processed', {
+                  stripeCustomerId: customer,
+                  userId: userByEmail.id,
+                  processingMs: Date.now() - startTime,
+                });
               } else {
-                console.log(`No user found for customer ${customer} (email: ${customerEmail})`);
+                console.warn(`[Webhook] No user found for customer ${customer} (email: ${customerEmail})`);
+                await logWebhookEvent(event.id, event.type, 'failed', {
+                  stripeCustomerId: customer,
+                  errorMessage: `No user found with email ${customerEmail}`,
+                });
               }
             } else {
-              console.log(`Customer ${customer} has no email, cannot lookup user`);
+              console.warn(`[Webhook] Customer ${customer} has no email`);
+              await logWebhookEvent(event.id, event.type, 'failed', {
+                stripeCustomerId: customer,
+                errorMessage: 'Customer has no email, cannot lookup user',
+              });
             }
           } catch (customerError) {
-            // Customer doesn't exist in Stripe (e.g., test webhook with fake customer ID)
-            console.log(`Could not retrieve customer ${customer} from Stripe:`, customerError instanceof Error ? customerError.message : 'Unknown error');
-            console.log('This is expected for test webhooks with fake customer IDs');
+            const errorMsg = customerError instanceof Error ? customerError.message : 'Unknown error';
+            console.log(`[Webhook] Could not retrieve customer ${customer}: ${errorMsg}`);
+            await logWebhookEvent(event.id, event.type, 'failed', {
+              stripeCustomerId: customer,
+              errorMessage: `Could not retrieve customer: ${errorMsg}`,
+            });
           }
         }
 
@@ -285,11 +413,13 @@ export async function POST(req: NextRequest) {
 
       case 'customer.subscription.deleted': {
         const subscription = event.data.object as Stripe.Subscription;
-        console.log('Subscription cancelled:', subscription.id);
+        console.log('[Webhook] Subscription cancelled:', subscription.id);
+
+        const customer = subscription.customer as string;
 
         // Downgrade user to free tier
-        await prisma.user.updateMany({
-          where: { stripeCustomerId: subscription.customer as string },
+        const result = await prisma.user.updateMany({
+          where: { stripeCustomerId: customer },
           data: {
             subscriptionTier: 'free',
             subscriptionStatus: 'cancelled',
@@ -300,36 +430,81 @@ export async function POST(req: NextRequest) {
           },
         });
 
-        console.log(`Subscription cancelled for customer ${subscription.customer}`);
+        console.log(`[Webhook] Subscription cancelled for customer ${customer} (${result.count} users updated)`);
+
+        await logWebhookEvent(event.id, event.type, 'processed', {
+          stripeCustomerId: customer,
+          processingMs: Date.now() - startTime,
+        });
         break;
       }
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log('Payment succeeded:', invoice.id);
+        console.log('[Webhook] Payment succeeded:', invoice.id);
+
+        await logWebhookEvent(event.id, event.type, 'processed', {
+          stripeCustomerId: invoice.customer as string,
+          processingMs: Date.now() - startTime,
+        });
         break;
       }
 
       case 'invoice.payment_failed': {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log('Payment failed:', invoice.id);
+        console.log('[Webhook] ⚠️ Payment failed:', invoice.id);
 
-        // TODO: Notify user of payment failure
+        const customer = invoice.customer as string;
+
+        // Update user's subscription status to past_due
+        const result = await prisma.user.updateMany({
+          where: { stripeCustomerId: customer },
+          data: {
+            subscriptionStatus: 'past_due',
+          },
+        });
+
+        if (result.count > 0) {
+          console.log(`[Webhook] Updated ${result.count} user(s) to past_due status for customer ${customer}`);
+        }
+
+        // Log the failure with details for debugging
+        await logWebhookEvent(event.id, event.type, 'processed', {
+          stripeCustomerId: customer,
+          payload: {
+            invoiceId: invoice.id,
+            amountDue: invoice.amount_due,
+            attemptCount: invoice.attempt_count,
+            nextPaymentAttempt: invoice.next_payment_attempt,
+          },
+          processingMs: Date.now() - startTime,
+        });
         break;
       }
 
       default:
-        console.log(`Unhandled event type: ${event.type}`);
+        console.log(`[Webhook] Unhandled event type: ${event.type}`);
+        await logWebhookEvent(event.id, event.type, 'ignored', {
+          errorMessage: 'Unhandled event type',
+        });
     }
 
     return NextResponse.json({ received: true });
-  } catch (error: any) {
-    console.error('Webhook handler error:', error);
-    console.error('Error name:', error?.name);
-    console.error('Error message:', error?.message);
-    console.error('Error stack:', error?.stack);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    console.error('[Webhook] Handler error:', error);
+    console.error('[Webhook] Error message:', errorMessage);
+    if (errorStack) console.error('[Webhook] Error stack:', errorStack);
+
+    // Log the failure
+    await logWebhookEvent(event.id, event.type, 'failed', {
+      errorMessage: errorMessage,
+    });
+
     return NextResponse.json(
-      { error: 'Webhook handler failed', details: error?.message || 'Unknown error' },
+      { error: 'Webhook handler failed', details: errorMessage },
       { status: 500 }
     );
   }

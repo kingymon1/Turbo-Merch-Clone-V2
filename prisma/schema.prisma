@@ -1273,3 +1273,421 @@ model StylePrinciple {
 
   @@index([createdAt])
 }
+
+// ============================================================================
+// STRIPE WEBHOOK EVENTS (Debugging & Idempotency)
+// ============================================================================
+// Logs all Stripe webhook events for debugging and prevents duplicate processing.
+
+model StripeWebhookEvent {
+  id            String   @id @default(cuid())
+  createdAt     DateTime @default(now())
+
+  // Stripe event identifiers
+  stripeEventId String   @unique // Stripe's event ID for idempotency
+  eventType     String   // 'checkout.session.completed', 'customer.subscription.updated', etc.
+
+  // Processing status
+  status        String   @default("received") // 'received' | 'processed' | 'failed' | 'ignored'
+  errorMessage  String?  @db.Text
+
+  // Event data (for debugging)
+  payload       Json?    // Full event payload (optional, for debugging)
+
+  // User association (if applicable)
+  stripeCustomerId String?
+  userId           String?
+
+  // Processing metadata
+  processedAt   DateTime?
+  processingMs  Int?     // How long processing took
+
+  @@index([stripeEventId])
+  @@index([eventType])
+  @@index([status])
+  @@index([createdAt])
+  @@index([stripeCustomerId])
+}
+
+// ============================================================================
+// EMERGING TRENDS PIPELINE (Social Signal Discovery)
+// ============================================================================
+// Models for discovering emerging trends from social platforms (Reddit, TikTok)
+// before they become mainstream. Completely separate from existing pipelines.
+
+// Raw signals scraped from social platforms
+model SocialSignal {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Source identification
+  platform        String   // 'reddit' | 'tiktok'
+  externalId      String   // Post/video ID from platform
+  url             String
+  community       String   // r/subreddit name or TikTok hashtag
+  communitySize   Int?     // Subscriber/follower count at time of scrape
+
+  // Content
+  title           String?
+  content         String?  @db.Text
+  author          String?
+  hashtags        String[]
+  postedAt        DateTime? // When originally posted on platform
+
+  // Engagement metrics (raw)
+  upvotes         Int      @default(0)
+  downvotes       Int?
+  comments        Int      @default(0)
+  shares          Int      @default(0)
+  views           Int?
+  saves           Int?
+
+  // Calculated velocity scores
+  velocityScore   Float?   // Relative engagement vs community average
+  recencyBonus    Float?   // Time decay factor (newer = higher)
+  combinedScore   Float?   // Final ranking score
+  velocityTier    String?  // 'exploding' | 'rising' | 'steady' | 'normal'
+
+  // Processing status
+  evaluated       Boolean  @default(false)
+  evaluatedAt     DateTime?
+  skipReason      String?  // Why it was skipped (if applicable)
+
+  // Relation to validated trend
+  emergingTrend   EmergingTrend?
+
+  @@unique([platform, externalId])
+  @@index([platform, createdAt])
+  @@index([combinedScore])
+  @@index([community])
+  @@index([velocityTier])
+  @@index([evaluated])
+}
+
+// Validated merch opportunities from social signals
+model EmergingTrend {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Source signal link
+  signalId        String   @unique
+  signal          SocialSignal @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  // Trend identification
+  topic           String   // Main topic/theme
+  phrases         String[] // Potential t-shirt text options
+  keywords        String[] // SEO/search keywords
+
+  // Audience
+  audience        String   // Brief description (e.g., "fishing enthusiasts")
+  audienceProfile String?  @db.Text // Detailed profile from Claude
+  audienceSize    String?  // 'micro' | 'niche' | 'medium' | 'large' | 'massive'
+
+  // Velocity metrics
+  velocityScore   Float
+  velocityTrend   String   // 'exploding' | 'rising' | 'steady'
+  peakVelocity    Float?   // Highest velocity observed
+  peakAt          DateTime? // When peak occurred
+
+  // Merch viability assessment (from Claude)
+  merchViability  Float    // 0-1 score
+  viabilityReason String?  @db.Text // Why Claude gave this score
+  amazonSafe      Boolean  // No trademark/copyright issues
+  amazonSafeNotes String?  // Notes on potential issues
+
+  // Visual/design hints (from Claude)
+  suggestedStyles String[] // e.g., ['vintage', 'bold typography']
+  colorHints      String[] // e.g., ['earth tones', 'navy blue']
+  moodKeywords    String[] // e.g., ['rugged', 'authentic', 'passionate']
+  designNotes     String?  @db.Text // Additional design guidance
+
+  // Usage tracking
+  usedInDesign    Boolean  @default(false)
+  usedAt          DateTime?
+  designId        String?  // Link to generated design
+  generationCount Int      @default(0) // How many designs used this trend
+
+  // Lifecycle
+  isActive        Boolean  @default(true)
+  expiresAt       DateTime? // When trend is considered stale
+  deactivatedAt   DateTime?
+  deactivateReason String?
+
+  @@index([velocityScore])
+  @@index([merchViability])
+  @@index([usedInDesign])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([topic])
+}
+
+// Dynamically discovered communities to monitor
+model DiscoveredCommunity {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Community identification
+  platform        String   // 'reddit' | 'tiktok'
+  name            String   // r/subreddit or hashtag
+  displayName     String?  // Human-readable name
+  description     String?  @db.Text
+  url             String?
+
+  // Size metrics
+  size            Int?     // Subscribers/followers
+  sizeUpdatedAt   DateTime?
+
+  // Baseline engagement metrics (for velocity calculation)
+  avgUpvotes      Float?   // Average upvotes per post
+  avgComments     Float?   // Average comments per post
+  avgShares       Float?   // Average shares per post
+  avgViews        Float?   // Average views per post
+  baselineUpdatedAt DateTime?
+  baselineSampleSize Int?  // How many posts used to calculate baseline
+
+  // Classification
+  category        String?  // 'hobby' | 'profession' | 'lifestyle' | 'fandom' | 'sports' | 'pets' | etc
+  subCategory     String?  // More specific category
+  merchPotential  Float?   // 0-1 score for merch opportunity
+  merchNotes      String?  // Why this score
+
+  // Scraping configuration
+  lastScrapedAt   DateTime?
+  scrapeFrequency String   @default("daily") // 'hourly' | 'daily' | 'weekly'
+  scrapeCount     Int      @default(0)
+  lastSignalCount Int?     // Signals found in last scrape
+
+  // Discovery metadata
+  discoveredBy    String?  // 'seed' | 'expansion' | 'ai-suggestion' | 'user'
+  discoveredFrom  String?  // Parent community that led to discovery
+
+  // Status
+  isActive        Boolean  @default(true)
+  isPriority      Boolean  @default(false) // High-priority communities
+  deactivatedAt   DateTime?
+  deactivateReason String?
+
+  @@unique([platform, name])
+  @@index([platform])
+  @@index([category])
+  @@index([merchPotential])
+  @@index([isActive])
+  @@index([lastScrapedAt])
+  @@index([isPriority])
+}
+
+// Configuration for velocity thresholds
+model EmergingTrendsConfig {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Config identification
+  name            String   @unique // 'default' | 'conservative' | 'moderate' | 'aggressive'
+  isDefault       Boolean  @default(false)
+
+  // Velocity thresholds
+  explodingThreshold Float  // e.g., 10.0 (10x average)
+  risingThreshold    Float  // e.g., 5.0 (5x average)
+  steadyThreshold    Float  // e.g., 2.0 (2x average)
+
+  // Recency settings
+  recencyHoursMax    Int    // Max hours old to consider (e.g., 72)
+  recencyDecayRate   Float  // Exponential decay rate
+
+  // Filtering
+  minUpvotes         Int    @default(10)
+  minComments        Int    @default(5)
+  minCommunitySize   Int    @default(1000)
+
+  // Description
+  description        String?
+
+  @@index([isDefault])
+}
+
+// ============================================================================
+// PROVEN NICHES PIPELINE
+// Find what's selling on Amazon, identify low-competition gaps
+// ============================================================================
+
+// Scraped Amazon product data
+model AmazonProduct {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Product identification
+  asin            String   @unique // Amazon Standard Identification Number
+  url             String
+
+  // Product details
+  title           String
+  brand           String?
+  price           Float?
+  currency        String   @default("USD")
+  imageUrl        String?
+
+  // Rankings & metrics
+  bsr             Int?     // Best Seller Rank (lower = selling better)
+  bsrCategory     String?  // Category for BSR (e.g., "Clothing > T-Shirts")
+  reviewCount     Int      @default(0)
+  rating          Float?   // Average star rating (1-5)
+
+  // Keywords & categorization
+  keywords        String[] // Extracted keywords from title
+  category        String?  // Primary category
+  subCategory     String?
+
+  // Scrape metadata
+  lastScrapedAt   DateTime @default(now())
+  scrapeCount     Int      @default(1)
+
+  // Relations
+  nicheId         String?
+  niche           TrackedNiche? @relation(fields: [nicheId], references: [id])
+  priceHistory    PriceHistory[]
+
+  @@index([asin])
+  @@index([bsr])
+  @@index([nicheId])
+  @@index([category])
+  @@index([lastScrapedAt])
+}
+
+// Price history for tracking trends
+model PriceHistory {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+
+  productId       String
+  product         AmazonProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  price           Float
+  bsr             Int?
+  reviewCount     Int?
+
+  @@index([productId])
+  @@index([createdAt])
+}
+
+// Niches we're tracking
+model TrackedNiche {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Niche identification
+  name            String   @unique // e.g., "fishing dad", "nurse life"
+  displayName     String?
+  searchKeywords  String[] // Keywords used to find products
+
+  // Category
+  category        String?  // hobby, profession, family, etc.
+  subCategory     String?
+
+  // Metrics (calculated from products)
+  productCount    Int      @default(0)
+  avgBsr          Float?   // Average BSR of products
+  medianBsr       Float?
+  minBsr          Int?     // Best selling product BSR
+  maxBsr          Int?
+  avgPrice        Float?
+  avgReviews      Float?
+
+  // Competition analysis
+  competitionScore Float?  // 0-1, higher = more competition
+  competitionLevel String? // 'low' | 'medium' | 'high' | 'saturated'
+  opportunityScore Float?  // 0-1, higher = better opportunity
+
+  // Scraping
+  lastScrapedAt   DateTime?
+  scrapeFrequency String   @default("daily") // 'hourly' | 'daily' | 'weekly'
+  isActive        Boolean  @default(true)
+
+  // Relations
+  products        AmazonProduct[]
+  opportunities   NicheOpportunity[]
+
+  @@index([name])
+  @@index([category])
+  @@index([opportunityScore])
+  @@index([isActive])
+}
+
+// Identified opportunities (gaps in the market)
+model NicheOpportunity {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Link to niche
+  nicheId         String
+  niche           TrackedNiche @relation(fields: [nicheId], references: [id], onDelete: Cascade)
+
+  // Opportunity details
+  title           String   // Brief title for the opportunity
+  description     String   @db.Text // Detailed description
+  keywords        String[] // Recommended keywords
+
+  // Scores
+  opportunityScore Float   // 0-1, overall opportunity rating
+  demandScore      Float   // 0-1, based on search volume & BSR
+  competitionScore Float   // 0-1, based on number of competitors
+  profitScore      Float?  // 0-1, based on price points
+
+  // Reasoning
+  reasoning        String  @db.Text // Why this is an opportunity
+  suggestedApproach String? @db.Text // How to approach this opportunity
+
+  // Design suggestions
+  suggestedPhrases String[] // Phrases that would work on merch
+  suggestedStyles  String[]
+  targetAudience   String?
+
+  // Status
+  status           String  @default("active") // 'active' | 'used' | 'expired' | 'dismissed'
+  usedAt           DateTime?
+  expiresAt        DateTime?
+
+  @@index([nicheId])
+  @@index([opportunityScore])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Keyword research data
+model NicheKeyword {
+  id              String   @id @default(cuid())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Keyword data
+  keyword         String   @unique
+  searchVolume    Int?     // Estimated monthly searches
+  competition     Float?   // 0-1 competition level
+  cpc             Float?   // Cost per click (indicates commercial intent)
+
+  // Categorization
+  category        String?
+  intent          String?  // 'informational' | 'commercial' | 'transactional'
+
+  // Related data
+  relatedKeywords String[]
+  parentKeyword   String?  // If this is a long-tail variation
+
+  // Amazon specific
+  amazonResults   Int?     // Number of results on Amazon
+  topBsr          Int?     // BSR of top result
+
+  // Tracking
+  lastUpdatedAt   DateTime @default(now())
+
+  @@index([keyword])
+  @@index([searchVolume])
+  @@index([competition])
+  @@index([category])
+}
