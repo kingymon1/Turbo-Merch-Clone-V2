@@ -16,15 +16,17 @@ import { EmergingTrendData, VelocityPreset } from '@/lib/emerging-trends/types';
 // TYPES
 // =============================================================================
 
+interface GroupedTrends {
+  exploding: EmergingTrendData[];
+  rising: EmergingTrendData[];
+  steady: EmergingTrendData[];
+}
+
 interface TrendsResponse {
   success: boolean;
   data?: {
     trends: EmergingTrendData[];
-    grouped: {
-      exploding: EmergingTrendData[];
-      rising: EmergingTrendData[];
-      steady: EmergingTrendData[];
-    };
+    grouped: GroupedTrends;
     total: number;
     timestamp: string;
   };
@@ -61,7 +63,7 @@ interface HealthResponse {
 export default function EmergingTrends() {
   // State
   const [trends, setTrends] = useState<EmergingTrendData[]>([]);
-  const [grouped, setGrouped] = useState<TrendsResponse['data']['grouped'] | null>(null);
+  const [grouped, setGrouped] = useState<GroupedTrends | null>(null);
   const [loading, setLoading] = useState(true);
   const [discovering, setDiscovering] = useState(false);
   const [error, setError] = useState<string | null>(null);
