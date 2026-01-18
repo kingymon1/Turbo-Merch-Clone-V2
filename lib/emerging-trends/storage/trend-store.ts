@@ -574,7 +574,7 @@ function dbCommunityToData(db: {
       sampleSize: db.baselineSampleSize || 0,
       updatedAt: db.baselineUpdatedAt || new Date(),
     } : undefined,
-    discoveredBy: db.discoveredBy || undefined,
+    discoveredBy: db.discoveredBy as DiscoveredCommunityData['discoveredBy'],
     discoveredFrom: db.discoveredFrom || undefined,
   };
 }
