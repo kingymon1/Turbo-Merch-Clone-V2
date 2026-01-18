@@ -117,8 +117,16 @@ When implementing or modifying API integrations, refer to these documentation fi
 - **Module**: `lib/emerging-trends/`
 - **UI Component**: `components/EmergingTrends.tsx`
 - **API Routes**: `app/api/emerging-trends/discover/`, `app/api/emerging-trends/signals/`
-- **Cron Job**: `app/api/cron/collect-social-signals/` (runs daily at 5 AM)
+- **Cron Job**: `app/api/cron/collect-social-signals/` (runs daily at 3 AM)
 - **Purpose**: Discover emerging trends from social platforms (Reddit, TikTok) using relative velocity scoring
+- **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`, `CRON_SECRET` (optional)
+
+### Proven Niches Pipeline
+- **Module**: `lib/proven-niches/`
+- **UI Component**: `components/ProvenNiches.tsx`
+- **API Routes**: `app/api/proven-niches/`, `app/api/proven-niches/scan/`, `app/api/proven-niches/opportunities/`, `app/api/proven-niches/products/`
+- **Cron Job**: `app/api/cron/scan-marketplace/` (runs daily at 6 AM)
+- **Purpose**: Discover what's selling on Amazon, analyze competition, identify low-competition opportunities
 - **Env vars**: `DECODO_USERNAME`, `DECODO_PASSWORD`, `CRON_SECRET` (optional)
 
 ## Environment Variables
@@ -138,8 +146,9 @@ Required environment variables for full functionality:
 Optional feature flags:
 - `STYLE_INTEL_MERCH_ENABLED` - Enable StyleIntel integration in merch pipeline (default: false)
 - `EMERGING_TRENDS_ENABLED` - Enable emerging trends cron job (default: true)
+- `PROVEN_NICHES_ENABLED` - Enable proven niches cron job (default: true)
 
-Emerging Trends Pipeline (optional):
+Emerging Trends & Proven Niches Pipelines (optional):
 - `DECODO_USERNAME` - Decodo API username for web scraping
 - `DECODO_PASSWORD` - Decodo API password
 - `CRON_SECRET` - Optional secret for securing cron endpoints
@@ -748,7 +757,7 @@ The following tabs are **hidden from normal users** (visible in dev mode only):
 - Merch Generator
 - Ideas Vault
 
-Normal users see: Dashboard, **Emerging Trends**, **Autopilot**, Image Vectorizer, My Library, Subscription
+Normal users see: Dashboard, **Emerging Trends**, **Proven Niches**, **Autopilot**, Image Vectorizer, My Library, Subscription
 
 ### Emerging Trends Pipeline
 
@@ -862,3 +871,111 @@ For high-velocity signals, Claude analyzes:
 - **Separate module**: No dependencies on existing pipelines
 - **Graceful failure**: Works without Decodo (returns empty results)
 - **Batch evaluation**: Evaluates top N signals per run to control Claude costs
+
+### Proven Niches Pipeline
+
+**Implementation** (`lib/proven-niches/`):
+
+A completely separate module for discovering what's actually selling on Amazon Merch. While Emerging Trends finds early signals, Proven Niches validates demand by analyzing real marketplace data. The key insight is that **low competition + high demand = opportunity**.
+
+**Architecture**:
+```
+lib/proven-niches/
+├── types.ts              # TypeScript interfaces (TrackedNicheData, NicheOpportunityData, etc.)
+├── config.ts             # Seed niches (25+), scrape settings, analysis thresholds
+├── index.ts              # Main orchestration (runFullScan, checkProvenNichesHealth)
+├── client/
+│   └── amazon-client.ts  # Amazon scraping via Decodo API
+├── scrapers/
+│   ├── product-scraper.ts    # Product discovery and storage
+│   └── keyword-scraper.ts    # Keyword analysis and related terms
+├── analyzers/
+│   ├── competition-analyzer.ts   # Competition scoring (review counts, brand dominance, BSR)
+│   └── opportunity-analyzer.ts   # Opportunity identification (keyword gaps, price points)
+└── storage/
+    └── niche-store.ts    # Prisma operations for all models
+```
+
+**Database Models** (in `prisma/schema.prisma`):
+- `TrackedNiche` - Niches being monitored with metadata and scan timestamps
+- `NicheProduct` - Products discovered in each niche with BSR, price, reviews
+- `NicheOpportunity` - Identified opportunities with scores and recommendations
+- `NicheKeyword` - Related keywords with search volume and competition data
+- `ProductPriceHistory` - Historical price tracking for trend analysis
+
+**Competition Levels**:
+| Level | Review Threshold | Characteristics |
+|-------|-----------------|-----------------|
+| Low | Avg < 50 reviews | Easy entry, less validation |
+| Medium | 50-200 reviews | Balanced, proven demand |
+| High | 200-500 reviews | Harder entry, strong demand |
+| Very High | 500+ reviews | Saturated, avoid |
+
+**Opportunity Scoring Algorithm** (`lib/proven-niches/analyzers/opportunity-analyzer.ts`):
+```typescript
+// Demand score (0-100) - based on BSR and review velocity
+const demandScore = calculateDemandScore(avgBSR, reviewGrowthRate);
+
+// Competition score (0-100) - inverse of competition level
+const competitionScore = 100 - (avgReviews / maxReviews) * 100;
+
+// Final opportunity score (higher = better)
+const opportunityScore = (demandScore * 0.4 + competitionScore * 0.6);
+```
+
+**API Endpoints**:
+
+```
+GET /api/proven-niches
+# List all tracked niches with metrics
+
+POST /api/proven-niches
+Body: { "niche": "fishing dad", "category": "family" }
+# Add new niche to track
+
+POST /api/proven-niches/scan
+Body: { "niches": ["fishing", "hiking"] }
+# Trigger manual scan for specific niches
+
+GET /api/proven-niches/opportunities?status=active&minScore=60
+# Fetch opportunities for UI display
+
+GET /api/proven-niches/products?niche=fishing&limit=50&sort=bsr
+# Get products for a specific niche
+
+GET /api/proven-niches/health
+# System health check
+```
+
+**Cron Job** (`/api/cron/scan-marketplace`):
+- Schedule: Daily at 6 AM UTC (`0 6 * * *` in vercel.json)
+- Scans all tracked niches via Amazon search
+- Extracts product data (BSR, price, reviews, ratings)
+- Calculates competition levels per niche
+- Identifies new opportunities based on scoring
+- Updates niche metrics and scan timestamps
+
+**Seed Niches** (25+ categories):
+Organized by type: profession (nurse, teacher), family (dog mom, fishing dad), hobby (hiking, camping), pets (cat lady, dog lover), sports (golf, pickleball), crafts (knitting, sewing), lifestyle (coffee, beer)
+
+**UI Component** (`components/ProvenNiches.tsx`):
+- **Niches Tab**: Grid of tracked niches with competition badges (Low/Medium/High/Very High)
+- **Opportunities Tab**: Scored opportunities with demand/competition breakdown
+- **Products Panel**: Slide-out panel showing products for selected niche
+- **Scan Button**: Manual trigger for marketplace scan
+- **Add Niche**: Form to add custom niches to track
+- **Health Status**: Indicator showing Decodo API configuration
+
+**Setup Requirements**:
+1. Subscribe to Decodo Advanced Plan (~$69/mo for Amazon scraping)
+2. Set `DECODO_USERNAME` and `DECODO_PASSWORD` in environment
+3. Run `npx prisma db push` to create database tables
+4. Optionally set `CRON_SECRET` for securing the cron endpoint
+
+**Key Design Decisions**:
+- **Real marketplace data**: Validates demand with actual sales metrics (BSR)
+- **Competition analysis**: Uses review counts as proxy for market saturation
+- **Separate from Emerging Trends**: Different data source, different purpose
+- **Daily scanning**: Markets change; stale data leads to bad decisions
+- **Seed niches**: Pre-configured with proven merch categories
+- **Graceful failure**: Works without Decodo (returns empty results)
