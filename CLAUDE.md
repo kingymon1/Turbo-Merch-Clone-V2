@@ -14,6 +14,81 @@ Turbo Merch is an AI-powered merchandise platform that helps discover trends, ge
 - **AI Services**: Google Gemini, Grok, Perplexity, OpenAI, Anthropic Claude
 - **Styling**: Tailwind CSS
 
+## UI Styling Conventions
+
+All UI components must support both light and dark modes using Tailwind's `dark:` prefix. The reference component for styling is `SimpleAutopilot.tsx`.
+
+### Color Palette
+
+**Brand Colors** (primary accent):
+- Primary buttons: `bg-gradient-to-r from-brand-600 to-cyan-600` with `hover:from-brand-500 hover:to-cyan-500`
+- Button shadows: `shadow-lg shadow-brand-500/20`
+- Active states: `bg-brand-600 text-white`
+- Subtle accents: `bg-brand-500/10 text-brand-500 border-brand-500/20`
+
+**Background Colors**:
+- Page background: `bg-gray-50 dark:bg-dark-900`
+- Card background: `bg-white dark:bg-dark-800`
+- Secondary background: `bg-gray-100 dark:bg-dark-700`
+- Hover states: `hover:bg-gray-200 dark:hover:bg-dark-600`
+
+**Text Colors**:
+- Primary text: `text-gray-900 dark:text-white`
+- Secondary text: `text-gray-600 dark:text-gray-400`
+- Muted text: `text-gray-500 dark:text-gray-500`
+
+**Border Colors**:
+- Standard borders: `border-gray-200 dark:border-white/10`
+- Subtle borders: `border-gray-300 dark:border-gray-700`
+
+### Status Colors (with light/dark mode support)
+
+| Status | Light Mode | Dark Mode |
+|--------|------------|-----------|
+| Success | `bg-green-100 text-green-700 border-green-300` | `dark:bg-green-900/50 dark:text-green-300 dark:border-green-500/30` |
+| Warning | `bg-amber-50 text-amber-700 border-amber-200` | `dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-700/50` |
+| Error | `bg-red-50 text-red-700 border-red-200` | `dark:bg-red-900/20 dark:text-red-300 dark:border-red-700/50` |
+| Info | `bg-brand-100 text-brand-700 border-brand-300` | `dark:bg-brand-900/50 dark:text-brand-300 dark:border-brand-500/30` |
+
+### Component Patterns
+
+**Primary Action Buttons**:
+```tsx
+className="px-4 py-2 rounded-lg bg-gradient-to-r from-brand-600 to-cyan-600 hover:from-brand-500 hover:to-cyan-500 text-white font-medium transition-all shadow-lg shadow-brand-500/20"
+```
+
+**Secondary Buttons**:
+```tsx
+className="px-4 py-2 rounded-lg bg-gray-100 dark:bg-dark-700 hover:bg-gray-200 dark:hover:bg-dark-600 text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-white/10"
+```
+
+**Cards**:
+```tsx
+className="p-4 rounded-lg bg-white dark:bg-dark-800 border border-gray-200 dark:border-white/10"
+```
+
+**Modals**:
+```tsx
+// Backdrop
+className="fixed inset-0 z-50 bg-black/50 dark:bg-black/70"
+// Modal content
+className="bg-white dark:bg-dark-800 rounded-xl border border-gray-200 dark:border-white/10 shadow-xl"
+```
+
+**Section Headers**:
+```tsx
+<h1 className="text-2xl font-bold text-gray-900 dark:text-white">Title</h1>
+<p className="text-gray-500 dark:text-gray-400 mt-1">Description</p>
+```
+
+### Important Rules
+
+1. **Always use `dark:` prefix** - Never hard-code dark-only colors without light mode equivalents
+2. **Use brand gradient for CTAs** - Primary action buttons should use the brand-to-cyan gradient
+3. **Consistent border opacity** - Use `border-white/10` for dark mode borders
+4. **Test both modes** - Verify readability in both light and dark themes
+5. **Reference SimpleAutopilot.tsx** - When unsure, check this component for the correct patterns
+
 ## API Documentation References
 
 When implementing or modifying API integrations, refer to these documentation files:
