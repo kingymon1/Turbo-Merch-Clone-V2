@@ -243,6 +243,8 @@ export interface DiscoveredCommunityData {
   merchPotential?: number;
   merchNotes?: string;
   baseline?: CommunityBaseline;
+  discoveredBy?: 'seed' | 'expansion' | 'ai-suggestion' | 'user';
+  discoveredFrom?: string;
 }
 
 // =============================================================================
